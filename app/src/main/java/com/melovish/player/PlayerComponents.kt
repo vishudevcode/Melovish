@@ -5,17 +5,15 @@ import android.graphics.Bitmap
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -70,6 +68,7 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
@@ -132,7 +131,7 @@ fun LiveAudioWaveEqualizer(
     }
 }
 
-// Curved Back Arrow Icon matching reference 1000153218
+// Curved Back Arrow Icon
 @Composable
 fun CurvedBackArrowIcon(
     tint: Color,
@@ -155,7 +154,7 @@ fun CurvedBackArrowIcon(
     }
 }
 
-// Circular Embossed Glass Back Button Container (1000153217 / 1000153216)
+// Circular Embossed Glass Back Button Container
 @Composable
 fun GlassBackButton(
     isDark: Boolean,
@@ -183,7 +182,7 @@ fun GlassBackButton(
     }
 }
 
-// Glassmorphic Full-Color Folder Icon (1000153221)
+// Glassmorphic Full-Color Folder Icon
 @Composable
 fun GlassmorphicFolderIcon(
     folderColor: Color,
@@ -525,16 +524,28 @@ fun FullPlayerSheet(
 
     LaunchedEffect(showSeekLeftAnim) {
         if (showSeekLeftAnim) {
-            delay(650)
+            delay(550)
             showSeekLeftAnim = false
         }
     }
     LaunchedEffect(showSeekRightAnim) {
         if (showSeekRightAnim) {
-            delay(650)
+            delay(550)
             showSeekRightAnim = false
         }
     }
+
+    // High performance RenderNode alpha animation for seek arcs
+    val leftSeekAlpha by animateFloatAsState(
+        targetValue = if (showSeekLeftAnim) 1f else 0f,
+        animationSpec = tween(durationMillis = if (showSeekLeftAnim) 80 else 380),
+        label = "leftSeekAlpha"
+    )
+    val rightSeekAlpha by animateFloatAsState(
+        targetValue = if (showSeekRightAnim) 1f else 0f,
+        animationSpec = tween(durationMillis = if (showSeekRightAnim) 80 else 380),
+        label = "rightSeekAlpha"
+    )
 
     LaunchedEffect(manager.currentPosition) {
         if (!isDraggingSlider) {
@@ -562,7 +573,6 @@ fun FullPlayerSheet(
     val monoColor = if (isDark) Color.White else Color(0xFF0F172A)
     val userAccent = manager.accentColor
 
-    // Full-Screen Swipe Tracking: Right-to-Left = Next, Left-to-Right = Previous
     var totalDragX by remember { mutableFloatStateOf(0f) }
 
     Box(
@@ -631,42 +641,40 @@ fun FullPlayerSheet(
                     Text("🎵", fontSize = 110.sp)
                 }
 
-                // Left Ripple Overlay: « 10s
-                AnimatedVisibility(
-                    visible = showSeekLeftAnim,
-                    enter = fadeIn(tween(150)),
-                    exit = fadeOut(tween(400)),
-                    modifier = Modifier.align(Alignment.CenterStart)
-                ) {
+                // Left Ripple Overlay: « 10s (Receiver-Safe & Smooth)
+                if (leftSeekAlpha > 0.01f) {
                     Box(
                         modifier = Modifier
                             .fillMaxHeight()
                             .fillMaxWidth(0.5f)
-                            .background(Color(0x66000000)),
+                            .align(Alignment.CenterStart)
+                            .background(Color(0x66000000).copy(alpha = 0.45f * leftSeekAlpha)),
                         contentAlignment = Alignment.Center
                     ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            modifier = Modifier.graphicsLayer { alpha = leftSeekAlpha }
+                        ) {
                             Text("«", fontSize = 36.sp, color = Color.White, fontWeight = FontWeight.Black)
                             Text("10s", fontSize = 16.sp, color = Color.White, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
 
-                // Right Ripple Overlay: 10s »
-                AnimatedVisibility(
-                    visible = showSeekRightAnim,
-                    enter = fadeIn(tween(150)),
-                    exit = fadeOut(tween(400)),
-                    modifier = Modifier.align(Alignment.CenterEnd)
-                ) {
+                // Right Ripple Overlay: 10s » (Receiver-Safe & Smooth)
+                if (rightSeekAlpha > 0.01f) {
                     Box(
                         modifier = Modifier
                             .fillMaxHeight()
                             .fillMaxWidth(0.5f)
-                            .background(Color(0x66000000)),
+                            .align(Alignment.CenterEnd)
+                            .background(Color(0x66000000).copy(alpha = 0.45f * rightSeekAlpha)),
                         contentAlignment = Alignment.Center
                     ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            modifier = Modifier.graphicsLayer { alpha = rightSeekAlpha }
+                        ) {
                             Text("»", fontSize = 36.sp, color = Color.White, fontWeight = FontWeight.Black)
                             Text("10s", fontSize = 16.sp, color = Color.White, fontWeight = FontWeight.Bold)
                         }
@@ -735,14 +743,12 @@ fun FullPlayerSheet(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Far Left: Repeat Button
                 RepeatControlIcon(
                     repeatMode = manager.repeatModeState,
                     tint = monoColor,
                     modifier = Modifier.clickable { manager.toggleRepeat() }.padding(8.dp)
                 )
 
-                // Previous
                 PreviousControlIcon(
                     tint = monoColor,
                     modifier = Modifier.clickable { manager.playPrevious() }.padding(8.dp)
@@ -760,13 +766,11 @@ fun FullPlayerSheet(
                 ) {
                     val iconTint = if (isDark) Color(0xFF0F172A) else Color.White
                     if (manager.isPlaying) {
-                        // Clean Pause Bars
                         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             Box(modifier = Modifier.size(6.dp, 22.dp).clip(RoundedCornerShape(3.dp)).background(iconTint))
                             Box(modifier = Modifier.size(6.dp, 22.dp).clip(RoundedCornerShape(3.dp)).background(iconTint))
                         }
                     } else {
-                        // Clean Centered Play Triangle
                         Canvas(modifier = Modifier.size(24.dp).padding(start = 3.dp)) {
                             val path = Path().apply {
                                 moveTo(size.width * 0.15f, size.height * 0.10f)
@@ -779,13 +783,11 @@ fun FullPlayerSheet(
                     }
                 }
 
-                // Next
                 NextControlIcon(
                     tint = monoColor,
                     modifier = Modifier.clickable { manager.playNext() }.padding(8.dp)
                 )
 
-                // Far Right: Shuffle Button
                 ShuffleControlIcon(
                     isShuffleOn = manager.isShuffleOn,
                     tint = monoColor,
@@ -806,10 +808,8 @@ fun FullPlayerSheet(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Lyrics
                 Text("❝≡", fontSize = 24.sp, fontWeight = FontWeight.Black, color = animTextPrimary, modifier = Modifier.clickable { showLyricsDialog = true })
 
-                // Sleep Timer
                 Text(
                     text = if (manager.sleepTimerRemainingSeconds > 0) "${manager.sleepTimerRemainingSeconds / 60}m" else "☾",
                     fontSize = 22.sp,
@@ -818,22 +818,18 @@ fun FullPlayerSheet(
                     modifier = Modifier.clickable { showSleepDialog = true }
                 )
 
-                // Consistent Heart Shape (Red When Favorited)
                 HeartIconVector(
                     isFavorite = song.isFavorite,
                     defaultTint = animTextPrimary,
                     modifier = Modifier.clickable { manager.toggleFavorite(song) }
                 )
 
-                // Queue
                 Text("≡♪", fontSize = 24.sp, fontWeight = FontWeight.Black, color = animTextPrimary, modifier = Modifier.clickable { showQueueSheet = true })
 
-                // More Menu
                 Text("•••", fontSize = 24.sp, fontWeight = FontWeight.Black, color = animTextPrimary, modifier = Modifier.clickable { showMenuModal = true })
             }
         }
 
-        // More Modal Sheet
         if (showMenuModal) {
             Box(
                 modifier = Modifier
@@ -919,7 +915,7 @@ fun HeartIconVector(
     }
 }
 
-// Sleek Clean Controls Vector Set (Matching Reference 1000153233)
+// Sleek Clean Controls Vector Set
 @Composable
 fun RepeatControlIcon(repeatMode: Int, tint: Color, modifier: Modifier = Modifier) {
     val isActive = repeatMode != Player.REPEAT_MODE_OFF
@@ -971,7 +967,6 @@ fun PreviousControlIcon(tint: Color, modifier: Modifier = Modifier) {
         val w = size.width
         val h = size.height
 
-        // Left Stop Bar
         drawLine(
             color = tint,
             start = Offset(w * 0.22f, h * 0.20f),
@@ -980,7 +975,6 @@ fun PreviousControlIcon(tint: Color, modifier: Modifier = Modifier) {
             cap = StrokeCap.Round
         )
 
-        // Triangle
         val tri = Path().apply {
             moveTo(w * 0.80f, h * 0.20f)
             lineTo(w * 0.34f, h * 0.50f)
@@ -997,7 +991,6 @@ fun NextControlIcon(tint: Color, modifier: Modifier = Modifier) {
         val w = size.width
         val h = size.height
 
-        // Triangle
         val tri = Path().apply {
             moveTo(w * 0.20f, h * 0.20f)
             lineTo(w * 0.66f, h * 0.50f)
@@ -1006,7 +999,6 @@ fun NextControlIcon(tint: Color, modifier: Modifier = Modifier) {
         }
         drawPath(tri, color = tint)
 
-        // Right Stop Bar
         drawLine(
             color = tint,
             start = Offset(w * 0.78f, h * 0.20f),
@@ -1056,497 +1048,5 @@ fun ShuffleControlIcon(isShuffleOn: Boolean, tint: Color, modifier: Modifier = M
             lineTo(w * 0.68f, h * 0.40f)
         }
         drawPath(a2, color, style = stroke)
-    }
-}
-
-@Composable
-fun EqualizerSheet(manager: MusicManager, onDismiss: () -> Unit) {
-    val accent = manager.accentColor
-
-    Box(modifier = Modifier.fillMaxSize().background(Color(0xF50A0F1D)).statusBarsPadding().padding(20.dp)) {
-        LazyColumn(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            item {
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                    Text("Equalizer & Audio FX", fontSize = 22.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                    Button(onClick = { onDismiss() }, shape = RoundedCornerShape(10.dp), colors = ButtonDefaults.buttonColors(containerColor = accent)) {
-                        Text("Done", color = Color.White, fontWeight = FontWeight.Bold)
-                    }
-                }
-            }
-
-            item {
-                Row(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Color(0x1AFFFFFF)).padding(16.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                    Column {
-                        Text("Master Equalizer", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                        Text(if (manager.isEqEnabled) "Hardware audio processor enabled" else "Processor bypassed", color = Color(0xFF94A3B8), fontSize = 12.sp)
-                    }
-                    Switch(checked = manager.isEqEnabled, onCheckedChange = { manager.toggleEqualizer(it) })
-                }
-            }
-
-            item {
-                Text("Sound Presets", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                Spacer(modifier = Modifier.height(8.dp))
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    items(manager.eqPresetNames) { preset ->
-                        val isSel = manager.selectedEqPreset == preset
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(if (isSel) accent else Color(0x22FFFFFF))
-                                .clickable { manager.applyEqPreset(preset) }
-                                .padding(horizontal = 16.dp, vertical = 8.dp)
-                        ) {
-                            Text(preset, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                        }
-                    }
-                }
-            }
-
-            item {
-                Text("Frequency Response (-15dB to +15dB)", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                Spacer(modifier = Modifier.height(10.dp))
-                Column(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(Color(0x14FFFFFF)).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    for (i in 0 until manager.eqBandsCount) {
-                        val freq = manager.eqCenterFreqs[i] ?: (60 * (i + 1) * (i + 1))
-                        val label = if (freq >= 1000) "${freq / 1000} kHz" else "$freq Hz"
-                        val level = manager.eqBandLevels[i] ?: 0
-                        val levelDb = level / 100
-
-                        Column {
-                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text(label, color = Color(0xFFE2E8F0), fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                                Text("${if (levelDb > 0) "+$levelDb" else "$levelDb"} dB", color = accent, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                            }
-                            Slider(
-                                value = level.toFloat(),
-                                onValueChange = { manager.setEqBandLevel(i, it.toInt()) },
-                                valueRange = manager.eqMinLevel.toFloat()..manager.eqMaxLevel.toFloat(),
-                                colors = SliderDefaults.colors(thumbColor = accent, activeTrackColor = accent)
-                            )
-                        }
-                    }
-                }
-            }
-
-            item {
-                Text("Acoustics & Depth", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                Spacer(modifier = Modifier.height(10.dp))
-                Column(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(Color(0x14FFFFFF)).padding(16.dp)) {
-                    Text("Bass Boost: ${manager.bassBoostPercent}%", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                    Slider(
-                        value = manager.bassBoostPercent.toFloat(),
-                        onValueChange = { manager.setBassBoost(it.toInt()) },
-                        valueRange = 0f..100f,
-                        colors = SliderDefaults.colors(thumbColor = accent, activeTrackColor = accent)
-                    )
-                    Spacer(modifier = Modifier.height(10.dp))
-                    Text("3D Surround (Virtualizer): ${manager.virtualizerPercent}%", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                    Slider(
-                        value = manager.virtualizerPercent.toFloat(),
-                        onValueChange = { manager.setVirtualizer(it.toInt()) },
-                        valueRange = 0f..100f,
-                        colors = SliderDefaults.colors(thumbColor = accent, activeTrackColor = accent)
-                    )
-                }
-            }
-
-            item {
-                Column(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(Color(0x14FFFFFF)).padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                        Column {
-                            Text("Stop Bass (Full Cut)", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                            Text("Completely cuts sub-bass frequencies", color = Color(0xFF94A3B8), fontSize = 11.sp)
-                        }
-                        Switch(checked = manager.isStopBass, onCheckedChange = { manager.toggleStopBass(it) })
-                    }
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                        Column {
-                            Text("Remove Vocals (Center Cut)", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                            Text("Attenuates vocal center frequency bands", color = Color(0xFF94A3B8), fontSize = 11.sp)
-                        }
-                        Switch(checked = manager.isRemoveVocals, onCheckedChange = { manager.toggleRemoveVocals(it) })
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-fun MenuRow(icon: String, text: String, isDark: Boolean, isDanger: Boolean = false, onClick: () -> Unit) {
-    val textColor = if (isDanger) Color(0xFFEF4444) else if (isDark) Color.White else Color(0xFF0F172A)
-    Row(
-        modifier = Modifier.fillMaxWidth().clickable { onClick() }.padding(vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(icon, fontSize = 18.sp)
-        Spacer(modifier = Modifier.width(14.dp))
-        Text(text, fontSize = 14.sp, color = textColor, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-    }
-}
-
-@Composable
-fun MiniPlayerDock(manager: MusicManager, onClick: () -> Unit) {
-    val song = manager.currentSong ?: return
-    val accent = manager.accentColor
-    val isDark = manager.isDarkMode
-
-    var albumArtBitmap by remember(song.id) { mutableStateOf(manager.getCachedAlbumArt(song.id)) }
-    LaunchedEffect(song.id) {
-        if (albumArtBitmap == null) {
-            albumArtBitmap = manager.loadAlbumArtAsync(song)
-        }
-    }
-
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 6.dp)
-            .clip(RoundedCornerShape(22.dp))
-            .background(if (isDark) Color(0xE60A0F1D) else Color(0xF2FFFFFF))
-            .border(1.dp, if (isDark) Color(0x33FFFFFF) else Color(0x22000000), RoundedCornerShape(22.dp))
-            .clickable { onClick() }
-            .padding(horizontal = 14.dp, vertical = 8.dp)
-    ) {
-        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Box(modifier = Modifier.size(44.dp).clip(RoundedCornerShape(10.dp)).background(Color(0xFF1E293B)), contentAlignment = Alignment.Center) {
-                if (albumArtBitmap != null) {
-                    Image(bitmap = albumArtBitmap!!.asImageBitmap(), contentDescription = "Art", modifier = Modifier.fillMaxSize())
-                } else {
-                    Text("🎵", fontSize = 20.sp)
-                }
-            }
-            Spacer(modifier = Modifier.width(12.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(song.title, color = if (isDark) Color.White else Color(0xFF0F172A), fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text("${formatFileSize(song.size)} • ${if (song.artist.isNotBlank()) song.artist else "Melovish"}", color = accent, fontSize = 11.sp, maxLines = 1)
-            }
-            Box(modifier = Modifier.size(38.dp).clip(CircleShape).background(accent).clickable { manager.togglePlayPause() }, contentAlignment = Alignment.Center) {
-                Text(if (manager.isPlaying) "❚❚" else "▶", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
-            }
-        }
-    }
-}
-
-@Composable
-fun SleepTimerDialog(manager: MusicManager, onDismiss: () -> Unit) {
-    val isDark = manager.isDarkMode
-    val cardBg = if (isDark) Color(0xFF0F172A) else Color.White
-    val textColor = if (isDark) Color.White else Color(0xFF0F172A)
-    val accent = manager.accentColor
-
-    var customHours by remember { mutableIntStateOf(0) }
-    var customMinutes by remember { mutableIntStateOf(15) }
-
-    Box(modifier = Modifier.fillMaxSize().background(Color(0xCC000000)).clickable { onDismiss() }, contentAlignment = Alignment.BottomCenter) {
-        Box(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)).background(cardBg).clickable(enabled = false) {}.padding(24.dp)) {
-            Column(modifier = Modifier.fillMaxWidth()) {
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                    Column {
-                        Text("Sleep Timer", color = textColor, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                        Text("Automatically stop playback after a set time.", color = Color(0xFF64748B), fontSize = 12.sp)
-                    }
-                    Text("✕", color = Color(0xFF64748B), fontSize = 20.sp, modifier = Modifier.clickable { onDismiss() })
-                }
-
-                if (manager.sleepTimerRemainingSeconds > 0) {
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Box(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Color(0x1AEF4444)).border(1.dp, Color(0x33EF4444), RoundedCornerShape(16.dp)).padding(14.dp)) {
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                            Column {
-                                Text("⏳ Timer Active", color = Color(0xFFEF4444), fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                                Text("${manager.sleepTimerRemainingSeconds / 60}m ${manager.sleepTimerRemainingSeconds % 60}s remaining", color = textColor, fontSize = 12.sp)
-                            }
-                            Button(onClick = { manager.endSleepTimer(); onDismiss() }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444)), shape = RoundedCornerShape(10.dp)) {
-                                Text("End Timer", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                            }
-                        }
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(20.dp))
-                Text("Presets", color = textColor, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                Spacer(modifier = Modifier.height(10.dp))
-
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    listOf(15, 30, 45, 60).forEach { mins ->
-                        Box(modifier = Modifier.weight(1f).height(46.dp).clip(RoundedCornerShape(12.dp)).background(if (isDark) Color(0x1AFFFFFF) else Color(0xFFF1F5F9)).clickable { manager.setSleepTimer(mins); onDismiss() }, contentAlignment = Alignment.Center) {
-                            Text("$mins min", color = textColor, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                        }
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(12.dp))
-                Box(modifier = Modifier.fillMaxWidth().height(46.dp).clip(RoundedCornerShape(12.dp)).background(if (isDark) Color(0x1AFFFFFF) else Color(0xFFF1F5F9)).clickable { manager.setSleepTimerToEndOfTrack(); onDismiss() }, contentAlignment = Alignment.Center) {
-                    Text("End of current track", color = textColor, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                }
-
-                Spacer(modifier = Modifier.height(24.dp))
-                Text("Custom Timer", color = textColor, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                Spacer(modifier = Modifier.height(10.dp))
-
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text("Hours: $customHours", color = Color(0xFF64748B), fontSize = 12.sp)
-                        Slider(value = customHours.toFloat(), onValueChange = { customHours = it.toInt() }, valueRange = 0f..24f, colors = SliderDefaults.colors(thumbColor = accent, activeTrackColor = accent))
-                    }
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text("Minutes: $customMinutes", color = Color(0xFF64748B), fontSize = 12.sp)
-                        Slider(value = customMinutes.toFloat(), onValueChange = { customMinutes = it.toInt() }, valueRange = 1f..60f, colors = SliderDefaults.colors(thumbColor = accent, activeTrackColor = accent))
-                    }
-                    Button(onClick = { manager.setSleepTimer((customHours * 60) + customMinutes); onDismiss() }, colors = ButtonDefaults.buttonColors(containerColor = accent), shape = RoundedCornerShape(12.dp), modifier = Modifier.height(50.dp)) {
-                        Text("Set", color = Color.White, fontWeight = FontWeight.Bold)
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-fun CircularColorPickerDialog(manager: MusicManager, onDismiss: () -> Unit) {
-    val isDark = manager.isDarkMode
-    var hue by remember { mutableFloatStateOf(0f) }
-    var sat by remember { mutableFloatStateOf(1f) }
-    var value by remember { mutableFloatStateOf(1f) }
-
-    val currentColor = remember(hue, sat, value) {
-        Color(android.graphics.Color.HSVToColor(floatArrayOf(hue, sat, value)))
-    }
-
-    Box(modifier = Modifier.fillMaxSize().background(Color(0xCC000000)).clickable { onDismiss() }, contentAlignment = Alignment.Center) {
-        Box(modifier = Modifier.fillMaxWidth(0.92f).clip(RoundedCornerShape(28.dp)).background(if (isDark) Color(0xFF0F172A) else Color.White).clickable(enabled = false) {}.padding(20.dp)) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                    Text("Custom Accent Picker", color = if (isDark) Color.White else Color(0xFF0F172A), fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                    Text("✕", fontSize = 18.sp, modifier = Modifier.clickable { onDismiss() })
-                }
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                Box(modifier = Modifier.size(240.dp), contentAlignment = Alignment.Center) {
-                    Canvas(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .pointerInput(Unit) {
-                                detectDragGestures { change, _ ->
-                                    val center = Offset(size.width / 2f, size.height / 2f)
-                                    val touch = change.position
-                                    val dist = sqrt((touch.x - center.x) * (touch.x - center.x) + (touch.y - center.y) * (touch.y - center.y))
-                                    val radius = size.width / 2f
-
-                                    if (dist >= radius * 0.65f) {
-                                        var angle = Math.toDegrees(atan2(touch.y - center.y, touch.x - center.x).toDouble()).toFloat()
-                                        if (angle < 0) angle += 360f
-                                        hue = angle
-                                    } else {
-                                        val halfInner = (radius * 0.55f)
-                                        val normX = ((touch.x - (center.x - halfInner)) / (halfInner * 2f)).coerceIn(0f, 1f)
-                                        val normY = ((touch.y - (center.y - halfInner)) / (halfInner * 2f)).coerceIn(0f, 1f)
-                                        sat = normX
-                                        value = 1f - normY
-                                    }
-                                }
-                            }
-                    ) {
-                        val center = Offset(size.width / 2f, size.height / 2f)
-                        val radius = size.width / 2f
-                        val ringThickness = radius * 0.28f
-
-                        val sweepColors = (0..360 step 30).map { Color(android.graphics.Color.HSVToColor(floatArrayOf(it.toFloat(), 1f, 1f))) }
-                        drawCircle(brush = Brush.sweepGradient(sweepColors, center), radius = radius - (ringThickness / 2f), style = Stroke(width = ringThickness))
-
-                        val thumbRad = Math.toRadians(hue.toDouble())
-                        val thumbDist = radius - (ringThickness / 2f)
-                        val thumbPos = Offset(center.x + (thumbDist * cos(thumbRad)).toFloat(), center.y + (thumbDist * sin(thumbRad)).toFloat())
-                        drawCircle(Color.White, radius = 12.dp.toPx(), center = thumbPos, style = Stroke(3.dp.toPx()))
-                        drawCircle(Color(android.graphics.Color.HSVToColor(floatArrayOf(hue, 1f, 1f))), radius = 9.dp.toPx(), center = thumbPos)
-
-                        val halfBox = (radius * 0.55f)
-                        val boxTopLeft = Offset(center.x - halfBox, center.y - halfBox)
-                        val boxSize = Size(halfBox * 2f, halfBox * 2f)
-
-                        drawRect(brush = Brush.horizontalGradient(listOf(Color.White, Color(android.graphics.Color.HSVToColor(floatArrayOf(hue, 1f, 1f))))), topLeft = boxTopLeft, size = boxSize)
-                        drawRect(brush = Brush.verticalGradient(listOf(Color.Transparent, Color.Black)), topLeft = boxTopLeft, size = boxSize)
-
-                        val targetPos = Offset(boxTopLeft.x + (sat * boxSize.width), boxTopLeft.y + ((1f - value) * boxSize.height))
-                        drawCircle(Color.White, radius = 8.dp.toPx(), center = targetPos, style = Stroke(2.5f.dp.toPx()))
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(14.dp))
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                    Box(modifier = Modifier.size(36.dp).clip(CircleShape).background(currentColor).border(2.dp, Color.White, CircleShape))
-                    Button(onClick = { manager.addColorPreset(currentColor) }, colors = ButtonDefaults.buttonColors(containerColor = if (isDark) Color(0x22FFFFFF) else Color(0xFFF1F5F9)), shape = RoundedCornerShape(10.dp)) {
-                        Text("+ Add to Presets", color = if (isDark) Color.White else Color(0xFF0F172A), fontSize = 12.sp)
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(12.dp))
-                Text("Saved Presets (10 Slots)", fontSize = 12.sp, color = Color(0xFF64748B), modifier = Modifier.align(Alignment.Start))
-                Spacer(modifier = Modifier.height(8.dp))
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    manager.userSavedColorPresets.take(5).forEach { color ->
-                        Box(modifier = Modifier.size(32.dp).clip(CircleShape).background(color).border(1.5.dp, if (manager.accentColor == color) Color.White else Color.Transparent, CircleShape).clickable { manager.updateAccent(color); onDismiss() })
-                    }
-                }
-                Spacer(modifier = Modifier.height(8.dp))
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    manager.userSavedColorPresets.drop(5).take(5).forEach { color ->
-                        Box(modifier = Modifier.size(32.dp).clip(CircleShape).background(color).border(1.5.dp, if (manager.accentColor == color) Color.White else Color.Transparent, CircleShape).clickable { manager.updateAccent(color); onDismiss() })
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(18.dp))
-                Button(onClick = { manager.updateAccent(currentColor); onDismiss() }, modifier = Modifier.fillMaxWidth().height(48.dp), shape = RoundedCornerShape(14.dp), colors = ButtonDefaults.buttonColors(containerColor = currentColor)) {
-                    Text("Apply Accent", color = Color.White, fontWeight = FontWeight.Bold)
-                }
-            }
-        }
-    }
-}
-
-@Composable
-fun TagEditorDialog(manager: MusicManager, song: Song, onDismiss: () -> Unit) {
-    var editTitle by remember { mutableStateOf(song.title) }
-    var editArtist by remember { mutableStateOf(song.artist) }
-    var editAlbum by remember { mutableStateOf(song.album) }
-    var editDate by remember { mutableStateOf(song.releaseDate) }
-    var selectedCoverUri by remember { mutableStateOf<Uri?>(null) }
-
-    val photoPickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent()
-    ) { uri: Uri? ->
-        if (uri != null) selectedCoverUri = uri
-    }
-
-    val isDark = manager.isDarkMode
-
-    Box(modifier = Modifier.fillMaxSize().background(Color(0xCC000000)).clickable { onDismiss() }, contentAlignment = Alignment.Center) {
-        Box(modifier = Modifier.fillMaxWidth(0.9f).clip(RoundedCornerShape(24.dp)).background(if (isDark) Color(0xFF1E293B) else Color.White).clickable(enabled = false) {}.padding(20.dp)) {
-            Column(modifier = Modifier.fillMaxWidth()) {
-                Text("Edit Audio Tags", color = if (isDark) Color.White else Color(0xFF0F172A), fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                Spacer(modifier = Modifier.height(14.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Button(onClick = { photoPickerLauncher.launch("image/*") }, colors = ButtonDefaults.buttonColors(containerColor = manager.accentColor), shape = RoundedCornerShape(10.dp)) {
-                        Text(if (selectedCoverUri != null) "Artwork Picked ✓" else "Change Artwork", color = Color.White, fontSize = 12.sp)
-                    }
-                }
-                Spacer(modifier = Modifier.height(12.dp))
-                OutlinedTextField(value = editTitle, onValueChange = { editTitle = it }, label = { Text("Song Name") }, modifier = Modifier.fillMaxWidth())
-                Spacer(modifier = Modifier.height(8.dp))
-                OutlinedTextField(value = editArtist, onValueChange = { editArtist = it }, label = { Text("Artist Name") }, modifier = Modifier.fillMaxWidth())
-                Spacer(modifier = Modifier.height(8.dp))
-                OutlinedTextField(value = editAlbum, onValueChange = { editAlbum = it }, label = { Text("Album Name") }, modifier = Modifier.fillMaxWidth())
-                Spacer(modifier = Modifier.height(8.dp))
-                OutlinedTextField(value = editDate, onValueChange = { editDate = it }, label = { Text("Date & Time / Year") }, modifier = Modifier.fillMaxWidth())
-                Spacer(modifier = Modifier.height(16.dp))
-                Button(onClick = { manager.updateSongMetadata(song, editTitle, editArtist, editAlbum, editDate, selectedCoverUri); onDismiss() }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp), colors = ButtonDefaults.buttonColors(containerColor = manager.accentColor)) {
-                    Text("Save Changes", color = Color.White, fontWeight = FontWeight.Bold)
-                }
-            }
-        }
-    }
-}
-
-@Composable
-fun AddToPlaylistDialog(manager: MusicManager, song: Song, onDismiss: () -> Unit) {
-    val isDark = manager.isDarkMode
-    Box(modifier = Modifier.fillMaxSize().background(Color(0xCC000000)).clickable { onDismiss() }, contentAlignment = Alignment.Center) {
-        Box(modifier = Modifier.fillMaxWidth(0.85f).clip(RoundedCornerShape(24.dp)).background(if (isDark) Color(0xFF1E293B) else Color.White).clickable(enabled = false) {}.padding(20.dp)) {
-            Column {
-                Text("Add to Playlist", color = if (isDark) Color.White else Color(0xFF0F172A), fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                Spacer(modifier = Modifier.height(14.dp))
-                LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(manager.customPlaylists) { pl ->
-                        Row(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(if (isDark) Color(0x1AFFFFFF) else Color(0xFFF1F5F9)).clickable { manager.addSongToPlaylist(song.id, pl); onDismiss() }.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                            GlassmorphicFolderIcon(folderColor = Color(pl.iconColorHex), modifier = Modifier.size(24.dp))
-                            Spacer(modifier = Modifier.width(10.dp))
-                            Text(pl.name, color = if (isDark) Color.White else Color(0xFF0F172A), fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                        }
-                    }
-                }
-                Spacer(modifier = Modifier.height(16.dp))
-                Button(onClick = { onDismiss() }, modifier = Modifier.fillMaxWidth()) { Text("Cancel") }
-            }
-        }
-    }
-}
-
-@Composable
-fun MagneticSpeedDialog(manager: MusicManager, onDismiss: () -> Unit) {
-    val haptic = LocalHapticFeedback.current
-    var speed by remember { mutableFloatStateOf(manager.playbackSpeed) }
-    val formattedSpeed = String.format(Locale.US, "%.2fx", speed)
-
-    Box(modifier = Modifier.fillMaxSize().background(Color(0xCC000000)).clickable { onDismiss() }, contentAlignment = Alignment.Center) {
-        Box(modifier = Modifier.fillMaxWidth(0.85f).clip(RoundedCornerShape(24.dp)).background(Color(0xFF1E293B)).padding(24.dp)) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("Playback Speed: $formattedSpeed", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                Spacer(modifier = Modifier.height(16.dp))
-                Slider(
-                    value = speed,
-                    onValueChange = { raw ->
-                        val snapped = manager.setMagneticSpeed(raw)
-                        if (snapped != speed) {
-                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                        }
-                        speed = snapped
-                    },
-                    valueRange = 0.25f..3.0f,
-                    colors = SliderDefaults.colors(thumbColor = manager.accentColor, activeTrackColor = manager.accentColor)
-                )
-                Spacer(modifier = Modifier.height(14.dp))
-                Button(onClick = { onDismiss() }, modifier = Modifier.fillMaxWidth()) { Text("Done") }
-            }
-        }
-    }
-}
-
-@Composable
-fun QueueSheet(manager: MusicManager, onDismiss: () -> Unit) {
-    Box(modifier = Modifier.fillMaxSize().background(Color(0xF00F172A)).padding(20.dp)) {
-        Column(modifier = Modifier.fillMaxSize()) {
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Text("Playing Queue (${manager.playbackQueue.size})", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                Button(onClick = { onDismiss() }, shape = RoundedCornerShape(10.dp)) { Text("Close") }
-            }
-            Spacer(modifier = Modifier.height(14.dp))
-            LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(manager.playbackQueue, key = { it.id }) { song ->
-                    val isCur = song.id == manager.currentSong?.id
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(if (isCur) Color(0x33D4AF37) else Color(0x1AFFFFFF))
-                            .clickable { manager.playSong(song, manager.playbackQueue, manager.currentSectionName) }
-                            .padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(if (isCur) "▶" else "•", color = manager.accentColor, fontSize = 14.sp)
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(song.title, color = Color.White, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            Text("${formatFileSize(song.size)} • ${song.artist}", color = Color(0xFF94A3B8), fontSize = 11.sp)
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-fun LyricsDialog(song: Song, isDark: Boolean, onDismiss: () -> Unit) {
-    Box(modifier = Modifier.fillMaxSize().background(Color(0xCC000000)).clickable { onDismiss() }, contentAlignment = Alignment.Center) {
-        Box(modifier = Modifier.fillMaxWidth(0.85f).height(400.dp).clip(RoundedCornerShape(24.dp)).background(if (isDark) Color(0xFF1E293B) else Color.White).padding(24.dp)) {
-            Column {
-                Text("Lyrics", color = if (isDark) Color.White else Color(0xFF0F172A), fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                Spacer(modifier = Modifier.height(14.dp))
-                Text("No synchronized lyrics found for \"${song.title}\".", color = Color(0xFF94A3B8), fontSize = 14.sp)
-            }
-        }
     }
 }
