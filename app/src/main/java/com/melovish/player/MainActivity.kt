@@ -72,6 +72,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -325,7 +326,7 @@ fun MelovishRootApp(manager: MusicManager) {
     }
 }
 
-// 3-Layout Recently Played Cover Card with Bottom Translucent Scrim
+// 3-Card Layout for Recently Played Songs with Translucent Opaque Blur Title Bar
 @Composable
 fun RecentlyPlayedCard(
     song: Song,
@@ -360,7 +361,7 @@ fun RecentlyPlayedCard(
             }
         }
 
-        // Bottom Translucent Opaque Blur-Gradient Area
+        // Bottom Translucent Blur Scrim
         Box(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
@@ -497,15 +498,19 @@ fun TopBar(
                 .size(42.dp)
                 .shadow(6.dp, CircleShape)
                 .clip(CircleShape)
-                .background(if (isDark) Color(0x33FFFFFF) else Color(0x14000000))
+                .background(Color(0xFF030712))
                 .border(2.dp, manager.accentColor, CircleShape)
                 .clickable { onProfileClick() },
             contentAlignment = Alignment.Center
         ) {
             if (avatarBitmap != null) {
-                Image(bitmap = avatarBitmap.asImageBitmap(), contentDescription = "Avatar", modifier = Modifier.fillMaxSize())
+                Image(
+                    bitmap = avatarBitmap.asImageBitmap(),
+                    contentDescription = "Avatar",
+                    modifier = Modifier.fillMaxSize()
+                )
             } else {
-                Text("👤", fontSize = 20.sp)
+                DefaultProfileAvatar(modifier = Modifier.fillMaxSize())
             }
         }
 
@@ -595,6 +600,8 @@ fun HomeScreen(
     var showSortMenu by remember { mutableStateOf(false) }
     var showCreatePlaylistDialog by remember { mutableStateOf(false) }
 
+    var customizingPlaylist by remember { mutableStateOf<Playlist?>(null) }
+
     val sortedSongs = manager.getSortedSongs()
     val recents = manager.historySongs.take(30)
 
@@ -604,7 +611,7 @@ fun HomeScreen(
             contentPadding = PaddingValues(bottom = 80.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            // 1. Recently Played Header with Right-Side Play Button
+            // Recently Played Header with Right-Side Play Button
             item {
                 Row(
                     modifier = Modifier
@@ -634,7 +641,7 @@ fun HomeScreen(
 
                 Spacer(modifier = Modifier.height(10.dp))
 
-                // 3-Card Scrollable Row Matching Reference
+                // 3-Card Scrollable Row
                 if (recents.isEmpty()) {
                     Box(
                         modifier = Modifier
@@ -659,7 +666,7 @@ fun HomeScreen(
                 }
             }
 
-            // 2. Favourite Playlists
+            // Favourite Playlists (With Long-Press Icon & Color Picker)
             item {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -701,10 +708,26 @@ fun HomeScreen(
                                     .padding(14.dp)
                             ) {
                                 Column {
-                                    Text(if (pl.isFolderPinned) "📁" else "📑", fontSize = 32.sp)
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(pl.icon, fontSize = 30.sp)
+                                        Box(
+                                            modifier = Modifier
+                                                .size(24.dp)
+                                                .clip(CircleShape)
+                                                .background(if (isDark) Color(0x22FFFFFF) else Color(0xFFF1F5F9))
+                                                .clickable { customizingPlaylist = pl },
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text("🎨", fontSize = 12.sp)
+                                        }
+                                    }
                                     Spacer(modifier = Modifier.height(6.dp))
                                     Text(pl.name, color = textColor, fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 1)
-                                    Text("${pl.songIds.size} songs", color = Color(0xFF64748B), fontSize = 11.sp)
+                                    Text("${pl.songIds.size} songs", color = Color(pl.iconColorHex), fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
                                 }
                             }
                         }
@@ -712,7 +735,7 @@ fun HomeScreen(
                 }
             }
 
-            // 3. All Songs Header with Sort Dropdown
+            // All Songs Header with Sort Dropdown
             item {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -766,32 +789,53 @@ fun HomeScreen(
             }
         }
 
-        Box(
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .padding(bottom = 16.dp, end = 16.dp)
-                .size(56.dp)
-                .shadow(10.dp, CircleShape)
-                .clip(CircleShape)
-                .background(manager.accentColor)
-                .clickable { onResumeClick() },
-            contentAlignment = Alignment.Center
-        ) {
-            Text("▶", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.ExtraBold)
+        // Smart Floating Action Button: ONLY SHOWN WHEN NOTHING IS PLAYING
+        if (manager.currentSong == null) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(bottom = 16.dp, end = 16.dp)
+                    .size(56.dp)
+                    .shadow(10.dp, CircleShape)
+                    .clip(CircleShape)
+                    .background(manager.accentColor)
+                    .clickable { onResumeClick() },
+                contentAlignment = Alignment.Center
+            ) {
+                Text("▶", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.ExtraBold)
+            }
         }
     }
 
     if (showCreatePlaylistDialog) {
         CreatePlaylistDialog(manager = manager, onDismiss = { showCreatePlaylistDialog = false })
     }
+
+    if (customizingPlaylist != null) {
+        val pl = customizingPlaylist!!
+        IconAndColorPickerDialog(
+            title = pl.name,
+            currentIcon = pl.icon,
+            currentColor = Color(pl.iconColorHex),
+            isDark = isDark,
+            onConfirm = { newIcon, newColor ->
+                manager.updatePlaylistIconAndColor(pl, newIcon, newColor.toArgb().toLong())
+                customizingPlaylist = null
+            },
+            onDismiss = { customizingPlaylist = null }
+        )
+    }
 }
 
+// Library Screen with Folder Icon and Color Customization
 @Composable
 fun LibraryScreen(manager: MusicManager, onFolderClick: (String) -> Unit) {
     val isDark = manager.isDarkMode
     val textColor = if (isDark) Color.White else Color(0xFF0F172A)
     val cardBg = if (isDark) Color(0xFF0F172A) else Color.White
     var showFolderSortMenu by remember { mutableStateOf(false) }
+
+    var customizingFolder by remember { mutableStateOf<String?>(null) }
 
     val sortedFolders = manager.getSortedFolders()
     val folderMap = manager.allSongs.groupBy { it.folderName }
@@ -824,6 +868,8 @@ fun LibraryScreen(manager: MusicManager, onFolderClick: (String) -> Unit) {
         items(sortedFolders, key = { it }) { folderName ->
             val songs = folderMap[folderName] ?: emptyList()
             val totalSize = songs.sumOf { it.size }
+            val fIcon = manager.getFolderIcon(folderName)
+            val fColor = manager.getFolderColor(folderName)
 
             Row(
                 modifier = Modifier
@@ -835,15 +881,43 @@ fun LibraryScreen(manager: MusicManager, onFolderClick: (String) -> Unit) {
                     .padding(16.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("📁", fontSize = 28.sp)
+                Box(
+                    modifier = Modifier
+                        .size(46.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(fColor.copy(alpha = 0.2f))
+                        .border(1.5.dp, fColor, RoundedCornerShape(12.dp))
+                        .clickable { customizingFolder = folderName },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(fIcon, fontSize = 24.sp)
+                }
+
                 Spacer(modifier = Modifier.width(14.dp))
+
                 Column(modifier = Modifier.weight(1f)) {
                     Text(folderName, color = textColor, fontSize = 16.sp, fontWeight = FontWeight.Bold)
                     Text("${formatFileSize(totalSize)} • ${songs.size} songs", color = Color(0xFF64748B), fontSize = 12.sp)
                 }
-                Text("›", color = manager.accentColor, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+
+                Text("›", color = fColor, fontSize = 22.sp, fontWeight = FontWeight.Bold)
             }
         }
+    }
+
+    if (customizingFolder != null) {
+        val folder = customizingFolder!!
+        IconAndColorPickerDialog(
+            title = folder,
+            currentIcon = manager.getFolderIcon(folder),
+            currentColor = manager.getFolderColor(folder),
+            isDark = isDark,
+            onConfirm = { newIcon, newColor ->
+                manager.updateFolderIconAndColor(folder, newIcon, newColor.toArgb().toLong())
+                customizingFolder = null
+            },
+            onDismiss = { customizingFolder = null }
+        )
     }
 }
 
@@ -915,7 +989,7 @@ fun PlaylistDetailScreen(
                 }
                 Spacer(modifier = Modifier.width(12.dp))
                 Column {
-                    Text(playlist.name, fontSize = 20.sp, fontWeight = FontWeight.Bold, color = textColor)
+                    Text("${playlist.icon} ${playlist.name}", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = textColor)
                     Text("${songsInPlaylist.size} songs", fontSize = 12.sp, color = Color(0xFF64748B))
                 }
             }
@@ -923,7 +997,7 @@ fun PlaylistDetailScreen(
             Row {
                 Button(
                     onClick = { manager.shufflePlaylist(playlist) },
-                    colors = ButtonDefaults.buttonColors(containerColor = manager.accentColor),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(playlist.iconColorHex)),
                     shape = RoundedCornerShape(10.dp)
                 ) {
                     Text("🔀 Shuffle", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
@@ -1062,7 +1136,7 @@ fun PlaylistAddSearchDialog(
                         LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             items(manager.customPlaylists.filter { it.id != playlist.id }, key = { it.id }) { pl ->
                                 Row(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(if (isDark) Color(0x1AFFFFFF) else Color(0xFFF1F5F9)).padding(12.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                                    Text("📑 ${pl.name} (${pl.songIds.size} songs)", color = textColor, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                                    Text("${pl.icon} ${pl.name} (${pl.songIds.size} songs)", color = textColor, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                                     Button(onClick = { pl.songIds.forEach { manager.addSongToPlaylist(it, playlist) } }, shape = RoundedCornerShape(8.dp)) {
                                         Text("Copy All", fontSize = 11.sp)
                                     }

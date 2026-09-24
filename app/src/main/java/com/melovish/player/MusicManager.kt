@@ -57,7 +57,7 @@ import java.io.FileOutputStream
 import java.util.Locale
 
 class MusicManager(private val context: Context) {
-    private val prefs: SharedPreferences = context.getSharedPreferences("melovish_prefs_v5", Context.MODE_PRIVATE)
+    private val prefs: SharedPreferences = context.getSharedPreferences("melovish_prefs_v6", Context.MODE_PRIVATE)
     private val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
 
     val player: ExoPlayer = ExoPlayer.Builder(context).build().apply {
@@ -97,6 +97,9 @@ class MusicManager(private val context: Context) {
     val customPlaylists = mutableStateListOf<Playlist>()
     val hiddenFolders = mutableStateListOf<String>()
     val hiddenAudioIds = mutableStateListOf<Long>()
+    val folderIcons = mutableStateMapOf<String, String>()
+    val folderColors = mutableStateMapOf<String, Long>()
+
     var currentSortOrder by mutableStateOf(SongSortOrder.A_TO_Z)
     var currentFolderSortOrder by mutableStateOf(FolderSortOrder.A_TO_Z)
 
@@ -898,7 +901,9 @@ class MusicManager(private val context: Context) {
             name = folderName,
             songIds = songsInFolder.toMutableList(),
             isFolderPinned = true,
-            folderName = folderName
+            folderName = folderName,
+            icon = getFolderIcon(folderName),
+            iconColorHex = getFolderColor(folderName).toArgb().toLong()
         )
         customPlaylists.add(newPl)
         savePlaylists()
@@ -923,6 +928,31 @@ class MusicManager(private val context: Context) {
         }
     }
 
+    fun updatePlaylistIconAndColor(playlist: Playlist, icon: String, colorHex: Long) {
+        playlist.icon = icon
+        playlist.iconColorHex = colorHex
+        savePlaylists()
+    }
+
+    fun updateFolderIconAndColor(folderName: String, icon: String, colorHex: Long) {
+        folderIcons[folderName] = icon
+        folderColors[folderName] = colorHex
+        prefs.edit()
+            .putString("folder_icon_$folderName", icon)
+            .putLong("folder_color_$folderName", colorHex)
+            .apply()
+    }
+
+    fun getFolderIcon(folderName: String): String {
+        return folderIcons[folderName] ?: prefs.getString("folder_icon_$folderName", "📁") ?: "📁"
+    }
+
+    fun getFolderColor(folderName: String): Color {
+        val defaultColorHex = 0xFFF59E0B
+        val hex = folderColors[folderName] ?: prefs.getLong("folder_color_$folderName", defaultColorHex)
+        return Color(hex)
+    }
+
     private fun savePlaylists() {
         val arr = JSONArray()
         for (pl in customPlaylists) {
@@ -931,6 +961,8 @@ class MusicManager(private val context: Context) {
                 put("name", pl.name)
                 put("isFolder", pl.isFolderPinned)
                 put("folderName", pl.folderName ?: "")
+                put("icon", pl.icon)
+                put("iconColorHex", pl.iconColorHex)
                 val idsArr = JSONArray()
                 pl.songIds.forEach { idsArr.put(it) }
                 put("songIds", idsArr)
@@ -981,7 +1013,6 @@ class MusicManager(private val context: Context) {
         refreshHistory()
     }
 
-    // Supports up to top 500 recent songs
     private fun refreshHistory() {
         historySongs.clear()
         historySongs.addAll(
@@ -1000,7 +1031,6 @@ class MusicManager(private val context: Context) {
         Toast.makeText(context, "Playback history cleared", Toast.LENGTH_SHORT).show()
     }
 
-    // Supports up to top 500 most played songs
     fun getMostPlayedSongs(): List<Song> {
         return allSongs.filter { it.playCount > 0 }
             .sortedByDescending { it.playCount }
@@ -1120,17 +1150,19 @@ class MusicManager(private val context: Context) {
                     val name = obj.getString("name")
                     val isFolder = obj.optBoolean("isFolder", false)
                     val folderName = obj.optString("folderName", null)
+                    val icon = obj.optString("icon", "📑")
+                    val iconColorHex = obj.optLong("iconColorHex", 0xFF00B4D8)
                     val idsArr = obj.getJSONArray("songIds")
                     val songIds = mutableListOf<Long>()
                     for (j in 0 until idsArr.length()) songIds.add(idsArr.getLong(j))
-                    customPlaylists.add(Playlist(id, name, songIds, isFolder, folderName))
+                    customPlaylists.add(Playlist(id, name, songIds, isFolder, folderName, icon, iconColorHex))
                 }
             } catch (_: Exception) {}
         }
     }
 }
 
-// Global Formatting Utilities for All Screens
+// Global Formatting Utilities
 fun formatTime(ms: Long): String {
     val totalSeconds = (ms / 1000).coerceAtLeast(0)
     val minutes = totalSeconds / 60

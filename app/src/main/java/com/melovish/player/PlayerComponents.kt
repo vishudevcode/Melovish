@@ -76,6 +76,204 @@ import kotlin.math.cos
 import kotlin.math.sin
 import kotlin.math.sqrt
 
+// Minimalist Vector Avatar (Soft Sky-Blue to Periwinkle Gradient)
+@Composable
+fun DefaultProfileAvatar(
+    modifier: Modifier = Modifier,
+    backgroundColor: Color = Color(0xFF030712)
+) {
+    Canvas(modifier = modifier) {
+        val w = size.width
+        val h = size.height
+
+        drawCircle(
+            color = backgroundColor,
+            radius = w / 2f,
+            center = Offset(w / 2f, h / 2f)
+        )
+
+        val bodyBrush = Brush.verticalGradient(
+            colors = listOf(
+                Color(0xFFCBD6FF),
+                Color(0xFF5B82FC)
+            ),
+            startY = h * 0.48f,
+            endY = h * 0.95f
+        )
+
+        val bodyPath = Path().apply {
+            moveTo(w * 0.16f, h * 0.88f)
+            cubicTo(w * 0.16f, h * 0.66f, w * 0.28f, h * 0.49f, w * 0.50f, h * 0.49f)
+            cubicTo(w * 0.72f, h * 0.49f, w * 0.84f, h * 0.66f, w * 0.84f, h * 0.88f)
+            cubicTo(w * 0.76f, h * 0.95f, w * 0.24f, h * 0.95f, w * 0.16f, h * 0.88f)
+            close()
+        }
+        drawPath(bodyPath, brush = bodyBrush)
+
+        val headRadius = w * 0.235f
+        val headCenter = Offset(w * 0.5f, h * 0.285f)
+        val headBrush = Brush.verticalGradient(
+            colors = listOf(
+                Color(0xFFE2F1FE),
+                Color(0xFF7FA8FE)
+            ),
+            startY = headCenter.y - headRadius,
+            endY = headCenter.y + headRadius
+        )
+        drawCircle(
+            brush = headBrush,
+            radius = headRadius,
+            center = headCenter
+        )
+    }
+}
+
+// Icon and Color Customization Modal for Playlists and Folders
+@Composable
+fun IconAndColorPickerDialog(
+    title: String,
+    currentIcon: String,
+    currentColor: Color,
+    isDark: Boolean,
+    onConfirm: (String, Color) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var selectedIcon by remember { mutableStateOf(currentIcon) }
+    var selectedColor by remember { mutableStateOf(currentColor) }
+
+    val presetIcons = listOf(
+        "📁", "📂", "📑", "🎵", "🎧", "⭐", "❤️", "🔥", "💎", "💿", "🎸", "✨", "🚀", "🌙", "🌊", "⚡"
+    )
+
+    val presetColors = listOf(
+        Color(0xFFF59E0B), // Amber / Gold
+        Color(0xFF00B4D8), // Teal Blue
+        Color(0xFF10B981), // Emerald
+        Color(0xFFEF4444), // Crimson Red
+        Color(0xFFEC4899), // Pink
+        Color(0xFF8B5CF6), // Purple
+        Color(0xFF3B82F6), // Blue
+        Color(0xFFF97316), // Orange
+        Color(0xFF14B8A6), // Cyan Mint
+        Color(0xFF6366F1)  // Indigo
+    )
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color(0xCC000000))
+            .clickable { onDismiss() },
+        contentAlignment = Alignment.Center
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth(0.9f)
+                .clip(RoundedCornerShape(24.dp))
+                .background(if (isDark) Color(0xFF0F172A) else Color.White)
+                .clickable(enabled = false) {}
+                .padding(20.dp)
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(
+                    text = "Customize $title",
+                    color = if (isDark) Color.White else Color(0xFF0F172A),
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold
+                )
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // Live Preview Badge
+                Box(
+                    modifier = Modifier
+                        .size(64.dp)
+                        .clip(RoundedCornerShape(18.dp))
+                        .background(selectedColor.copy(alpha = 0.2f))
+                        .border(2.dp, selectedColor, RoundedCornerShape(18.dp)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(text = selectedIcon, fontSize = 32.sp)
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Text(
+                    text = "Choose Icon",
+                    color = Color(0xFF64748B),
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.align(Alignment.Start)
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    items(presetIcons) { icon ->
+                        Box(
+                            modifier = Modifier
+                                .size(42.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(if (selectedIcon == icon) selectedColor.copy(alpha = 0.25f) else if (isDark) Color(0x1AFFFFFF) else Color(0xFFF1F5F9))
+                                .border(1.5.dp, if (selectedIcon == icon) selectedColor else Color.Transparent, RoundedCornerShape(10.dp))
+                                .clickable { selectedIcon = icon },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(icon, fontSize = 20.sp)
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(18.dp))
+
+                Text(
+                    text = "Choose Color Tint",
+                    color = Color(0xFF64748B),
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.align(Alignment.Start)
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    items(presetColors) { color ->
+                        Box(
+                            modifier = Modifier
+                                .size(34.dp)
+                                .clip(CircleShape)
+                                .background(color)
+                                .border(2.dp, if (selectedColor == color) Color.White else Color.Transparent, CircleShape)
+                                .clickable { selectedColor = color }
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(22.dp))
+
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Button(
+                        onClick = { onDismiss() },
+                        colors = ButtonDefaults.buttonColors(containerColor = if (isDark) Color(0x22FFFFFF) else Color(0xFFE2E8F0)),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text("Cancel", color = if (isDark) Color.White else Color(0xFF0F172A))
+                    }
+                    Button(
+                        onClick = {
+                            onConfirm(selectedIcon, selectedColor)
+                            onDismiss()
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = selectedColor),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text("Apply", color = Color.White, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
+    }
+}
+
 data class MaterialYouPalette(
     val bgTop: Color,
     val bgBottom: Color,
@@ -235,7 +433,6 @@ fun FullPlayerSheet(
 
             Spacer(modifier = Modifier.height(26.dp))
 
-            // Seek Bar
             Slider(
                 value = dragProgressMs.coerceIn(0f, manager.duration.toFloat().coerceAtLeast(1f)),
                 onValueChange = {
@@ -265,7 +462,6 @@ fun FullPlayerSheet(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Title and Subtitle
             Text(
                 text = song.title,
                 color = animTextPrimary,
@@ -287,7 +483,7 @@ fun FullPlayerSheet(
 
             Spacer(modifier = Modifier.height(28.dp))
 
-            // Top Playback Row: [⇄ Repeat] [⏮ Prev] [▶ Play/Pause] [⏭ Next] [🔀 Shuffle]
+            // Playback Row: [⇄ Repeat] [⏮ Prev] [▶ Play/Pause] [⏭ Next] [🔀 Shuffle]
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -332,7 +528,7 @@ fun FullPlayerSheet(
 
             Spacer(modifier = Modifier.height(22.dp))
 
-            // Dedicated Volume Slider Row: [🔈] ----•---- [🔊]
+            // Dedicated Volume Slider Row
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
@@ -355,7 +551,7 @@ fun FullPlayerSheet(
 
             Spacer(modifier = Modifier.weight(1f))
 
-            // Bottom Utility Bar: [❝≡] [☾] [♡] [≡♪] [•••]
+            // Bottom Utility Bar
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -386,7 +582,6 @@ fun FullPlayerSheet(
             }
         }
 
-        // More Modal Sheet
         if (showMenuModal) {
             Box(
                 modifier = Modifier
@@ -438,7 +633,6 @@ fun FullPlayerSheet(
     }
 }
 
-// Pro-Grade Functional Equalizer & Audio FX Sheet
 @Composable
 fun EqualizerSheet(manager: MusicManager, onDismiss: () -> Unit) {
     val isDark = manager.isDarkMode
@@ -455,7 +649,6 @@ fun EqualizerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                 }
             }
 
-            // Master Equalizer Switch
             item {
                 Row(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Color(0x1AFFFFFF)).padding(16.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                     Column {
@@ -466,7 +659,6 @@ fun EqualizerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                 }
             }
 
-            // Presets Scrollable Row
             item {
                 Text("Sound Presets", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                 Spacer(modifier = Modifier.height(8.dp))
@@ -486,7 +678,6 @@ fun EqualizerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                 }
             }
 
-            // Graphic Equalizer Frequency Bands
             item {
                 Text("Frequency Response (-15dB to +15dB)", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                 Spacer(modifier = Modifier.height(10.dp))
@@ -513,7 +704,6 @@ fun EqualizerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                 }
             }
 
-            // Acoustic FX: Bass Boost & 3D Surround Virtualizer
             item {
                 Text("Acoustics & Depth", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                 Spacer(modifier = Modifier.height(10.dp))
@@ -536,7 +726,6 @@ fun EqualizerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                 }
             }
 
-            // Real-Time Vocal & Bass Cut Filters
             item {
                 Column(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(Color(0x14FFFFFF)).padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
@@ -559,7 +748,6 @@ fun EqualizerSheet(manager: MusicManager, onDismiss: () -> Unit) {
     }
 }
 
-// Vector Repeat and Shuffle
 @Composable
 fun RepeatVectorIcon(isActive: Boolean, isRepeatOne: Boolean, monoColor: Color, modifier: Modifier = Modifier) {
     val strokeWidth = if (isActive) 3.8f else 2.0f
@@ -941,7 +1129,7 @@ fun AddToPlaylistDialog(manager: MusicManager, song: Song, onDismiss: () -> Unit
                 LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(manager.customPlaylists) { pl ->
                         Row(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(if (isDark) Color(0x1AFFFFFF) else Color(0xFFF1F5F9)).clickable { manager.addSongToPlaylist(song.id, pl); onDismiss() }.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Text("📑", fontSize = 16.sp)
+                            Text(pl.icon, fontSize = 16.sp)
                             Spacer(modifier = Modifier.width(10.dp))
                             Text(pl.name, color = if (isDark) Color.White else Color(0xFF0F172A), fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                         }

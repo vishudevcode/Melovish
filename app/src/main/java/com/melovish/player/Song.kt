@@ -25,7 +25,9 @@ data class Playlist(
     var name: String,
     val songIds: MutableList<Long> = mutableListOf(),
     val isFolderPinned: Boolean = false,
-    val folderName: String? = null
+    val folderName: String? = null,
+    var icon: String = "📑",
+    var iconColorHex: Long = 0xFF00B4D8
 )
 
 enum class SongSortOrder {
