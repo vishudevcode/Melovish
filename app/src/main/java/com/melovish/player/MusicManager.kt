@@ -57,7 +57,7 @@ import java.io.FileOutputStream
 import java.util.Locale
 
 class MusicManager(private val context: Context) {
-    private val prefs: SharedPreferences = context.getSharedPreferences("melovish_prefs_v6", Context.MODE_PRIVATE)
+    private val prefs: SharedPreferences = context.getSharedPreferences("melovish_prefs_v7", Context.MODE_PRIVATE)
     private val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
 
     val player: ExoPlayer = ExoPlayer.Builder(context).build().apply {
@@ -100,8 +100,22 @@ class MusicManager(private val context: Context) {
     val folderIcons = mutableStateMapOf<String, String>()
     val folderColors = mutableStateMapOf<String, Long>()
 
-    var currentSortOrder by mutableStateOf(SongSortOrder.A_TO_Z)
-    var currentFolderSortOrder by mutableStateOf(FolderSortOrder.A_TO_Z)
+    // Persistent Sort State
+    var currentSortOrder by mutableStateOf(
+        try {
+            SongSortOrder.valueOf(prefs.getString("saved_song_sort", SongSortOrder.A_TO_Z.name) ?: SongSortOrder.A_TO_Z.name)
+        } catch (_: Exception) {
+            SongSortOrder.A_TO_Z
+        }
+    )
+
+    var currentFolderSortOrder by mutableStateOf(
+        try {
+            FolderSortOrder.valueOf(prefs.getString("saved_folder_sort", FolderSortOrder.A_TO_Z.name) ?: FolderSortOrder.A_TO_Z.name)
+        } catch (_: Exception) {
+            FolderSortOrder.A_TO_Z
+        }
+    )
 
     // Memory-Bounded Bitmap Cache
     private val maxCacheSize = (Runtime.getRuntime().maxMemory() / 1024 / 8).toInt()
@@ -163,6 +177,16 @@ class MusicManager(private val context: Context) {
         setupPlayerListener()
         startPositionTracker()
         syncDeviceVolume()
+    }
+
+    fun setPersistentSongSort(order: SongSortOrder) {
+        currentSortOrder = order
+        prefs.edit().putString("saved_song_sort", order.name).apply()
+    }
+
+    fun setPersistentFolderSort(order: FolderSortOrder) {
+        currentFolderSortOrder = order
+        prefs.edit().putString("saved_folder_sort", order.name).apply()
     }
 
     private fun initMediaSession() {
@@ -928,19 +952,14 @@ class MusicManager(private val context: Context) {
         }
     }
 
-    fun updatePlaylistIconAndColor(playlist: Playlist, icon: String, colorHex: Long) {
-        playlist.icon = icon
-        playlist.iconColorHex = colorHex
-        savePlaylists()
+    fun updateFolderColorOnly(folderName: String, colorHex: Long) {
+        folderColors[folderName] = colorHex
+        prefs.edit().putLong("folder_color_$folderName", colorHex).apply()
     }
 
-    fun updateFolderIconAndColor(folderName: String, icon: String, colorHex: Long) {
-        folderIcons[folderName] = icon
-        folderColors[folderName] = colorHex
-        prefs.edit()
-            .putString("folder_icon_$folderName", icon)
-            .putLong("folder_color_$folderName", colorHex)
-            .apply()
+    fun updatePlaylistColorOnly(playlist: Playlist, colorHex: Long) {
+        playlist.iconColorHex = colorHex
+        savePlaylists()
     }
 
     fun getFolderIcon(folderName: String): String {
@@ -948,8 +967,8 @@ class MusicManager(private val context: Context) {
     }
 
     fun getFolderColor(folderName: String): Color {
-        val defaultColorHex = 0xFFF59E0B
-        val hex = folderColors[folderName] ?: prefs.getLong("folder_color_$folderName", defaultColorHex)
+        val defaultMustard = 0xFFF59E0B // Background mustard color
+        val hex = folderColors[folderName] ?: prefs.getLong("folder_color_$folderName", defaultMustard)
         return Color(hex)
     }
 
@@ -1090,8 +1109,8 @@ class MusicManager(private val context: Context) {
         }
         if (userSavedColorPresets.isEmpty()) {
             listOf(
-                Color(0xFF00B4D8), Color(0xFF2EC4B6), Color(0xFF39FF14), Color(0xFFFF2A85), Color(0xFFFF3B30),
-                Color(0xFFFF9500), Color(0xFFAF52DE), Color(0xFF5856D6), Color(0xFF007AFF), Color(0xFFFFCC00)
+                Color(0xFFF59E0B), Color(0xFF00B4D8), Color(0xFF10B981), Color(0xFF39FF14), Color(0xFFFF2A85),
+                Color(0xFFEF4444), Color(0xFF8B5CF6), Color(0xFF3B82F6), Color(0xFFFF6B35), Color(0xFFFFCC00)
             ).forEach { userSavedColorPresets.add(it) }
         }
     }
@@ -1150,8 +1169,8 @@ class MusicManager(private val context: Context) {
                     val name = obj.getString("name")
                     val isFolder = obj.optBoolean("isFolder", false)
                     val folderName = obj.optString("folderName", null)
-                    val icon = obj.optString("icon", "📑")
-                    val iconColorHex = obj.optLong("iconColorHex", 0xFF00B4D8)
+                    val icon = obj.optString("icon", "📁")
+                    val iconColorHex = obj.optLong("iconColorHex", 0xFFF59E0B)
                     val idsArr = obj.getJSONArray("songIds")
                     val songIds = mutableListOf<Long>()
                     for (j in 0 until idsArr.length()) songIds.add(idsArr.getLong(j))

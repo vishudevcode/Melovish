@@ -81,23 +81,7 @@ fun SettingsScreen(
                     .padding(top = 8.dp, bottom = 2.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Box(
-                    modifier = Modifier
-                        .size(38.dp)
-                        .shadow(4.dp, CircleShape)
-                        .clip(CircleShape)
-                        .background(if (isDark) Color(0x1FFFFFFF) else Color(0x0F000000))
-                        .border(1.2.dp, if (isDark) Color(0x33FFFFFF) else Color(0x18000000), CircleShape)
-                        .clickable { onBackClick() },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = "←",
-                        fontSize = 20.sp,
-                        color = textColor,
-                        fontWeight = FontWeight.ExtraBold
-                    )
-                }
+                GlassBackButton(isDark = isDark, onClick = onBackClick)
 
                 Spacer(modifier = Modifier.width(14.dp))
 
@@ -382,7 +366,7 @@ fun SettingsScreen(
             }
         }
 
-        // Content Management
+        // 5. Content Manager Section (Renamed from Content)
         item {
             Column(
                 modifier = Modifier
@@ -392,7 +376,7 @@ fun SettingsScreen(
                     .border(1.dp, if (isDark) Color(0x22FFFFFF) else Color(0xFFE2E8F0), RoundedCornerShape(22.dp))
                     .padding(18.dp)
             ) {
-                Text("Content", color = textColor, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                Text("Content Manager", color = textColor, fontSize = 16.sp, fontWeight = FontWeight.Bold)
                 Text("Manage what music appears in your library.", color = Color(0xFF64748B), fontSize = 12.sp)
                 Spacer(modifier = Modifier.height(16.dp))
 

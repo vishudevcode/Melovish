@@ -20,10 +20,12 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -178,6 +180,7 @@ fun MelovishRootApp(manager: MusicManager) {
                                 title = "Artist: ${selectedArtist!!}",
                                 songs = manager.allSongs.filter { it.artist.equals(selectedArtist, ignoreCase = true) },
                                 manager = manager,
+                                isDark = isDark,
                                 onBack = { selectedArtist = null },
                                 onSongMenuClick = { activeSongForMenu = it }
                             )
@@ -187,6 +190,7 @@ fun MelovishRootApp(manager: MusicManager) {
                                 title = "Album: ${selectedAlbum!!}",
                                 songs = manager.allSongs.filter { it.album.equals(selectedAlbum, ignoreCase = true) },
                                 manager = manager,
+                                isDark = isDark,
                                 onBack = { selectedAlbum = null },
                                 onSongMenuClick = { activeSongForMenu = it }
                             )
@@ -195,6 +199,7 @@ fun MelovishRootApp(manager: MusicManager) {
                             PlaylistDetailScreen(
                                 playlist = selectedPlaylist!!,
                                 manager = manager,
+                                isDark = isDark,
                                 onBack = { selectedPlaylist = null },
                                 onSongMenuClick = { activeSongForMenu = it },
                                 onFolderClick = { folder -> selectedFolder = folder }
@@ -204,6 +209,7 @@ fun MelovishRootApp(manager: MusicManager) {
                             FolderSongsScreen(
                                 folderName = selectedFolder!!,
                                 manager = manager,
+                                isDark = isDark,
                                 onBack = { selectedFolder = null },
                                 onSongMenuClick = { activeSongForMenu = it }
                             )
@@ -326,7 +332,6 @@ fun MelovishRootApp(manager: MusicManager) {
     }
 }
 
-// 3-Card Layout for Recently Played Songs with Translucent Opaque Blur Title Bar
 @Composable
 fun RecentlyPlayedCard(
     song: Song,
@@ -361,7 +366,6 @@ fun RecentlyPlayedCard(
             }
         }
 
-        // Bottom Translucent Blur Scrim
         Box(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
@@ -587,6 +591,7 @@ fun UniversalSongRow(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun HomeScreen(
     manager: MusicManager,
@@ -601,6 +606,7 @@ fun HomeScreen(
     var showCreatePlaylistDialog by remember { mutableStateOf(false) }
 
     var customizingPlaylist by remember { mutableStateOf<Playlist?>(null) }
+    var showRainbowWheelForPl by remember { mutableStateOf(false) }
 
     val sortedSongs = manager.getSortedSongs()
     val recents = manager.historySongs.take(30)
@@ -641,7 +647,6 @@ fun HomeScreen(
 
                 Spacer(modifier = Modifier.height(10.dp))
 
-                // 3-Card Scrollable Row
                 if (recents.isEmpty()) {
                     Box(
                         modifier = Modifier
@@ -666,7 +671,7 @@ fun HomeScreen(
                 }
             }
 
-            // Favourite Playlists (With Long-Press Icon & Color Picker)
+            // Favourite Playlists with Glassmorphic Icons & Long-Press Color Picker
             item {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -704,27 +709,14 @@ fun HomeScreen(
                                     .clip(RoundedCornerShape(18.dp))
                                     .background(cardBg)
                                     .border(1.dp, if (isDark) Color(0x22FFFFFF) else Color(0xFFE2E8F0), RoundedCornerShape(18.dp))
-                                    .clickable { onPlaylistClick(pl) }
+                                    .combinedClickable(
+                                        onClick = { onPlaylistClick(pl) },
+                                        onLongClick = { customizingPlaylist = pl }
+                                    )
                                     .padding(14.dp)
                             ) {
                                 Column {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Text(pl.icon, fontSize = 30.sp)
-                                        Box(
-                                            modifier = Modifier
-                                                .size(24.dp)
-                                                .clip(CircleShape)
-                                                .background(if (isDark) Color(0x22FFFFFF) else Color(0xFFF1F5F9))
-                                                .clickable { customizingPlaylist = pl },
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            Text("🎨", fontSize = 12.sp)
-                                        }
-                                    }
+                                    GlassmorphicFolderIcon(folderColor = Color(pl.iconColorHex), modifier = Modifier.size(36.dp))
                                     Spacer(modifier = Modifier.height(6.dp))
                                     Text(pl.name, color = textColor, fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 1)
                                     Text("${pl.songIds.size} songs", color = Color(pl.iconColorHex), fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
@@ -735,7 +727,7 @@ fun HomeScreen(
                 }
             }
 
-            // All Songs Header with Sort Dropdown
+            // All Songs Header with Persistent Sorting Dropdown
             item {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -765,13 +757,13 @@ fun HomeScreen(
                                 Text("⇅", fontSize = 16.sp, color = textColor, fontWeight = FontWeight.Bold)
                             }
                             DropdownMenu(expanded = showSortMenu, onDismissRequest = { showSortMenu = false }) {
-                                DropdownMenuItem(text = { Text("A to Z") }, onClick = { manager.currentSortOrder = SongSortOrder.A_TO_Z; showSortMenu = false })
-                                DropdownMenuItem(text = { Text("Z to A") }, onClick = { manager.currentSortOrder = SongSortOrder.Z_TO_A; showSortMenu = false })
-                                DropdownMenuItem(text = { Text("Newest First") }, onClick = { manager.currentSortOrder = SongSortOrder.NEWEST; showSortMenu = false })
-                                DropdownMenuItem(text = { Text("Oldest First") }, onClick = { manager.currentSortOrder = SongSortOrder.OLDEST; showSortMenu = false })
-                                DropdownMenuItem(text = { Text("By Artist") }, onClick = { manager.currentSortOrder = SongSortOrder.ARTIST; showSortMenu = false })
-                                DropdownMenuItem(text = { Text("By File Size") }, onClick = { manager.currentSortOrder = SongSortOrder.FILE_SIZE; showSortMenu = false })
-                                DropdownMenuItem(text = { Text("By Duration") }, onClick = { manager.currentSortOrder = SongSortOrder.DURATION; showSortMenu = false })
+                                DropdownMenuItem(text = { Text("A to Z") }, onClick = { manager.setPersistentSongSort(SongSortOrder.A_TO_Z); showSortMenu = false })
+                                DropdownMenuItem(text = { Text("Z to A") }, onClick = { manager.setPersistentSongSort(SongSortOrder.Z_TO_A); showSortMenu = false })
+                                DropdownMenuItem(text = { Text("Newest First") }, onClick = { manager.setPersistentSongSort(SongSortOrder.NEWEST); showSortMenu = false })
+                                DropdownMenuItem(text = { Text("Oldest First") }, onClick = { manager.setPersistentSongSort(SongSortOrder.OLDEST); showSortMenu = false })
+                                DropdownMenuItem(text = { Text("By Artist") }, onClick = { manager.setPersistentSongSort(SongSortOrder.ARTIST); showSortMenu = false })
+                                DropdownMenuItem(text = { Text("By File Size") }, onClick = { manager.setPersistentSongSort(SongSortOrder.FILE_SIZE); showSortMenu = false })
+                                DropdownMenuItem(text = { Text("By Duration") }, onClick = { manager.setPersistentSongSort(SongSortOrder.DURATION); showSortMenu = false })
                             }
                         }
                     }
@@ -813,21 +805,30 @@ fun HomeScreen(
 
     if (customizingPlaylist != null) {
         val pl = customizingPlaylist!!
-        IconAndColorPickerDialog(
-            title = pl.name,
-            currentIcon = pl.icon,
+        FolderColorDialog(
+            folderName = pl.name,
             currentColor = Color(pl.iconColorHex),
             isDark = isDark,
-            onConfirm = { newIcon, newColor ->
-                manager.updatePlaylistIconAndColor(pl, newIcon, newColor.toArgb().toLong())
-                customizingPlaylist = null
+            onColorSelected = { newColor ->
+                manager.updatePlaylistColorOnly(pl, newColor.toArgb().toLong())
+            },
+            onOpenRainbowPicker = {
+                showRainbowWheelForPl = true
             },
             onDismiss = { customizingPlaylist = null }
         )
     }
+
+    if (showRainbowWheelForPl) {
+        CircularColorPickerDialog(
+            manager = manager,
+            onDismiss = { showRainbowWheelForPl = false }
+        )
+    }
 }
 
-// Library Screen with Folder Icon and Color Customization
+// Library Screen with Persistent Folder Sorting & Full Glassmorphic Folder Color Customization
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun LibraryScreen(manager: MusicManager, onFolderClick: (String) -> Unit) {
     val isDark = manager.isDarkMode
@@ -836,6 +837,7 @@ fun LibraryScreen(manager: MusicManager, onFolderClick: (String) -> Unit) {
     var showFolderSortMenu by remember { mutableStateOf(false) }
 
     var customizingFolder by remember { mutableStateOf<String?>(null) }
+    var showRainbowWheelForFolder by remember { mutableStateOf(false) }
 
     val sortedFolders = manager.getSortedFolders()
     val folderMap = manager.allSongs.groupBy { it.folderName }
@@ -853,13 +855,13 @@ fun LibraryScreen(manager: MusicManager, onFolderClick: (String) -> Unit) {
                         Text("⇅ Sort", color = textColor, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                     }
                     DropdownMenu(expanded = showFolderSortMenu, onDismissRequest = { showFolderSortMenu = false }) {
-                        DropdownMenuItem(text = { Text("A to Z") }, onClick = { manager.currentFolderSortOrder = FolderSortOrder.A_TO_Z; showFolderSortMenu = false })
-                        DropdownMenuItem(text = { Text("Z to A") }, onClick = { manager.currentFolderSortOrder = FolderSortOrder.Z_TO_A; showFolderSortMenu = false })
-                        DropdownMenuItem(text = { Text("Latest Added") }, onClick = { manager.currentFolderSortOrder = FolderSortOrder.LATEST; showFolderSortMenu = false })
-                        DropdownMenuItem(text = { Text("Oldest Added") }, onClick = { manager.currentFolderSortOrder = FolderSortOrder.OLDEST; showFolderSortMenu = false })
-                        DropdownMenuItem(text = { Text("Most Played") }, onClick = { manager.currentFolderSortOrder = FolderSortOrder.MOST_PLAYED; showFolderSortMenu = false })
-                        DropdownMenuItem(text = { Text("Largest Size") }, onClick = { manager.currentFolderSortOrder = FolderSortOrder.LARGEST_SIZE; showFolderSortMenu = false })
-                        DropdownMenuItem(text = { Text("Most Songs") }, onClick = { manager.currentFolderSortOrder = FolderSortOrder.MOST_SONGS; showFolderSortMenu = false })
+                        DropdownMenuItem(text = { Text("A to Z") }, onClick = { manager.setPersistentFolderSort(FolderSortOrder.A_TO_Z); showFolderSortMenu = false })
+                        DropdownMenuItem(text = { Text("Z to A") }, onClick = { manager.setPersistentFolderSort(FolderSortOrder.Z_TO_A); showFolderSortMenu = false })
+                        DropdownMenuItem(text = { Text("Latest Added") }, onClick = { manager.setPersistentFolderSort(FolderSortOrder.LATEST); showFolderSortMenu = false })
+                        DropdownMenuItem(text = { Text("Oldest Added") }, onClick = { manager.setPersistentFolderSort(FolderSortOrder.OLDEST); showFolderSortMenu = false })
+                        DropdownMenuItem(text = { Text("Most Played") }, onClick = { manager.setPersistentFolderSort(FolderSortOrder.MOST_PLAYED); showFolderSortMenu = false })
+                        DropdownMenuItem(text = { Text("Largest Size") }, onClick = { manager.setPersistentFolderSort(FolderSortOrder.LARGEST_SIZE); showFolderSortMenu = false })
+                        DropdownMenuItem(text = { Text("Most Songs") }, onClick = { manager.setPersistentFolderSort(FolderSortOrder.MOST_SONGS); showFolderSortMenu = false })
                     }
                 }
             }
@@ -868,7 +870,6 @@ fun LibraryScreen(manager: MusicManager, onFolderClick: (String) -> Unit) {
         items(sortedFolders, key = { it }) { folderName ->
             val songs = folderMap[folderName] ?: emptyList()
             val totalSize = songs.sumOf { it.size }
-            val fIcon = manager.getFolderIcon(folderName)
             val fColor = manager.getFolderColor(folderName)
 
             Row(
@@ -877,21 +878,20 @@ fun LibraryScreen(manager: MusicManager, onFolderClick: (String) -> Unit) {
                     .clip(RoundedCornerShape(18.dp))
                     .background(cardBg)
                     .border(1.dp, if (isDark) Color(0x22FFFFFF) else Color(0xFFECEFF3), RoundedCornerShape(18.dp))
-                    .clickable { onFolderClick(folderName) }
+                    .combinedClickable(
+                        onClick = { onFolderClick(folderName) },
+                        onLongClick = { customizingFolder = folderName }
+                    )
                     .padding(16.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Box(
+                // Glassmorphic Full-Color Folder Icon
+                GlassmorphicFolderIcon(
+                    folderColor = fColor,
                     modifier = Modifier
-                        .size(46.dp)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(fColor.copy(alpha = 0.2f))
-                        .border(1.5.dp, fColor, RoundedCornerShape(12.dp))
-                        .clickable { customizingFolder = folderName },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(fIcon, fontSize = 24.sp)
-                }
+                        .size(42.dp)
+                        .clickable { customizingFolder = folderName }
+                )
 
                 Spacer(modifier = Modifier.width(14.dp))
 
@@ -907,16 +907,24 @@ fun LibraryScreen(manager: MusicManager, onFolderClick: (String) -> Unit) {
 
     if (customizingFolder != null) {
         val folder = customizingFolder!!
-        IconAndColorPickerDialog(
-            title = folder,
-            currentIcon = manager.getFolderIcon(folder),
+        FolderColorDialog(
+            folderName = folder,
             currentColor = manager.getFolderColor(folder),
             isDark = isDark,
-            onConfirm = { newIcon, newColor ->
-                manager.updateFolderIconAndColor(folder, newIcon, newColor.toArgb().toLong())
-                customizingFolder = null
+            onColorSelected = { newColor ->
+                manager.updateFolderColorOnly(folder, newColor.toArgb().toLong())
+            },
+            onOpenRainbowPicker = {
+                showRainbowWheelForFolder = true
             },
             onDismiss = { customizingFolder = null }
+        )
+    }
+
+    if (showRainbowWheelForFolder) {
+        CircularColorPickerDialog(
+            manager = manager,
+            onDismiss = { showRainbowWheelForFolder = false }
         )
     }
 }
@@ -967,13 +975,12 @@ fun SearchScreen(manager: MusicManager, onSongMenuClick: (Song) -> Unit) {
 fun PlaylistDetailScreen(
     playlist: Playlist,
     manager: MusicManager,
+    isDark: Boolean,
     onBack: () -> Unit,
     onSongMenuClick: (Song) -> Unit,
     onFolderClick: (String) -> Unit
 ) {
-    val isDark = manager.isDarkMode
     val textColor = if (isDark) Color.White else Color(0xFF0F172A)
-
     val songsInPlaylist = playlist.songIds.mapNotNull { id -> manager.allSongs.find { it.id == id } }
     var showAddSongsSearchPicker by remember { mutableStateOf(false) }
 
@@ -984,12 +991,10 @@ fun PlaylistDetailScreen(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(modifier = Modifier.size(36.dp).clip(CircleShape).clickable { onBack() }, contentAlignment = Alignment.Center) {
-                    Text("←", fontSize = 22.sp, color = textColor, fontWeight = FontWeight.Bold)
-                }
+                GlassBackButton(isDark = isDark, onClick = onBack)
                 Spacer(modifier = Modifier.width(12.dp))
                 Column {
-                    Text("${playlist.icon} ${playlist.name}", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = textColor)
+                    Text(playlist.name, fontSize = 20.sp, fontWeight = FontWeight.Bold, color = textColor)
                     Text("${songsInPlaylist.size} songs", fontSize = 12.sp, color = Color(0xFF64748B))
                 }
             }
@@ -1136,7 +1141,7 @@ fun PlaylistAddSearchDialog(
                         LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             items(manager.customPlaylists.filter { it.id != playlist.id }, key = { it.id }) { pl ->
                                 Row(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(if (isDark) Color(0x1AFFFFFF) else Color(0xFFF1F5F9)).padding(12.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                                    Text("${pl.icon} ${pl.name} (${pl.songIds.size} songs)", color = textColor, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                                    Text("${pl.name} (${pl.songIds.size} songs)", color = textColor, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                                     Button(onClick = { pl.songIds.forEach { manager.addSongToPlaylist(it, playlist) } }, shape = RoundedCornerShape(8.dp)) {
                                         Text("Copy All", fontSize = 11.sp)
                                     }
@@ -1151,15 +1156,12 @@ fun PlaylistAddSearchDialog(
 }
 
 @Composable
-fun FilteredSongsScreen(title: String, songs: List<Song>, manager: MusicManager, onBack: () -> Unit, onSongMenuClick: (Song) -> Unit) {
-    val isDark = manager.isDarkMode
+fun FilteredSongsScreen(title: String, songs: List<Song>, manager: MusicManager, isDark: Boolean, onBack: () -> Unit, onSongMenuClick: (Song) -> Unit) {
     val textColor = if (isDark) Color.White else Color(0xFF0F172A)
 
     Column(modifier = Modifier.fillMaxSize().padding(16.dp).statusBarsPadding()) {
         Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Box(modifier = Modifier.size(36.dp).clip(CircleShape).clickable { onBack() }, contentAlignment = Alignment.Center) {
-                Text("←", fontSize = 22.sp, color = textColor, fontWeight = FontWeight.Bold)
-            }
+            GlassBackButton(isDark = isDark, onClick = onBack)
             Spacer(modifier = Modifier.width(12.dp))
             Column {
                 Text(title, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = textColor, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -1176,16 +1178,13 @@ fun FilteredSongsScreen(title: String, songs: List<Song>, manager: MusicManager,
 }
 
 @Composable
-fun FolderSongsScreen(folderName: String, manager: MusicManager, onBack: () -> Unit, onSongMenuClick: (Song) -> Unit) {
+fun FolderSongsScreen(folderName: String, manager: MusicManager, isDark: Boolean, onBack: () -> Unit, onSongMenuClick: (Song) -> Unit) {
     val songs = manager.allSongs.filter { it.folderName == folderName }
-    val isDark = manager.isDarkMode
     val textColor = if (isDark) Color.White else Color(0xFF0F172A)
 
     Column(modifier = Modifier.fillMaxSize().padding(16.dp).statusBarsPadding()) {
         Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Box(modifier = Modifier.size(36.dp).clip(CircleShape).clickable { onBack() }, contentAlignment = Alignment.Center) {
-                Text("←", fontSize = 22.sp, color = textColor, fontWeight = FontWeight.Bold)
-            }
+            GlassBackButton(isDark = isDark, onClick = onBack)
             Spacer(modifier = Modifier.width(12.dp))
             Text(folderName, fontSize = 20.sp, fontWeight = FontWeight.Bold, color = textColor)
         }
@@ -1288,6 +1287,7 @@ fun CreatePlaylistDialog(manager: MusicManager, onDismiss: () -> Unit) {
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(folders, key = { it }) { folder ->
                         val isSel = selectedFolderToPin == folder
+                        val fColor = manager.getFolderColor(folder)
                         Box(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(10.dp))
@@ -1298,7 +1298,11 @@ fun CreatePlaylistDialog(manager: MusicManager, onDismiss: () -> Unit) {
                                 }
                                 .padding(horizontal = 12.dp, vertical = 6.dp)
                         ) {
-                            Text("📁 $folder", color = Color.White, fontSize = 12.sp)
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                GlassmorphicFolderIcon(folderColor = fColor, modifier = Modifier.size(20.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(folder, color = Color.White, fontSize = 12.sp)
+                            }
                         }
                     }
                 }

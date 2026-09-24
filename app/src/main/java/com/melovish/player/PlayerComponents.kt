@@ -51,7 +51,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -75,6 +77,283 @@ import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.sin
 import kotlin.math.sqrt
+
+// Curved Back Arrow Icon matching your exact reference (Image 1000153218)
+@Composable
+fun CurvedBackArrowIcon(
+    tint: Color,
+    modifier: Modifier = Modifier
+) {
+    Canvas(modifier = modifier) {
+        val w = size.width
+        val h = size.height
+
+        val path = Path().apply {
+            moveTo(w * 0.12f, h * 0.50f)
+            lineTo(w * 0.48f, h * 0.20f)
+            lineTo(w * 0.48f, h * 0.38f)
+            cubicTo(w * 0.65f, h * 0.39f, w * 0.85f, h * 0.54f, w * 0.94f, h * 0.80f)
+            cubicTo(w * 0.74f, h * 0.63f, w * 0.58f, h * 0.62f, w * 0.48f, h * 0.62f)
+            lineTo(w * 0.48f, h * 0.80f)
+            close()
+        }
+        drawPath(path, color = tint)
+    }
+}
+
+// Circular Embossed Glass Back Button Container (Images 1000153217 & 1000153216)
+@Composable
+fun GlassBackButton(
+    isDark: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val buttonBg = if (isDark) Color(0x33FFFFFF) else Color(0xFFF1F5F9)
+    val ringColor = if (isDark) Color(0x44FFFFFF) else Color(0xFFCBD5E1)
+    val iconColor = if (isDark) Color.White else Color(0xFF0F172A)
+
+    Box(
+        modifier = modifier
+            .size(38.dp)
+            .shadow(4.dp, CircleShape)
+            .clip(CircleShape)
+            .background(buttonBg)
+            .border(1.2.dp, ringColor, CircleShape)
+            .clickable { onClick() },
+        contentAlignment = Alignment.Center
+    ) {
+        CurvedBackArrowIcon(
+            tint = iconColor,
+            modifier = Modifier.size(20.dp)
+        )
+    }
+}
+
+// Glassmorphic Full-Color Folder Icon matching your reference (Image 1000153221)
+@Composable
+fun GlassmorphicFolderIcon(
+    folderColor: Color,
+    modifier: Modifier = Modifier
+) {
+    Canvas(modifier = modifier) {
+        val w = size.width
+        val h = size.height
+
+        // 1. Solid Back Folder Body with Tab
+        val backPath = Path().apply {
+            // Top tab left
+            moveTo(w * 0.12f, h * 0.22f)
+            quadraticBezierTo(w * 0.12f, h * 0.14f, w * 0.20f, h * 0.14f)
+            lineTo(w * 0.42f, h * 0.14f)
+            quadraticBezierTo(w * 0.48f, h * 0.14f, w * 0.52f, h * 0.22f)
+            lineTo(w * 0.56f, h * 0.28f)
+            lineTo(w * 0.82f, h * 0.28f)
+            quadraticBezierTo(w * 0.88f, h * 0.28f, w * 0.88f, h * 0.35f)
+            lineTo(w * 0.88f, h * 0.82f)
+            quadraticBezierTo(w * 0.88f, h * 0.88f, w * 0.80f, h * 0.88f)
+            lineTo(w * 0.18f, h * 0.88f)
+            quadraticBezierTo(w * 0.12f, h * 0.88f, w * 0.12f, h * 0.82f)
+            close()
+        }
+
+        val backGradient = Brush.verticalGradient(
+            colors = listOf(
+                folderColor,
+                folderColor.copy(alpha = 0.85f)
+            )
+        )
+        drawPath(backPath, brush = backGradient)
+
+        // 2. Front Frosted Glass Flap
+        val glassPath = Path().apply {
+            moveTo(w * 0.15f, h * 0.38f)
+            quadraticBezierTo(w * 0.13f, h * 0.38f, w * 0.18f, h * 0.38f)
+            lineTo(w * 0.87f, h * 0.38f)
+            quadraticBezierTo(w * 0.93f, h * 0.38f, w * 0.91f, h * 0.46f)
+            lineTo(w * 0.83f, h * 0.88f)
+            quadraticBezierTo(w * 0.81f, h * 0.92f, w * 0.75f, h * 0.92f)
+            lineTo(w * 0.15f, h * 0.92f)
+            quadraticBezierTo(w * 0.10f, h * 0.92f, w * 0.12f, h * 0.86f)
+            close()
+        }
+
+        // Translucent Glass Fill
+        val glassFill = Brush.verticalGradient(
+            colors = listOf(
+                Color.White.copy(alpha = 0.50f),
+                folderColor.copy(alpha = 0.58f)
+            )
+        )
+        drawPath(glassPath, brush = glassFill)
+
+        // Crisp Glass Specular Rim Highlight
+        drawPath(
+            glassPath,
+            brush = Brush.verticalGradient(
+                colors = listOf(
+                    Color.White.copy(alpha = 0.85f),
+                    Color.White.copy(alpha = 0.25f)
+                )
+            ),
+            style = Stroke(width = 1.6f.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
+        )
+    }
+}
+
+// 9 Preset Colors + 10th Rainbow Circular Picker Dialog
+@Composable
+fun FolderColorDialog(
+    folderName: String,
+    currentColor: Color,
+    isDark: Boolean,
+    onColorSelected: (Color) -> Unit,
+    onOpenRainbowPicker: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    // 9 Preset Colors with Background Mustard as #1
+    val preset9Colors = listOf(
+        Color(0xFFF59E0B), // 1. Background Mustard / Warm Gold (Default)
+        Color(0xFF00B4D8), // 2. Teal Blue
+        Color(0xFF10B981), // 3. Mint / Emerald Green
+        Color(0xFF39FF14), // 4. Bright Neon Green
+        Color(0xFFFF2A85), // 5. Pink / Rose
+        Color(0xFFEF4444), // 6. Crimson Red
+        Color(0xFF8B5CF6), // 7. Purple / Violet
+        Color(0xFF3B82F6), // 8. Electric Blue
+        Color(0xFFFF6B35)  // 9. Coral Orange
+    )
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color(0xCC000000))
+            .clickable { onDismiss() },
+        contentAlignment = Alignment.Center
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth(0.88f)
+                .clip(RoundedCornerShape(26.dp))
+                .background(if (isDark) Color(0xFF0F172A) else Color.White)
+                .clickable(enabled = false) {}
+                .padding(22.dp)
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(
+                    text = "Folder Color: $folderName",
+                    color = if (isDark) Color.White else Color(0xFF0F172A),
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Live Folder Preview
+                Box(
+                    modifier = Modifier
+                        .size(72.dp)
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(if (isDark) Color(0x14FFFFFF) else Color(0xFFF8FAFC)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    GlassmorphicFolderIcon(folderColor = currentColor, modifier = Modifier.size(56.dp))
+                }
+
+                Spacer(modifier = Modifier.height(18.dp))
+
+                Text(
+                    text = "Pick Preset or Open Wheel",
+                    color = Color(0xFF64748B),
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.align(Alignment.Start)
+                )
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // 2 Rows of 5 items (9 Colors + 10th Rainbow Wheel)
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    // Row 1: Slots 1 to 5
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        preset9Colors.take(5).forEach { color ->
+                            Box(
+                                modifier = Modifier
+                                    .size(38.dp)
+                                    .clip(CircleShape)
+                                    .background(color)
+                                    .border(2.dp, if (currentColor == color) Color.White else Color.Transparent, CircleShape)
+                                    .clickable {
+                                        onColorSelected(color)
+                                        onDismiss()
+                                    }
+                            )
+                        }
+                    }
+
+                    // Row 2: Slots 6 to 9 + 10th Circle Rainbow Picker
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        preset9Colors.drop(5).take(4).forEach { color ->
+                            Box(
+                                modifier = Modifier
+                                    .size(38.dp)
+                                    .clip(CircleShape)
+                                    .background(color)
+                                    .border(2.dp, if (currentColor == color) Color.White else Color.Transparent, CircleShape)
+                                    .clickable {
+                                        onColorSelected(color)
+                                        onDismiss()
+                                    }
+                            )
+                        }
+
+                        // 10th Slot: Circular Rainbow Wheel Icon
+                        Box(
+                            modifier = Modifier
+                                .size(38.dp)
+                                .clip(CircleShape)
+                                .background(
+                                    Brush.sweepGradient(
+                                        listOf(
+                                            Color.Red, Color.Yellow, Color.Green,
+                                            Color.Cyan, Color.Blue, Color.Magenta, Color.Red
+                                        )
+                                    )
+                                )
+                                .border(2.dp, Color.White, CircleShape)
+                                .clickable {
+                                    onDismiss()
+                                    onOpenRainbowPicker()
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Box(modifier = Modifier.size(12.dp).clip(CircleShape).background(Color.White))
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(20.dp))
+
+                Button(
+                    onClick = { onDismiss() },
+                    colors = ButtonDefaults.buttonColors(containerColor = if (isDark) Color(0x22FFFFFF) else Color(0xFFF1F5F9)),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Cancel", color = if (isDark) Color.White else Color(0xFF0F172A))
+                }
+            }
+        }
+    }
+}
 
 // Minimalist Vector Avatar (Soft Sky-Blue to Periwinkle Gradient)
 @Composable
@@ -125,152 +404,6 @@ fun DefaultProfileAvatar(
             radius = headRadius,
             center = headCenter
         )
-    }
-}
-
-// Icon and Color Customization Modal for Playlists and Folders
-@Composable
-fun IconAndColorPickerDialog(
-    title: String,
-    currentIcon: String,
-    currentColor: Color,
-    isDark: Boolean,
-    onConfirm: (String, Color) -> Unit,
-    onDismiss: () -> Unit
-) {
-    var selectedIcon by remember { mutableStateOf(currentIcon) }
-    var selectedColor by remember { mutableStateOf(currentColor) }
-
-    val presetIcons = listOf(
-        "📁", "📂", "📑", "🎵", "🎧", "⭐", "❤️", "🔥", "💎", "💿", "🎸", "✨", "🚀", "🌙", "🌊", "⚡"
-    )
-
-    val presetColors = listOf(
-        Color(0xFFF59E0B), // Amber / Gold
-        Color(0xFF00B4D8), // Teal Blue
-        Color(0xFF10B981), // Emerald
-        Color(0xFFEF4444), // Crimson Red
-        Color(0xFFEC4899), // Pink
-        Color(0xFF8B5CF6), // Purple
-        Color(0xFF3B82F6), // Blue
-        Color(0xFFF97316), // Orange
-        Color(0xFF14B8A6), // Cyan Mint
-        Color(0xFF6366F1)  // Indigo
-    )
-
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color(0xCC000000))
-            .clickable { onDismiss() },
-        contentAlignment = Alignment.Center
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth(0.9f)
-                .clip(RoundedCornerShape(24.dp))
-                .background(if (isDark) Color(0xFF0F172A) else Color.White)
-                .clickable(enabled = false) {}
-                .padding(20.dp)
-        ) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(
-                    text = "Customize $title",
-                    color = if (isDark) Color.White else Color(0xFF0F172A),
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold
-                )
-
-                Spacer(modifier = Modifier.height(14.dp))
-
-                // Live Preview Badge
-                Box(
-                    modifier = Modifier
-                        .size(64.dp)
-                        .clip(RoundedCornerShape(18.dp))
-                        .background(selectedColor.copy(alpha = 0.2f))
-                        .border(2.dp, selectedColor, RoundedCornerShape(18.dp)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(text = selectedIcon, fontSize = 32.sp)
-                }
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                Text(
-                    text = "Choose Icon",
-                    color = Color(0xFF64748B),
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.align(Alignment.Start)
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    items(presetIcons) { icon ->
-                        Box(
-                            modifier = Modifier
-                                .size(42.dp)
-                                .clip(RoundedCornerShape(10.dp))
-                                .background(if (selectedIcon == icon) selectedColor.copy(alpha = 0.25f) else if (isDark) Color(0x1AFFFFFF) else Color(0xFFF1F5F9))
-                                .border(1.5.dp, if (selectedIcon == icon) selectedColor else Color.Transparent, RoundedCornerShape(10.dp))
-                                .clickable { selectedIcon = icon },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(icon, fontSize = 20.sp)
-                        }
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(18.dp))
-
-                Text(
-                    text = "Choose Color Tint",
-                    color = Color(0xFF64748B),
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.align(Alignment.Start)
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    items(presetColors) { color ->
-                        Box(
-                            modifier = Modifier
-                                .size(34.dp)
-                                .clip(CircleShape)
-                                .background(color)
-                                .border(2.dp, if (selectedColor == color) Color.White else Color.Transparent, CircleShape)
-                                .clickable { selectedColor = color }
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(22.dp))
-
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Button(
-                        onClick = { onDismiss() },
-                        colors = ButtonDefaults.buttonColors(containerColor = if (isDark) Color(0x22FFFFFF) else Color(0xFFE2E8F0)),
-                        shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Text("Cancel", color = if (isDark) Color.White else Color(0xFF0F172A))
-                    }
-                    Button(
-                        onClick = {
-                            onConfirm(selectedIcon, selectedColor)
-                            onDismiss()
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = selectedColor),
-                        shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Text("Apply", color = Color.White, fontWeight = FontWeight.Bold)
-                    }
-                }
-            }
-        }
     }
 }
 
@@ -402,7 +535,6 @@ fun FullPlayerSheet(
                 .padding(top = 28.dp, bottom = 18.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // Album Artwork with Horizontal Swipe (Left = Prev, Right = Next)
             Box(
                 modifier = Modifier
                     .size(310.dp)
@@ -483,7 +615,6 @@ fun FullPlayerSheet(
 
             Spacer(modifier = Modifier.height(28.dp))
 
-            // Playback Row: [⇄ Repeat] [⏮ Prev] [▶ Play/Pause] [⏭ Next] [🔀 Shuffle]
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -528,7 +659,6 @@ fun FullPlayerSheet(
 
             Spacer(modifier = Modifier.height(22.dp))
 
-            // Dedicated Volume Slider Row
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
@@ -551,7 +681,6 @@ fun FullPlayerSheet(
 
             Spacer(modifier = Modifier.weight(1f))
 
-            // Bottom Utility Bar
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -972,6 +1101,7 @@ fun SleepTimerDialog(manager: MusicManager, onDismiss: () -> Unit) {
     }
 }
 
+// 10th Circle Rainbow Color Picker Dialog
 @Composable
 fun CircularColorPickerDialog(manager: MusicManager, onDismiss: () -> Unit) {
     val isDark = manager.isDarkMode
@@ -1129,7 +1259,7 @@ fun AddToPlaylistDialog(manager: MusicManager, song: Song, onDismiss: () -> Unit
                 LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(manager.customPlaylists) { pl ->
                         Row(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(if (isDark) Color(0x1AFFFFFF) else Color(0xFFF1F5F9)).clickable { manager.addSongToPlaylist(song.id, pl); onDismiss() }.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Text(pl.icon, fontSize = 16.sp)
+                            GlassmorphicFolderIcon(folderColor = Color(pl.iconColorHex), modifier = Modifier.size(24.dp))
                             Spacer(modifier = Modifier.width(10.dp))
                             Text(pl.name, color = if (isDark) Color.White else Color(0xFF0F172A), fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                         }

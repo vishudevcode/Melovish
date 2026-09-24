@@ -110,18 +110,7 @@ fun ProfileScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(
-                        modifier = Modifier
-                            .size(38.dp)
-                            .shadow(4.dp, CircleShape)
-                            .clip(CircleShape)
-                            .background(if (isDark) Color(0x1FFFFFFF) else Color(0x0F000000))
-                            .border(1.2.dp, if (isDark) Color(0x33FFFFFF) else Color(0x18000000), CircleShape)
-                            .clickable { viewingAllType = null },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text("←", fontSize = 20.sp, color = textColor, fontWeight = FontWeight.ExtraBold)
-                    }
+                    GlassBackButton(isDark = isDark, onClick = { viewingAllType = null })
                     Spacer(modifier = Modifier.width(14.dp))
                     Column {
                         Text(
@@ -188,23 +177,7 @@ fun ProfileScreen(
                     .padding(top = 8.dp, bottom = 2.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Box(
-                    modifier = Modifier
-                        .size(38.dp)
-                        .shadow(4.dp, CircleShape)
-                        .clip(CircleShape)
-                        .background(if (isDark) Color(0x1FFFFFFF) else Color(0x0F000000))
-                        .border(1.2.dp, if (isDark) Color(0x33FFFFFF) else Color(0x18000000), CircleShape)
-                        .clickable { onBackClick() },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = "←",
-                        fontSize = 20.sp,
-                        color = textColor,
-                        fontWeight = FontWeight.ExtraBold
-                    )
-                }
+                GlassBackButton(isDark = isDark, onClick = onBackClick)
 
                 Spacer(modifier = Modifier.width(14.dp))
 
