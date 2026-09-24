@@ -1127,3 +1127,21 @@ class MusicManager(private val context: Context) {
         }
     }
 }
+
+// Global Formatting Utilities for All Screens
+fun formatTime(ms: Long): String {
+    val totalSeconds = (ms / 1000).coerceAtLeast(0)
+    val minutes = totalSeconds / 60
+    val seconds = totalSeconds % 60
+    return String.format(Locale.getDefault(), "%02d:%02d", minutes, seconds)
+}
+
+fun formatFileSize(bytes: Long): String {
+    if (bytes <= 0) return "0 MB"
+    val mb = bytes / (1024.0 * 1024.0)
+    return if (mb >= 1024.0) {
+        String.format(Locale.getDefault(), "%.2f GB", mb / 1024.0)
+    } else {
+        String.format(Locale.getDefault(), "%.1f MB", mb)
+    }
+}
