@@ -29,11 +29,21 @@ data class Playlist(
 )
 
 enum class SongSortOrder {
-    NEWEST,
-    OLDEST,
     A_TO_Z,
     Z_TO_A,
+    NEWEST,
+    OLDEST,
     ARTIST,
-    DURATION,
-    FILE_SIZE
+    FILE_SIZE,
+    DURATION
+}
+
+enum class FolderSortOrder {
+    A_TO_Z,
+    Z_TO_A,
+    LATEST,
+    OLDEST,
+    MOST_PLAYED,
+    LARGEST_SIZE,
+    MOST_SONGS
 }

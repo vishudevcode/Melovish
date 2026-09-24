@@ -7,14 +7,14 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
-import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -48,12 +48,17 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
@@ -65,8 +70,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.media3.common.Player
 import java.util.Locale
+import kotlin.math.atan2
+import kotlin.math.cos
+import kotlin.math.sin
+import kotlin.math.sqrt
 
-// Material You Dynamic Palette Data Class
 data class MaterialYouPalette(
     val bgTop: Color,
     val bgBottom: Color,
@@ -76,75 +84,51 @@ data class MaterialYouPalette(
     val textSecondary: Color
 )
 
-// Real-Time Material You HSV Palette Extractor
 fun extractMaterialYouPalette(bitmap: Bitmap?, isDarkMode: Boolean, fallbackAccent: Color): MaterialYouPalette {
     if (bitmap == null) {
         return if (isDarkMode) {
-            MaterialYouPalette(
-                bgTop = Color(0xFF1E1F28),
-                bgBottom = Color(0xFF0B0C10),
-                primaryAccent = fallbackAccent,
-                surface = Color(0x33FFFFFF),
-                textPrimary = Color.White,
-                textSecondary = Color(0xFF94A3B8)
-            )
+            MaterialYouPalette(Color(0xFF1E1F28), Color(0xFF0B0C10), fallbackAccent, Color(0x33FFFFFF), Color.White, Color(0xFF94A3B8))
         } else {
-            MaterialYouPalette(
-                bgTop = Color(0xFFFAF7F2),
-                bgBottom = Color(0xFFEBE5DB),
-                primaryAccent = fallbackAccent,
-                surface = Color(0x66FFFFFF),
-                textPrimary = Color(0xFF0F172A),
-                textSecondary = Color(0xFF475569)
-            )
+            MaterialYouPalette(Color(0xFFFAF7F2), Color(0xFFEBE5DB), fallbackAccent, Color(0x66FFFFFF), Color(0xFF0F172A), Color(0xFF475569))
         }
     }
-
     return try {
-        val scaled = Bitmap.createScaledBitmap(bitmap, 20, 20, false)
+        val scaled = Bitmap.createScaledBitmap(bitmap, 16, 16, false)
         var totalR = 0L; var totalG = 0L; var totalB = 0L; var count = 0
-        var maxSaturation = -1f
-        var vibrantColorInt = android.graphics.Color.WHITE
+        var maxSat = -1f; var vibrantColor = android.graphics.Color.WHITE
         val hsv = FloatArray(3)
 
         for (x in 0 until scaled.width) {
             for (y in 0 until scaled.height) {
-                val pixel = scaled.getPixel(x, y)
-                totalR += android.graphics.Color.red(pixel)
-                totalG += android.graphics.Color.green(pixel)
-                totalB += android.graphics.Color.blue(pixel)
+                val p = scaled.getPixel(x, y)
+                totalR += android.graphics.Color.red(p)
+                totalG += android.graphics.Color.green(p)
+                totalB += android.graphics.Color.blue(p)
                 count++
-
-                android.graphics.Color.colorToHSV(pixel, hsv)
-                if (hsv[1] > maxSaturation && hsv[2] > 0.22f && hsv[2] < 0.95f) {
-                    maxSaturation = hsv[1]
-                    vibrantColorInt = pixel
+                android.graphics.Color.colorToHSV(p, hsv)
+                if (hsv[1] > maxSat && hsv[2] > 0.22f && hsv[2] < 0.95f) {
+                    maxSat = hsv[1]
+                    vibrantColor = p
                 }
             }
         }
-
-        val dominantColorInt = if (maxSaturation > 0.28f) {
-            vibrantColorInt
-        } else {
-            android.graphics.Color.rgb((totalR / count).toInt(), (totalG / count).toInt(), (totalB / count).toInt())
-        }
-
-        android.graphics.Color.colorToHSV(dominantColorInt, hsv)
+        val dom = if (maxSat > 0.28f) vibrantColor else android.graphics.Color.rgb((totalR/count).toInt(), (totalG/count).toInt(), (totalB/count).toInt())
+        android.graphics.Color.colorToHSV(dom, hsv)
         val hue = hsv[0]
         val sat = hsv[1].coerceIn(0.35f, 0.85f)
 
         if (isDarkMode) {
             val top = Color(android.graphics.Color.HSVToColor(floatArrayOf(hue, sat * 0.65f, 0.20f)))
-            val bottom = Color(android.graphics.Color.HSVToColor(floatArrayOf((hue + 18f) % 360f, sat * 0.8f, 0.08f)))
-            val accent = Color(android.graphics.Color.HSVToColor(floatArrayOf(hue, sat * 0.9f, 0.90f)))
-            val surface = Color(android.graphics.Color.HSVToColor(floatArrayOf(hue, sat * 0.35f, 0.28f))).copy(alpha = 0.55f)
-            MaterialYouPalette(top, bottom, accent, surface, Color(0xFFF8FAFC), Color(0xFFCBD5E1))
+            val bot = Color(android.graphics.Color.HSVToColor(floatArrayOf((hue + 18f) % 360f, sat * 0.8f, 0.08f)))
+            val acc = Color(android.graphics.Color.HSVToColor(floatArrayOf(hue, sat * 0.9f, 0.90f)))
+            val surf = Color(android.graphics.Color.HSVToColor(floatArrayOf(hue, sat * 0.35f, 0.28f))).copy(alpha = 0.55f)
+            MaterialYouPalette(top, bot, acc, surf, Color(0xFFF8FAFC), Color(0xFFCBD5E1))
         } else {
             val top = Color(android.graphics.Color.HSVToColor(floatArrayOf(hue, sat * 0.25f, 0.97f)))
-            val bottom = Color(android.graphics.Color.HSVToColor(floatArrayOf((hue + 16f) % 360f, sat * 0.40f, 0.88f)))
-            val accent = Color(android.graphics.Color.HSVToColor(floatArrayOf(hue, sat, 0.55f)))
-            val surface = Color(android.graphics.Color.HSVToColor(floatArrayOf(hue, sat * 0.12f, 0.99f))).copy(alpha = 0.75f)
-            MaterialYouPalette(top, bottom, accent, surface, Color(0xFF0F172A), Color(0xFF334155))
+            val bot = Color(android.graphics.Color.HSVToColor(floatArrayOf((hue + 16f) % 360f, sat * 0.40f, 0.88f)))
+            val acc = Color(android.graphics.Color.HSVToColor(floatArrayOf(hue, sat, 0.55f)))
+            val surf = Color(android.graphics.Color.HSVToColor(floatArrayOf(hue, sat * 0.12f, 0.99f))).copy(alpha = 0.75f)
+            MaterialYouPalette(top, bot, acc, surf, Color(0xFF0F172A), Color(0xFF334155))
         }
     } catch (_: Exception) {
         MaterialYouPalette(
@@ -177,7 +161,6 @@ fun FullPlayerSheet(
     var showLyricsDialog by remember { mutableStateOf(false) }
     var showAddToPlaylistDialog by remember { mutableStateOf(false) }
 
-    // Live Scrubbing State
     var isDraggingSlider by remember { mutableStateOf(false) }
     var dragProgressMs by remember { mutableFloatStateOf(0f) }
 
@@ -187,14 +170,17 @@ fun FullPlayerSheet(
         }
     }
 
-    val albumArt = manager.getAlbumArt(song)
-
-    // Compute Dynamic Material You Palette from Album Art
-    val targetPalette = remember(song.id, albumArt, isDark, manager.accentColor) {
-        extractMaterialYouPalette(albumArt, isDark, manager.accentColor)
+    var albumArtBitmap by remember(song.id) { mutableStateOf(manager.getCachedAlbumArt(song.id)) }
+    LaunchedEffect(song.id) {
+        if (albumArtBitmap == null) {
+            albumArtBitmap = manager.loadAlbumArtAsync(song)
+        }
     }
 
-    // Smooth Google-Style 650ms Morphing Transition
+    val targetPalette = remember(song.id, albumArtBitmap, isDark, manager.accentColor) {
+        extractMaterialYouPalette(albumArtBitmap, isDark, manager.accentColor)
+    }
+
     val animBgTop by animateColorAsState(targetPalette.bgTop, tween(650, easing = FastOutSlowInEasing), label = "bgTop")
     val animBgBottom by animateColorAsState(targetPalette.bgBottom, tween(650, easing = FastOutSlowInEasing), label = "bgBottom")
     val animAccent by animateColorAsState(targetPalette.primaryAccent, tween(650, easing = FastOutSlowInEasing), label = "accent")
@@ -202,42 +188,22 @@ fun FullPlayerSheet(
     val animTextPrimary by animateColorAsState(targetPalette.textPrimary, tween(650, easing = FastOutSlowInEasing), label = "textPrimary")
     val animTextSecondary by animateColorAsState(targetPalette.textSecondary, tween(650, easing = FastOutSlowInEasing), label = "textSecondary")
 
-    val volumeOverlayAlpha by animateFloatAsState(
-        targetValue = if (manager.isVolumeOverlayVisible) 1f else 0f,
-        animationSpec = tween(250),
-        label = "volumeAlpha"
-    )
+    val monoColor = if (isDark) Color.White else Color(0xFF0F172A)
 
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(Brush.verticalGradient(listOf(animBgTop, animBgBottom)))
             .statusBarsPadding()
-            .pointerInput(Unit) {
-                detectVerticalDragGestures { _, dragAmount ->
-                    if (dragAmount > 35f) onDismiss()
-                }
-            }
-            .padding(horizontal = 24.dp, vertical = 10.dp)
+            .padding(horizontal = 24.dp)
     ) {
         Column(
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(top = 28.dp, bottom = 18.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // Sleek Top Minimize Chevron
-            Box(
-                modifier = Modifier
-                    .size(width = 48.dp, height = 24.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .clickable { onDismiss() },
-                contentAlignment = Alignment.Center
-            ) {
-                Text("⌵", fontSize = 28.sp, color = animTextPrimary, fontWeight = FontWeight.Bold)
-            }
-
-            Spacer(modifier = Modifier.height(14.dp))
-
-            // Large Embedded Album Artwork with Edge-Swipe Volume Gesture
+            // Album Artwork with Horizontal Swipe (Left = Prev, Right = Next)
             Box(
                 modifier = Modifier
                     .size(310.dp)
@@ -245,60 +211,30 @@ fun FullPlayerSheet(
                     .clip(RoundedCornerShape(32.dp))
                     .background(animSurface)
                     .border(1.5.dp, Color(0x33FFFFFF), RoundedCornerShape(32.dp))
-                    .pointerInput(Unit) {
-                        detectDragGestures { change, dragAmount ->
+                    .pointerInput(song.id) {
+                        detectHorizontalDragGestures { change, dragAmount ->
                             change.consume()
-                            val touchX = change.position.x
-                            val width = 310f * 2.7f
-                            if (touchX < width * 0.28f || touchX > width * 0.72f) {
-                                val delta = -dragAmount.y * 0.4f
-                                manager.adjustVolumeByDelta(delta)
-                            } else {
-                                if (dragAmount.x < -35f) {
-                                    manager.playNext()
-                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                } else if (dragAmount.x > 35f) {
-                                    manager.playPrevious()
-                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                }
+                            if (dragAmount < -35f) {
+                                manager.playNext()
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            } else if (dragAmount > 35f) {
+                                manager.playPrevious()
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                             }
                         }
                     },
                 contentAlignment = Alignment.Center
             ) {
-                if (albumArt != null) {
-                    Image(
-                        bitmap = albumArt.asImageBitmap(),
-                        contentDescription = "Cover",
-                        modifier = Modifier.fillMaxSize()
-                    )
+                if (albumArtBitmap != null) {
+                    Image(bitmap = albumArtBitmap!!.asImageBitmap(), contentDescription = "Art", modifier = Modifier.fillMaxSize())
                 } else {
                     Text("🎵", fontSize = 96.sp)
-                }
-
-                // Volume Overlay HUD (No DSL marker conflict)
-                if (volumeOverlayAlpha > 0f) {
-                    Box(
-                        modifier = Modifier
-                            .alpha(volumeOverlayAlpha)
-                            .clip(RoundedCornerShape(20.dp))
-                            .background(Color(0xCC000000))
-                            .border(1.dp, Color(0x44FFFFFF), RoundedCornerShape(20.dp))
-                            .padding(horizontal = 20.dp, vertical = 14.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("🔊", fontSize = 20.sp)
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("${manager.volumeOverlayPercent}%", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                        }
-                    }
                 }
             }
 
             Spacer(modifier = Modifier.height(26.dp))
 
-            // Seek Bar with Timestamps
+            // Seek Bar
             Slider(
                 value = dragProgressMs.coerceIn(0f, manager.duration.toFloat().coerceAtLeast(1f)),
                 onValueChange = {
@@ -328,7 +264,7 @@ fun FullPlayerSheet(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Centered Title and Subtitle ([File Size] • [Artist Name])
+            // Title and Subtitle
             Text(
                 text = song.title,
                 color = animTextPrimary,
@@ -350,22 +286,18 @@ fun FullPlayerSheet(
 
             Spacer(modifier = Modifier.height(28.dp))
 
-            // Primary Controls: [⇄ Repeat] [⏮ Prev] [▶ Play/Pause] [⏭ Next] [🔀 Shuffle]
+            // Top Playback Row: [⇄ Repeat] [⏮ Prev] [▶ Play/Pause] [⏭ Next] [🔀 Shuffle]
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Repeat
-                val repColor = if (manager.repeatModeState != Player.REPEAT_MODE_OFF) animAccent else if (isDark) Color(0x66FFFFFF) else Color(0x66000000)
-                Text(
-                    text = when (manager.repeatModeState) {
-                        Player.REPEAT_MODE_ONE -> "🔂"
-                        Player.REPEAT_MODE_ALL -> "🔁"
-                        else -> "⇄"
-                    },
-                    fontSize = 24.sp,
-                    color = repColor,
+                // Vector Repeat
+                val isRepeatActive = manager.repeatModeState != Player.REPEAT_MODE_OFF
+                RepeatVectorIcon(
+                    isActive = isRepeatActive,
+                    isRepeatOne = manager.repeatModeState == Player.REPEAT_MODE_ONE,
+                    monoColor = monoColor,
                     modifier = Modifier.clickable { manager.toggleRepeat() }.padding(8.dp)
                 )
 
@@ -373,49 +305,61 @@ fun FullPlayerSheet(
                 Text(
                     text = "⏮",
                     fontSize = 32.sp,
-                    color = animTextPrimary,
+                    color = monoColor,
                     modifier = Modifier.clickable { manager.playPrevious() }.padding(8.dp)
                 )
 
-                // Play / Pause Material You Button
-                Box(
-                    modifier = Modifier
-                        .size(72.dp)
-                        .shadow(12.dp, CircleShape, spotColor = animAccent)
-                        .clip(CircleShape)
-                        .background(animAccent)
-                        .clickable { manager.togglePlayPause() },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = if (manager.isPlaying) "❚❚" else "▶",
-                        color = if (isDark) Color(0xFF0F172A) else Color.White,
-                        fontSize = 26.sp,
-                        fontWeight = FontWeight.ExtraBold
-                    )
-                }
+                // Borderless Play / Pause
+                Text(
+                    text = if (manager.isPlaying) "❚❚" else "▶",
+                    color = monoColor,
+                    fontSize = 44.sp,
+                    fontWeight = FontWeight.Black,
+                    modifier = Modifier.clickable { manager.togglePlayPause() }.padding(8.dp)
+                )
 
                 // Next
                 Text(
                     text = "⏭",
                     fontSize = 32.sp,
-                    color = animTextPrimary,
+                    color = monoColor,
                     modifier = Modifier.clickable { manager.playNext() }.padding(8.dp)
                 )
 
-                // Shuffle
-                val shuffleColor = if (manager.isShuffleOn) animAccent else if (isDark) Color(0x66FFFFFF) else Color(0x66000000)
-                Text(
-                    text = "🔀",
-                    fontSize = 22.sp,
-                    color = shuffleColor,
+                // Vector Shuffle
+                ShuffleVectorIcon(
+                    isActive = manager.isShuffleOn,
+                    monoColor = monoColor,
                     modifier = Modifier.clickable { manager.toggleShuffle() }.padding(8.dp)
                 )
             }
 
+            Spacer(modifier = Modifier.height(22.dp))
+
+            // Dedicated Volume Slider Row: [🔈] ----•---- [🔊]
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Text("🔈", fontSize = 16.sp)
+                Slider(
+                    value = manager.currentVolume,
+                    onValueChange = { manager.setHardwareVolume(it) },
+                    valueRange = 0f..1f,
+                    colors = SliderDefaults.colors(
+                        thumbColor = animAccent,
+                        activeTrackColor = animAccent,
+                        inactiveTrackColor = if (isDark) Color(0x33FFFFFF) else Color(0x22000000)
+                    ),
+                    modifier = Modifier.weight(1f)
+                )
+                Text("🔊", fontSize = 16.sp)
+            }
+
             Spacer(modifier = Modifier.weight(1f))
 
-            // Bottom 5 Utility Icons: [❝≡] [☾] [♡] [≡♪] [•••]
+            // Bottom Utility Bar: [❝≡] [☾] [♡] [≡♪] [•••]
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -442,13 +386,11 @@ fun FullPlayerSheet(
                     modifier = Modifier.clickable { manager.toggleFavorite(song) }
                 )
                 Text("≡♪", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = animTextPrimary, modifier = Modifier.clickable { showQueueSheet = true })
-                Text("•••", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = animTextPrimary, modifier = Modifier.clickable { showMenuModal = true } )
+                Text("•••", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = animTextPrimary, modifier = Modifier.clickable { showMenuModal = true })
             }
-
-            Spacer(modifier = Modifier.height(14.dp))
         }
 
-        // Ordered Three-Dot Popup Menu
+        // More Modal Sheet
         if (showMenuModal) {
             Box(
                 modifier = Modifier
@@ -459,7 +401,7 @@ fun FullPlayerSheet(
             ) {
                 Box(
                     modifier = Modifier
-                        .fillMaxWidth(0.74f)
+                        .fillMaxWidth(0.75f)
                         .clip(RoundedCornerShape(topStart = 24.dp, bottomStart = 24.dp))
                         .background(if (isDark) Color(0xFF0F172A) else Color.White)
                         .border(1.dp, if (isDark) Color(0x22FFFFFF) else Color(0xFFE2E8F0), RoundedCornerShape(topStart = 24.dp, bottomStart = 24.dp))
@@ -490,7 +432,7 @@ fun FullPlayerSheet(
             }
         }
 
-        // Attached Dialogs
+        // Dialogs
         if (showEqualizerSheet) EqualizerSheet(manager = manager, onDismiss = { showEqualizerSheet = false })
         if (showSpeedDialog) MagneticSpeedDialog(manager = manager, onDismiss = { showSpeedDialog = false })
         if (showSleepDialog) SleepTimerDialog(manager = manager, onDismiss = { showSleepDialog = false })
@@ -498,6 +440,117 @@ fun FullPlayerSheet(
         if (showTagEditorDialog) TagEditorDialog(manager = manager, song = song, onDismiss = { showTagEditorDialog = false })
         if (showLyricsDialog) LyricsDialog(song = song, isDark = isDark, onDismiss = { showLyricsDialog = false })
         if (showAddToPlaylistDialog) AddToPlaylistDialog(manager = manager, song = song, onDismiss = { showAddToPlaylistDialog = false })
+    }
+}
+
+// Custom Vector Drawings for Repeat and Shuffle
+@Composable
+fun RepeatVectorIcon(
+    isActive: Boolean,
+    isRepeatOne: Boolean,
+    monoColor: Color,
+    modifier: Modifier = Modifier
+) {
+    val strokeWidth = if (isActive) 3.8f else 2.0f
+    val alpha = if (isActive) 1.0f else 0.38f
+
+    Box(modifier = modifier.size(24.dp), contentAlignment = Alignment.Center) {
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val color = monoColor.copy(alpha = alpha)
+            val w = size.width
+            val h = size.height
+            val stroke = Stroke(width = strokeWidth * density, cap = StrokeCap.Round, join = StrokeJoin.Round)
+
+            // Top right-pointing loop
+            val topPath = Path().apply {
+                moveTo(w * 0.2f, h * 0.55f)
+                lineTo(w * 0.2f, h * 0.35f)
+                quadraticBezierTo(w * 0.2f, h * 0.25f, w * 0.35f, h * 0.25f)
+                lineTo(w * 0.75f, h * 0.25f)
+            }
+            drawPath(topPath, color, style = stroke)
+
+            // Top Arrowhead
+            val topArrow = Path().apply {
+                moveTo(w * 0.65f, h * 0.15f)
+                lineTo(w * 0.82f, h * 0.25f)
+                lineTo(w * 0.65f, h * 0.35f)
+            }
+            drawPath(topArrow, color, style = stroke)
+
+            // Bottom left-pointing loop
+            val botPath = Path().apply {
+                moveTo(w * 0.8f, h * 0.45f)
+                lineTo(w * 0.8f, h * 0.65f)
+                quadraticBezierTo(w * 0.8f, h * 0.75f, w * 0.65f, h * 0.75f)
+                lineTo(w * 0.25f, h * 0.75f)
+            }
+            drawPath(botPath, color, style = stroke)
+
+            // Bottom Arrowhead
+            val botArrow = Path().apply {
+                moveTo(w * 0.35f, h * 0.65f)
+                lineTo(w * 0.18f, h * 0.75f)
+                lineTo(w * 0.35f, h * 0.85f)
+            }
+            drawPath(botArrow, color, style = stroke)
+        }
+
+        if (isRepeatOne) {
+            Text("1", color = monoColor, fontSize = 10.sp, fontWeight = FontWeight.ExtraBold)
+        }
+    }
+}
+
+@Composable
+fun ShuffleVectorIcon(
+    isActive: Boolean,
+    monoColor: Color,
+    modifier: Modifier = Modifier
+) {
+    val strokeWidth = if (isActive) 3.8f else 2.0f
+    val alpha = if (isActive) 1.0f else 0.38f
+
+    Canvas(modifier = modifier.size(24.dp)) {
+        val color = monoColor.copy(alpha = alpha)
+        val w = size.width
+        val h = size.height
+        val stroke = Stroke(width = strokeWidth * density, cap = StrokeCap.Round, join = StrokeJoin.Round)
+
+        // Path 1: Top-left to bottom-right
+        val p1 = Path().apply {
+            moveTo(w * 0.18f, h * 0.32f)
+            cubicTo(w * 0.42f, h * 0.32f, w * 0.58f, h * 0.68f, w * 0.80f, h * 0.68f)
+        }
+        drawPath(p1, color, style = stroke)
+
+        // Arrow 1
+        val a1 = Path().apply {
+            moveTo(w * 0.70f, h * 0.58f)
+            lineTo(w * 0.84f, h * 0.68f)
+            lineTo(w * 0.70f, h * 0.78f)
+        }
+        drawPath(a1, color, style = stroke)
+
+        // Path 2: Bottom-left to top-right
+        val p2 = Path().apply {
+            moveTo(w * 0.18f, h * 0.68f)
+            cubicTo(w * 0.38f, h * 0.68f, w * 0.45f, h * 0.56f, w * 0.50f, h * 0.50f)
+        }
+        val p2b = Path().apply {
+            moveTo(w * 0.58f, h * 0.42f)
+            cubicTo(w * 0.64f, h * 0.32f, w * 0.72f, h * 0.32f, w * 0.80f, h * 0.32f)
+        }
+        drawPath(p2, color, style = stroke)
+        drawPath(p2b, color, style = stroke)
+
+        // Arrow 2
+        val a2 = Path().apply {
+            moveTo(w * 0.70f, h * 0.22f)
+            lineTo(w * 0.84f, h * 0.32f)
+            lineTo(w * 0.70f, h * 0.42f)
+        }
+        drawPath(a2, color, style = stroke)
     }
 }
 
@@ -520,9 +573,15 @@ fun MiniPlayerDock(
     onClick: () -> Unit
 ) {
     val song = manager.currentSong ?: return
-    val art = manager.getAlbumArt(song)
     val accent = manager.accentColor
     val isDark = manager.isDarkMode
+
+    var albumArtBitmap by remember(song.id) { mutableStateOf(manager.getCachedAlbumArt(song.id)) }
+    LaunchedEffect(song.id) {
+        if (albumArtBitmap == null) {
+            albumArtBitmap = manager.loadAlbumArtAsync(song)
+        }
+    }
 
     Box(
         modifier = Modifier
@@ -532,11 +591,6 @@ fun MiniPlayerDock(
             .background(if (isDark) Color(0xE60A0F1D) else Color(0xF2FFFFFF))
             .border(1.dp, if (isDark) Color(0x33FFFFFF) else Color(0x22000000), RoundedCornerShape(22.dp))
             .clickable { onClick() }
-            .pointerInput(Unit) {
-                detectVerticalDragGestures { _, dragAmount ->
-                    if (dragAmount < -20f) onClick()
-                }
-            }
             .padding(horizontal = 14.dp, vertical = 8.dp)
     ) {
         Row(
@@ -550,8 +604,8 @@ fun MiniPlayerDock(
                     .background(Color(0xFF1E293B)),
                 contentAlignment = Alignment.Center
             ) {
-                if (art != null) {
-                    Image(bitmap = art.asImageBitmap(), contentDescription = "Art", modifier = Modifier.fillMaxSize())
+                if (albumArtBitmap != null) {
+                    Image(bitmap = albumArtBitmap!!.asImageBitmap(), contentDescription = "Art", modifier = Modifier.fillMaxSize())
                 } else {
                     Text("🎵", fontSize = 20.sp)
                 }
@@ -575,7 +629,7 @@ fun MiniPlayerDock(
     }
 }
 
-// Sleep Timer Dialog with Presets, End of Track, and Interactive Vertical Sliders
+// Sleep Timer with Live Status and "End Timer" Button
 @Composable
 fun SleepTimerDialog(
     manager: MusicManager,
@@ -588,8 +642,6 @@ fun SleepTimerDialog(
 
     var customHours by remember { mutableIntStateOf(0) }
     var customMinutes by remember { mutableIntStateOf(15) }
-    var showHourSlider by remember { mutableStateOf(false) }
-    var showMinuteSlider by remember { mutableStateOf(false) }
 
     Box(
         modifier = Modifier.fillMaxSize().background(Color(0xCC000000)).clickable { onDismiss() },
@@ -614,6 +666,40 @@ fun SleepTimerDialog(
                         Text("Automatically stop playback after a set time.", color = Color(0xFF64748B), fontSize = 12.sp)
                     }
                     Text("✕", color = Color(0xFF64748B), fontSize = 20.sp, modifier = Modifier.clickable { onDismiss() })
+                }
+
+                // Active Timer Card + End Timer Action
+                if (manager.sleepTimerRemainingSeconds > 0) {
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(Color(0x1AEF4444))
+                            .border(1.dp, Color(0x33EF4444), RoundedCornerShape(16.dp))
+                            .padding(14.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column {
+                                Text("⏳ Timer Active", color = Color(0xFFEF4444), fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                Text("${manager.sleepTimerRemainingSeconds / 60}m ${manager.sleepTimerRemainingSeconds % 60}s remaining", color = textColor, fontSize = 12.sp)
+                            }
+                            Button(
+                                onClick = {
+                                    manager.endSleepTimer()
+                                    onDismiss()
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444)),
+                                shape = RoundedCornerShape(10.dp)
+                            ) {
+                                Text("End Timer", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
                 }
 
                 Spacer(modifier = Modifier.height(20.dp))
@@ -666,144 +752,243 @@ fun SleepTimerDialog(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
-                        Text("Hours", color = Color(0xFF64748B), fontSize = 12.sp)
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(50.dp)
-                                .clip(RoundedCornerShape(12.dp))
-                                .border(1.dp, if (isDark) Color(0x33FFFFFF) else Color(0xFFCBD5E1), RoundedCornerShape(12.dp))
-                                .clickable { showHourSlider = true },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text("$customHours", color = textColor, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                        }
+                        Text("Hours: $customHours", color = Color(0xFF64748B), fontSize = 12.sp)
+                        Slider(
+                            value = customHours.toFloat(),
+                            onValueChange = { customHours = it.toInt() },
+                            valueRange = 0f..24f,
+                            colors = SliderDefaults.colors(thumbColor = accent, activeTrackColor = accent)
+                        )
                     }
 
                     Column(modifier = Modifier.weight(1f)) {
-                        Text("Minutes", color = Color(0xFF64748B), fontSize = 12.sp)
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(50.dp)
-                                .clip(RoundedCornerShape(12.dp))
-                                .border(1.dp, if (isDark) Color(0x33FFFFFF) else Color(0xFFCBD5E1), RoundedCornerShape(12.dp))
-                                .clickable { showMinuteSlider = true },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text("$customMinutes", color = textColor, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                        }
+                        Text("Minutes: $customMinutes", color = Color(0xFF64748B), fontSize = 12.sp)
+                        Slider(
+                            value = customMinutes.toFloat(),
+                            onValueChange = { customMinutes = it.toInt() },
+                            valueRange = 1f..60f,
+                            colors = SliderDefaults.colors(thumbColor = accent, activeTrackColor = accent)
+                        )
                     }
 
                     Button(
                         onClick = {
-                            val totalMins = (customHours * 60) + customMinutes
-                            manager.setSleepTimer(totalMins)
+                            val total = (customHours * 60) + customMinutes
+                            manager.setSleepTimer(total)
                             onDismiss()
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = accent),
                         shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier.padding(top = 18.dp).height(50.dp)
+                        modifier = Modifier.height(50.dp)
                     ) {
                         Text("Set", color = Color.White, fontWeight = FontWeight.Bold)
                     }
                 }
-
-                Spacer(modifier = Modifier.height(24.dp))
-                Button(
-                    onClick = { onDismiss() },
-                    modifier = Modifier.fillMaxWidth().height(48.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = if (isDark) Color(0x22FFFFFF) else Color(0xFFF1F5F9)),
-                    shape = RoundedCornerShape(14.dp)
-                ) {
-                    Text("Close", color = textColor, fontWeight = FontWeight.Bold)
-                }
             }
         }
     }
-
-    if (showHourSlider) {
-        VerticalPickerPopup(
-            title = "Select Hours (0 - 24)",
-            value = customHours,
-            range = 0..24,
-            isDark = isDark,
-            accent = accent,
-            onValueSelected = { customHours = it; showHourSlider = false },
-            onDismiss = { showHourSlider = false }
-        )
-    }
-
-    if (showMinuteSlider) {
-        VerticalPickerPopup(
-            title = "Select Minutes (1 - 60)",
-            value = customMinutes,
-            range = 1..60,
-            isDark = isDark,
-            accent = accent,
-            onValueSelected = { customMinutes = it; showMinuteSlider = false },
-            onDismiss = { showMinuteSlider = false }
-        )
-    }
 }
 
+// Circular HSV Color Picker with Outer Sweep Hue Ring + Inner SV Box + 10 Presets
 @Composable
-fun VerticalPickerPopup(
-    title: String,
-    value: Int,
-    range: IntRange,
-    isDark: Boolean,
-    accent: Color,
-    onValueSelected: (Int) -> Unit,
+fun CircularColorPickerDialog(
+    manager: MusicManager,
     onDismiss: () -> Unit
 ) {
-    var selected by remember { mutableIntStateOf(value) }
+    val isDark = manager.isDarkMode
+    var hue by remember { mutableFloatStateOf(0f) }
+    var sat by remember { mutableFloatStateOf(1f) }
+    var value by remember { mutableFloatStateOf(1f) }
+
+    val currentColor = remember(hue, sat, value) {
+        Color(android.graphics.Color.HSVToColor(floatArrayOf(hue, sat, value)))
+    }
+
     Box(
         modifier = Modifier.fillMaxSize().background(Color(0xCC000000)).clickable { onDismiss() },
         contentAlignment = Alignment.Center
     ) {
         Box(
             modifier = Modifier
-                .fillMaxWidth(0.82f)
-                .clip(RoundedCornerShape(24.dp))
-                .background(if (isDark) Color(0xFF1E293B) else Color.White)
+                .fillMaxWidth(0.92f)
+                .clip(RoundedCornerShape(28.dp))
+                .background(if (isDark) Color(0xFF0F172A) else Color.White)
                 .clickable(enabled = false) {}
-                .padding(24.dp)
+                .padding(20.dp)
         ) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(title, color = if (isDark) Color.White else Color(0xFF0F172A), fontSize = 17.sp, fontWeight = FontWeight.Bold)
-                Spacer(modifier = Modifier.height(16.dp))
-                Text("$selected", color = accent, fontSize = 42.sp, fontWeight = FontWeight.ExtraBold)
-                Spacer(modifier = Modifier.height(16.dp))
-                Slider(
-                    value = selected.toFloat(),
-                    onValueChange = { selected = it.toInt() },
-                    valueRange = range.first.toFloat()..range.last.toFloat(),
-                    colors = SliderDefaults.colors(thumbColor = accent, activeTrackColor = accent)
-                )
-                Spacer(modifier = Modifier.height(20.dp))
-                Button(
-                    onClick = { onValueSelected(selected) },
+                Row(
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = accent)
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("Confirm", color = Color.White, fontWeight = FontWeight.Bold)
+                    Text("Custom Accent Picker", color = if (isDark) Color.White else Color(0xFF0F172A), fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                    Text("✕", fontSize = 18.sp, modifier = Modifier.clickable { onDismiss() })
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // The Circular Wheel Canvas
+                Box(
+                    modifier = Modifier.size(240.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Canvas(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .pointerInput(Unit) {
+                                detectDragGestures { change, _ ->
+                                    val center = Offset(size.width / 2f, size.height / 2f)
+                                    val touch = change.position
+                                    val dist = sqrt((touch.x - center.x) * (touch.x - center.x) + (touch.y - center.y) * (touch.y - center.y))
+                                    val radius = size.width / 2f
+
+                                    // Outer ring touch
+                                    if (dist >= radius * 0.65f) {
+                                        var angle = Math.toDegrees(atan2(touch.y - center.y, touch.x - center.x).toDouble()).toFloat()
+                                        if (angle < 0) angle += 360f
+                                        hue = angle
+                                    } else {
+                                        // Inner square touch
+                                        val halfInner = (radius * 0.55f)
+                                        val normX = ((touch.x - (center.x - halfInner)) / (halfInner * 2f)).coerceIn(0f, 1f)
+                                        val normY = ((touch.y - (center.y - halfInner)) / (halfInner * 2f)).coerceIn(0f, 1f)
+                                        sat = normX
+                                        value = 1f - normY
+                                    }
+                                }
+                            }
+                    ) {
+                        val center = Offset(size.width / 2f, size.height / 2f)
+                        val radius = size.width / 2f
+                        val ringThickness = radius * 0.28f
+
+                        // Outer Hue Sweep Circle
+                        val sweepColors = (0..360 step 30).map {
+                            Color(android.graphics.Color.HSVToColor(floatArrayOf(it.toFloat(), 1f, 1f)))
+                        }
+                        drawCircle(
+                            brush = Brush.sweepGradient(sweepColors, center),
+                            radius = radius - (ringThickness / 2f),
+                            style = Stroke(width = ringThickness)
+                        )
+
+                        // Outer Ring Thumb
+                        val thumbRad = Math.toRadians(hue.toDouble())
+                        val thumbDist = radius - (ringThickness / 2f)
+                        val thumbPos = Offset(
+                            center.x + (thumbDist * cos(thumbRad)).toFloat(),
+                            center.y + (thumbDist * sin(thumbRad)).toFloat()
+                        )
+                        drawCircle(Color.White, radius = 12.dp.toPx(), center = thumbPos, style = Stroke(3.dp.toPx()))
+                        drawCircle(Color(android.graphics.Color.HSVToColor(floatArrayOf(hue, 1f, 1f))), radius = 9.dp.toPx(), center = thumbPos)
+
+                        // Inner SV Box
+                        val halfBox = (radius * 0.55f)
+                        val boxTopLeft = Offset(center.x - halfBox, center.y - halfBox)
+                        val boxSize = Size(halfBox * 2f, halfBox * 2f)
+
+                        drawRect(
+                            brush = Brush.horizontalGradient(listOf(Color.White, Color(android.graphics.Color.HSVToColor(floatArrayOf(hue, 1f, 1f))))),
+                            topLeft = boxTopLeft,
+                            size = boxSize
+                        )
+                        drawRect(
+                            brush = Brush.verticalGradient(listOf(Color.Transparent, Color.Black)),
+                            topLeft = boxTopLeft,
+                            size = boxSize
+                        )
+
+                        // Inner Target Thumb
+                        val targetPos = Offset(
+                            boxTopLeft.x + (sat * boxSize.width),
+                            boxTopLeft.y + ((1f - value) * boxSize.height)
+                        )
+                        drawCircle(Color.White, radius = 8.dp.toPx(), center = targetPos, style = Stroke(2.5f.dp.toPx()))
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // Preview & Save to Preset Row
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .background(currentColor)
+                            .border(2.dp, Color.White, CircleShape)
+                    )
+                    Button(
+                        onClick = { manager.addColorPreset(currentColor) },
+                        colors = ButtonDefaults.buttonColors(containerColor = if (isDark) Color(0x22FFFFFF) else Color(0xFFF1F5F9)),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Text("+ Add to Presets", color = if (isDark) Color.White else Color(0xFF0F172A), fontSize = 12.sp)
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // 10 Preset Slots Grid (2 rows of 5)
+                Text("Saved Presets (10 Slots)", fontSize = 12.sp, color = Color(0xFF64748B), modifier = Modifier.align(Alignment.Start))
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    manager.userSavedColorPresets.take(5).forEach { color ->
+                        Box(
+                            modifier = Modifier
+                                .size(32.dp)
+                                .clip(CircleShape)
+                                .background(color)
+                                .border(1.5.dp, if (manager.accentColor == color) Color.White else Color.Transparent, CircleShape)
+                                .clickable {
+                                    manager.updateAccent(color)
+                                    onDismiss()
+                                }
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    manager.userSavedColorPresets.drop(5).take(5).forEach { color ->
+                        Box(
+                            modifier = Modifier
+                                .size(32.dp)
+                                .clip(CircleShape)
+                                .background(color)
+                                .border(1.5.dp, if (manager.accentColor == color) Color.White else Color.Transparent, CircleShape)
+                                .clickable {
+                                    manager.updateAccent(color)
+                                    onDismiss()
+                                }
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(18.dp))
+
+                Button(
+                    onClick = {
+                        manager.updateAccent(currentColor)
+                        onDismiss()
+                    },
+                    modifier = Modifier.fillMaxWidth().height(48.dp),
+                    shape = RoundedCornerShape(14.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = currentColor)
+                ) {
+                    Text("Apply Accent", color = Color.White, fontWeight = FontWeight.Bold)
                 }
             }
         }
     }
 }
 
-// Complete Tag Editor Dialog
 @Composable
-fun TagEditorDialog(
-    manager: MusicManager,
-    song: Song,
-    onDismiss: () -> Unit
-) {
+fun TagEditorDialog(manager: MusicManager, song: Song, onDismiss: () -> Unit) {
     var editTitle by remember { mutableStateOf(song.title) }
     var editArtist by remember { mutableStateOf(song.artist) }
     var editAlbum by remember { mutableStateOf(song.album) }
@@ -817,8 +1002,6 @@ fun TagEditorDialog(
     }
 
     val isDark = manager.isDarkMode
-    val cardBg = if (isDark) Color(0xFF1E293B) else Color.White
-    val textColor = if (isDark) Color.White else Color(0xFF0F172A)
 
     Box(
         modifier = Modifier.fillMaxSize().background(Color(0xCC000000)).clickable { onDismiss() },
@@ -828,25 +1011,14 @@ fun TagEditorDialog(
             modifier = Modifier
                 .fillMaxWidth(0.9f)
                 .clip(RoundedCornerShape(24.dp))
-                .background(cardBg)
+                .background(if (isDark) Color(0xFF1E293B) else Color.White)
                 .clickable(enabled = false) {}
                 .padding(20.dp)
         ) {
             Column(modifier = Modifier.fillMaxWidth()) {
-                Text("Edit Audio Tags", color = textColor, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                Text("Edit Audio Tags", color = if (isDark) Color.White else Color(0xFF0F172A), fontSize = 18.sp, fontWeight = FontWeight.Bold)
                 Spacer(modifier = Modifier.height(14.dp))
-
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(
-                        modifier = Modifier
-                            .size(64.dp)
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(Color(0xFF0F172A)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text("🖼️", fontSize = 26.sp)
-                    }
-                    Spacer(modifier = Modifier.width(14.dp))
                     Button(
                         onClick = { photoPickerLauncher.launch("image/*") },
                         colors = ButtonDefaults.buttonColors(containerColor = manager.accentColor),
@@ -855,37 +1027,15 @@ fun TagEditorDialog(
                         Text(if (selectedCoverUri != null) "Artwork Picked ✓" else "Change Artwork", color = Color.White, fontSize = 12.sp)
                     }
                 }
-
                 Spacer(modifier = Modifier.height(12.dp))
-                OutlinedTextField(
-                    value = editTitle,
-                    onValueChange = { editTitle = it },
-                    label = { Text("Song Name") },
-                    modifier = Modifier.fillMaxWidth()
-                )
+                OutlinedTextField(value = editTitle, onValueChange = { editTitle = it }, label = { Text("Song Name") }, modifier = Modifier.fillMaxWidth())
                 Spacer(modifier = Modifier.height(8.dp))
-                OutlinedTextField(
-                    value = editArtist,
-                    onValueChange = { editArtist = it },
-                    label = { Text("Artist Name") },
-                    modifier = Modifier.fillMaxWidth()
-                )
+                OutlinedTextField(value = editArtist, onValueChange = { editArtist = it }, label = { Text("Artist Name") }, modifier = Modifier.fillMaxWidth())
                 Spacer(modifier = Modifier.height(8.dp))
-                OutlinedTextField(
-                    value = editAlbum,
-                    onValueChange = { editAlbum = it },
-                    label = { Text("Album Name") },
-                    modifier = Modifier.fillMaxWidth()
-                )
+                OutlinedTextField(value = editAlbum, onValueChange = { editAlbum = it }, label = { Text("Album Name") }, modifier = Modifier.fillMaxWidth())
                 Spacer(modifier = Modifier.height(8.dp))
-                OutlinedTextField(
-                    value = editDate,
-                    onValueChange = { editDate = it },
-                    label = { Text("Date & Time / Year") },
-                    modifier = Modifier.fillMaxWidth()
-                )
+                OutlinedTextField(value = editDate, onValueChange = { editDate = it }, label = { Text("Date & Time / Year") }, modifier = Modifier.fillMaxWidth())
                 Spacer(modifier = Modifier.height(16.dp))
-
                 Button(
                     onClick = {
                         manager.updateSongMetadata(song, editTitle, editArtist, editAlbum, editDate, selectedCoverUri)
@@ -902,17 +1052,9 @@ fun TagEditorDialog(
     }
 }
 
-// Add to Playlist Dialog
 @Composable
-fun AddToPlaylistDialog(
-    manager: MusicManager,
-    song: Song,
-    onDismiss: () -> Unit
-) {
+fun AddToPlaylistDialog(manager: MusicManager, song: Song, onDismiss: () -> Unit) {
     val isDark = manager.isDarkMode
-    val cardBg = if (isDark) Color(0xFF1E293B) else Color.White
-    val textColor = if (isDark) Color.White else Color(0xFF0F172A)
-
     Box(
         modifier = Modifier.fillMaxSize().background(Color(0xCC000000)).clickable { onDismiss() },
         contentAlignment = Alignment.Center
@@ -921,12 +1063,12 @@ fun AddToPlaylistDialog(
             modifier = Modifier
                 .fillMaxWidth(0.85f)
                 .clip(RoundedCornerShape(24.dp))
-                .background(cardBg)
+                .background(if (isDark) Color(0xFF1E293B) else Color.White)
                 .clickable(enabled = false) {}
                 .padding(20.dp)
         ) {
             Column {
-                Text("Add to Playlist", color = textColor, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                Text("Add to Playlist", color = if (isDark) Color.White else Color(0xFF0F172A), fontSize = 18.sp, fontWeight = FontWeight.Bold)
                 Spacer(modifier = Modifier.height(14.dp))
                 LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(manager.customPlaylists) { pl ->
@@ -944,7 +1086,7 @@ fun AddToPlaylistDialog(
                         ) {
                             Text("📑", fontSize = 16.sp)
                             Spacer(modifier = Modifier.width(10.dp))
-                            Text(pl.name, color = textColor, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                            Text(pl.name, color = if (isDark) Color.White else Color(0xFF0F172A), fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                         }
                     }
                 }
@@ -956,10 +1098,7 @@ fun AddToPlaylistDialog(
 }
 
 @Composable
-fun MagneticSpeedDialog(
-    manager: MusicManager,
-    onDismiss: () -> Unit
-) {
+fun MagneticSpeedDialog(manager: MusicManager, onDismiss: () -> Unit) {
     val haptic = LocalHapticFeedback.current
     var speed by remember { mutableFloatStateOf(manager.playbackSpeed) }
     val formattedSpeed = String.format(Locale.US, "%.2fx", speed)
@@ -969,17 +1108,11 @@ fun MagneticSpeedDialog(
         contentAlignment = Alignment.Center
     ) {
         Box(
-            modifier = Modifier
-                .fillMaxWidth(0.85f)
-                .clip(RoundedCornerShape(24.dp))
-                .background(Color(0xFF1E293B))
-                .clickable(enabled = false) {}
-                .padding(24.dp)
+            modifier = Modifier.fillMaxWidth(0.85f).clip(RoundedCornerShape(24.dp)).background(Color(0xFF1E293B)).padding(24.dp)
         ) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Text("Playback Speed: $formattedSpeed", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
                 Spacer(modifier = Modifier.height(16.dp))
-
                 Slider(
                     value = speed,
                     onValueChange = { raw ->
@@ -992,128 +1125,54 @@ fun MagneticSpeedDialog(
                     valueRange = 0.25f..3.0f,
                     colors = SliderDefaults.colors(thumbColor = manager.accentColor, activeTrackColor = manager.accentColor)
                 )
-
-                Spacer(modifier = Modifier.height(8.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    listOf("0.25x", "0.5x", "1.0x", "1.5x", "2.0x", "3.0x").forEach { spd ->
-                        Text(spd, color = Color(0xFF94A3B8), fontSize = 11.sp)
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(20.dp))
-                Button(
-                    onClick = { onDismiss() },
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = manager.accentColor)
-                ) {
-                    Text("Done", color = Color.White, fontWeight = FontWeight.Bold)
-                }
+                Spacer(modifier = Modifier.height(14.dp))
+                Button(onClick = { onDismiss() }, modifier = Modifier.fillMaxWidth()) { Text("Done") }
             }
         }
     }
 }
 
 @Composable
-fun EqualizerSheet(
-    manager: MusicManager,
-    onDismiss: () -> Unit
-) {
-    Box(
-        modifier = Modifier.fillMaxSize().background(Color(0xF00A0F1D)).padding(24.dp)
-    ) {
+fun EqualizerSheet(manager: MusicManager, onDismiss: () -> Unit) {
+    Box(modifier = Modifier.fillMaxSize().background(Color(0xF00A0F1D)).padding(24.dp)) {
         Column(modifier = Modifier.fillMaxSize()) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Text("Equalizer & Audio FX", fontSize = 22.sp, fontWeight = FontWeight.Bold, color = Color.White)
                 Button(onClick = { onDismiss() }, shape = RoundedCornerShape(10.dp)) { Text("Done") }
             }
             Spacer(modifier = Modifier.height(20.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Text("Enable Equalizer", color = Color.White, fontSize = 16.sp)
-                Switch(
-                    checked = manager.isEqEnabled,
-                    onCheckedChange = {
-                        manager.isEqEnabled = it
-                        manager.attachAudioEffects()
-                    }
-                )
+                Switch(checked = manager.isEqEnabled, onCheckedChange = { manager.isEqEnabled = it; manager.attachAudioEffects() })
             }
             Spacer(modifier = Modifier.height(20.dp))
             Text("Bass Boost: ${manager.bassBoostPercent}%", color = Color.White, fontSize = 14.sp)
-            Slider(
-                value = manager.bassBoostPercent.toFloat(),
-                onValueChange = {
-                    manager.bassBoostPercent = it.toInt()
-                    manager.attachAudioEffects()
-                },
-                valueRange = 0f..500f,
-                colors = SliderDefaults.colors(thumbColor = manager.accentColor, activeTrackColor = manager.accentColor)
-            )
+            Slider(value = manager.bassBoostPercent.toFloat(), onValueChange = { manager.bassBoostPercent = it.toInt(); manager.attachAudioEffects() }, valueRange = 0f..500f)
             Spacer(modifier = Modifier.height(14.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Text("Stop Bass (Full Cut)", color = Color.White, fontSize = 15.sp)
-                Switch(
-                    checked = manager.isStopBass,
-                    onCheckedChange = {
-                        manager.isStopBass = it
-                        manager.attachAudioEffects()
-                    }
-                )
+                Switch(checked = manager.isStopBass, onCheckedChange = { manager.isStopBass = it; manager.attachAudioEffects() })
             }
             Spacer(modifier = Modifier.height(14.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Text("Remove Vocals (Center Cut)", color = Color.White, fontSize = 15.sp)
-                Switch(
-                    checked = manager.isRemoveVocals,
-                    onCheckedChange = {
-                        manager.isRemoveVocals = it
-                        manager.attachAudioEffects()
-                    }
-                )
+                Switch(checked = manager.isRemoveVocals, onCheckedChange = { manager.isRemoveVocals = it; manager.attachAudioEffects() })
             }
         }
     }
 }
 
 @Composable
-fun QueueSheet(
-    manager: MusicManager,
-    onDismiss: () -> Unit
-) {
-    Box(
-        modifier = Modifier.fillMaxSize().background(Color(0xF00F172A)).padding(20.dp)
-    ) {
+fun QueueSheet(manager: MusicManager, onDismiss: () -> Unit) {
+    Box(modifier = Modifier.fillMaxSize().background(Color(0xF00F172A)).padding(20.dp)) {
         Column(modifier = Modifier.fillMaxSize()) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Text("Playing Queue (${manager.playbackQueue.size})", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color.White)
                 Button(onClick = { onDismiss() }, shape = RoundedCornerShape(10.dp)) { Text("Close") }
             }
             Spacer(modifier = Modifier.height(14.dp))
             LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(manager.playbackQueue) { song ->
+                items(manager.playbackQueue, key = { it.id }) { song ->
                     val isCur = song.id == manager.currentSong?.id
                     Row(
                         modifier = Modifier
@@ -1128,7 +1187,7 @@ fun QueueSheet(
                         Spacer(modifier = Modifier.width(12.dp))
                         Column(modifier = Modifier.weight(1f)) {
                             Text(song.title, color = Color.White, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            Text("${formatFileSize(song.size)} • ${if (song.artist.isNotBlank()) song.artist else "Melovish"}", color = Color(0xFF94A3B8), fontSize = 11.sp)
+                            Text("${formatFileSize(song.size)} • ${song.artist}", color = Color(0xFF94A3B8), fontSize = 11.sp)
                         }
                     }
                 }
@@ -1138,18 +1197,9 @@ fun QueueSheet(
 }
 
 @Composable
-fun LyricsDialog(
-    song: Song,
-    isDark: Boolean,
-    onDismiss: () -> Unit
-) {
-    Box(
-        modifier = Modifier.fillMaxSize().background(Color(0xCC000000)).clickable { onDismiss() },
-        contentAlignment = Alignment.Center
-    ) {
-        Box(
-            modifier = Modifier.fillMaxWidth(0.85f).height(400.dp).clip(RoundedCornerShape(24.dp)).background(if (isDark) Color(0xFF1E293B) else Color.White).padding(24.dp)
-        ) {
+fun LyricsDialog(song: Song, isDark: Boolean, onDismiss: () -> Unit) {
+    Box(modifier = Modifier.fillMaxSize().background(Color(0xCC000000)).clickable { onDismiss() }, contentAlignment = Alignment.Center) {
+        Box(modifier = Modifier.fillMaxWidth(0.85f).height(400.dp).clip(RoundedCornerShape(24.dp)).background(if (isDark) Color(0xFF1E293B) else Color.White).padding(24.dp)) {
             Column {
                 Text("Lyrics", color = if (isDark) Color.White else Color(0xFF0F172A), fontSize = 20.sp, fontWeight = FontWeight.Bold)
                 Spacer(modifier = Modifier.height(14.dp))
