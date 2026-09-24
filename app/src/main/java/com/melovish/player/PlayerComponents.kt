@@ -5,12 +5,10 @@ import android.graphics.Bitmap
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -50,6 +48,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
@@ -203,6 +202,12 @@ fun FullPlayerSheet(
     val animTextPrimary by animateColorAsState(targetPalette.textPrimary, tween(650, easing = FastOutSlowInEasing), label = "textPrimary")
     val animTextSecondary by animateColorAsState(targetPalette.textSecondary, tween(650, easing = FastOutSlowInEasing), label = "textSecondary")
 
+    val volumeOverlayAlpha by animateFloatAsState(
+        targetValue = if (manager.isVolumeOverlayVisible) 1f else 0f,
+        animationSpec = tween(250),
+        label = "volumeAlpha"
+    )
+
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -271,14 +276,11 @@ fun FullPlayerSheet(
                     Text("🎵", fontSize = 96.sp)
                 }
 
-                // Volume Overlay HUD
-                AnimatedVisibility(
-                    visible = manager.isVolumeOverlayVisible,
-                    enter = fadeIn(),
-                    exit = fadeOut()
-                ) {
+                // Volume Overlay HUD (No DSL marker conflict)
+                if (volumeOverlayAlpha > 0f) {
                     Box(
                         modifier = Modifier
+                            .alpha(volumeOverlayAlpha)
                             .clip(RoundedCornerShape(20.dp))
                             .background(Color(0xCC000000))
                             .border(1.dp, Color(0x44FFFFFF), RoundedCornerShape(20.dp))
@@ -440,7 +442,7 @@ fun FullPlayerSheet(
                     modifier = Modifier.clickable { manager.toggleFavorite(song) }
                 )
                 Text("≡♪", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = animTextPrimary, modifier = Modifier.clickable { showQueueSheet = true })
-                Text("•••", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = animTextPrimary, modifier = Modifier.clickable { showMenuModal = true })
+                Text("•••", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = animTextPrimary, modifier = Modifier.clickable { showMenuModal = true } )
             }
 
             Spacer(modifier = Modifier.height(14.dp))
