@@ -1,9 +1,5 @@
 package com.melovish.player
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -28,7 +24,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -44,11 +39,11 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.media3.common.Player
+import java.util.Locale
 
 @Composable
 fun FullPlayerSheet(
@@ -75,7 +70,6 @@ fun FullPlayerSheet(
                     )
                 )
             )
-            // Gesture: Swipe Down to Dismiss, Swipe Left/Right to change tracks
             .pointerInput(Unit) {
                 detectVerticalDragGestures { _, dragAmount ->
                     if (dragAmount > 30f) onDismiss()
@@ -95,7 +89,7 @@ fun FullPlayerSheet(
         ) {
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Pull Down Indicator
+            // Pull Down Handle
             Box(
                 modifier = Modifier
                     .size(width = 44.dp, height = 5.dp)
@@ -106,7 +100,6 @@ fun FullPlayerSheet(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Section / Playlist Label Top Center
             Text(
                 text = "PLAYING FROM: ${manager.currentSectionName.uppercase()}",
                 color = accentGold,
@@ -117,7 +110,7 @@ fun FullPlayerSheet(
 
             Spacer(modifier = Modifier.height(28.dp))
 
-            // Big Album Art
+            // Album Art
             Box(
                 modifier = Modifier
                     .size(280.dp)
@@ -131,7 +124,6 @@ fun FullPlayerSheet(
 
             Spacer(modifier = Modifier.height(32.dp))
 
-            // Title and Artist
             Text(
                 text = song.title,
                 color = Color.White,
@@ -151,7 +143,7 @@ fun FullPlayerSheet(
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // Scrub Bar
+            // Seek Bar
             Slider(
                 value = manager.currentPosition.toFloat(),
                 onValueChange = { manager.seekTo(it.toLong()) },
@@ -174,13 +166,12 @@ fun FullPlayerSheet(
 
             Spacer(modifier = Modifier.height(20.dp))
 
-            // Main Playback Controls
+            // Controls
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Repeat
                 val repeatColor = if (manager.repeatModeState != Player.REPEAT_MODE_OFF) accentGold else Color(0x66FFFFFF)
                 Box(modifier = Modifier.clickable { manager.toggleRepeat() }.padding(8.dp)) {
                     Text(
@@ -194,12 +185,10 @@ fun FullPlayerSheet(
                     )
                 }
 
-                // Previous
                 Box(modifier = Modifier.clickable { manager.playPrevious() }.padding(8.dp)) {
                     Text("⏮", fontSize = 28.sp, color = Color.White)
                 }
 
-                // Play / Pause
                 Box(
                     modifier = Modifier
                         .size(68.dp)
@@ -216,12 +205,10 @@ fun FullPlayerSheet(
                     )
                 }
 
-                // Next
                 Box(modifier = Modifier.clickable { manager.playNext() }.padding(8.dp)) {
                     Text("⏭", fontSize = 28.sp, color = Color.White)
                 }
 
-                // Shuffle
                 val shuffleColor = if (manager.isShuffleOn) accentGold else Color(0x66FFFFFF)
                 Box(modifier = Modifier.clickable { manager.toggleShuffle() }.padding(8.dp)) {
                     Text("🔀", fontSize = 20.sp, color = shuffleColor)
@@ -230,7 +217,7 @@ fun FullPlayerSheet(
 
             Spacer(modifier = Modifier.weight(1f))
 
-            // Secondary Utility Bar
+            // Secondary Controls Bar
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -403,6 +390,8 @@ fun SpeedDialog(
     onDismiss: () -> Unit
 ) {
     var speed by remember { mutableFloatStateOf(currentSpeed) }
+    val speedLabel = String.format(Locale.US, "%.1fx", speed)
+
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -415,10 +404,11 @@ fun SpeedDialog(
                 .fillMaxWidth(0.85f)
                 .clip(RoundedCornerShape(20.dp))
                 .background(Color(0xFF1E293B))
+                .clickable(enabled = false) {}
                 .padding(24.dp)
         ) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("Playback Speed: ${String.format(\"%.1f\", speed)}x", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                Text("Playback Speed: $speedLabel", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
                 Spacer(modifier = Modifier.height(16.dp))
                 Slider(
                     value = speed,
@@ -458,6 +448,7 @@ fun SleepTimerDialog(
                 .fillMaxWidth(0.85f)
                 .clip(RoundedCornerShape(20.dp))
                 .background(Color(0xFF1E293B))
+                .clickable(enabled = false) {}
                 .padding(24.dp)
         ) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -552,6 +543,7 @@ fun TagEditorDialog(
                 .fillMaxWidth(0.85f)
                 .clip(RoundedCornerShape(20.dp))
                 .background(Color(0xFF1E293B))
+                .clickable(enabled = false) {}
                 .padding(24.dp)
         ) {
             Column {

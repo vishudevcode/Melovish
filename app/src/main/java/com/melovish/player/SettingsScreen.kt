@@ -21,7 +21,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Divider
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Switch
@@ -39,6 +38,93 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+
+@Composable
+fun SettingsCard(
+    title: String,
+    subtitle: String,
+    content: @Composable () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(20.dp))
+            .background(Color.White)
+            .border(1.dp, Color(0xFFECEFF3), RoundedCornerShape(20.dp))
+            .padding(18.dp)
+    ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Text(title, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1E293B))
+            Text(subtitle, fontSize = 12.sp, color = Color(0xFF64748B))
+            Spacer(modifier = Modifier.height(14.dp))
+            content()
+        }
+    }
+}
+
+@Composable
+fun SettingsToggleRow(
+    icon: String,
+    title: String,
+    subtitle: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                modifier = Modifier
+                    .size(32.dp)
+                    .clip(CircleShape)
+                    .background(Color(0x1010B981)),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(icon, fontSize = 14.sp)
+            }
+            Spacer(modifier = Modifier.width(12.dp))
+            Column {
+                Text(title, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF1E293B))
+                Text(subtitle, fontSize = 12.sp, color = Color(0xFF64748B))
+            }
+        }
+        Switch(
+            checked = checked,
+            onCheckedChange = onCheckedChange,
+            colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = Color(0xFF10B981))
+        )
+    }
+}
+
+@Composable
+fun ColorPaletteCircle(
+    color: Color,
+    isSelected: Boolean,
+    onClick: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .size(34.dp)
+            .clip(CircleShape)
+            .background(color)
+            .border(
+                width = if (isSelected) 2.5.dp else 0.dp,
+                color = if (isSelected) Color(0xFF0F172A) else Color.Transparent,
+                shape = CircleShape
+            )
+            .clickable { onClick() },
+        contentAlignment = Alignment.Center
+    ) {
+        if (isSelected) {
+            Text("✓", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+        }
+    }
+}
 
 @Composable
 fun SettingsScreen(
@@ -74,7 +160,6 @@ fun SettingsScreen(
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 20.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // Top App Bar
         item {
             Row(
                 modifier = Modifier
@@ -346,7 +431,9 @@ fun SettingsScreen(
                         Text("Manage", color = Color(0xFF1E293B), fontSize = 12.sp, fontWeight = FontWeight.Medium)
                     }
                 }
-                Divider(color = Color(0xFFF1F5F9), thickness = 1.dp)
+                
+                Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(Color(0xFFF1F5F9)))
+
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
