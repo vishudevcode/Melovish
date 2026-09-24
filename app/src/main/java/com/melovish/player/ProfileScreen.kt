@@ -1,5 +1,6 @@
 package com.melovish.player
 
+import android.graphics.BitmapFactory
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -43,6 +44,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import java.io.File
 
 @Composable
 fun ProfileScreen(
@@ -58,7 +60,7 @@ fun ProfileScreen(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
         if (uri != null) {
-            manager.saveProfile(manager.profileName, manager.profileEmail, uri.toString())
+            manager.savePermanentProfile(manager.profileName, manager.profileEmail, uri)
         }
     }
 
@@ -76,6 +78,11 @@ fun ProfileScreen(
     val bg = if (isDark) Color(0xFF030712) else Color(0xFFFAF8F5)
     val cardBg = if (isDark) Color(0xFF0F172A) else Color.White
     val textColor = if (isDark) Color.White else Color(0xFF0F172A)
+
+    val avatarFile = manager.profileImagePath?.let { File(it) }
+    val avatarBitmap = if (avatarFile != null && avatarFile.exists()) {
+        BitmapFactory.decodeFile(avatarFile.absolutePath)
+    } else null
 
     LazyColumn(
         modifier = Modifier
@@ -101,7 +108,7 @@ fun ProfileScreen(
             }
         }
 
-        // Profile Card with Photo Picker & Dynamic Centered Name
+        // Profile Card with Dynamic Center Alignment
         item {
             Box(
                 modifier = Modifier
@@ -121,7 +128,7 @@ fun ProfileScreen(
                         Button(
                             onClick = {
                                 if (isEditing) {
-                                    manager.saveProfile(editName, editEmail, manager.profileImageUri)
+                                    manager.savePermanentProfile(editName, editEmail, null)
                                     isEditing = false
                                 } else {
                                     isEditing = true
@@ -130,7 +137,7 @@ fun ProfileScreen(
                             colors = ButtonDefaults.buttonColors(containerColor = manager.accentColor),
                             shape = RoundedCornerShape(12.dp)
                         ) {
-                            Text(if (isEditing) "Save" else "Edit", color = Color(0xFF0F172A), fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                            Text(if (isEditing) "Save" else "Edit", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                         }
                     }
 
@@ -140,7 +147,7 @@ fun ProfileScreen(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        // Profile Avatar + Camera Button
+                        // Permanent Avatar Picker
                         Box(contentAlignment = Alignment.BottomEnd) {
                             Box(
                                 modifier = Modifier
@@ -150,7 +157,11 @@ fun ProfileScreen(
                                     .clickable { photoPickerLauncher.launch("image/*") },
                                 contentAlignment = Alignment.Center
                             ) {
-                                Text("👤", fontSize = 36.sp)
+                                if (avatarBitmap != null) {
+                                    Image(bitmap = avatarBitmap.asImageBitmap(), contentDescription = "Avatar", modifier = Modifier.fillMaxSize())
+                                } else {
+                                    Text("👤", fontSize = 36.sp)
+                                }
                             }
                             Box(
                                 modifier = Modifier
@@ -167,7 +178,7 @@ fun ProfileScreen(
 
                         Spacer(modifier = Modifier.width(16.dp))
 
-                        // Dynamic Name & Email Alignment
+                        // Dynamic Centered Name (If Email Is Missing, Centered In Alignment)
                         Column(
                             verticalArrangement = Arrangement.Center,
                             modifier = Modifier.weight(1f)
@@ -261,7 +272,7 @@ fun ProfileScreen(
                                 Spacer(modifier = Modifier.width(12.dp))
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(song.title, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = textColor, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                    Text(if (song.artist.isNotBlank()) song.artist else "Unknown Artist", fontSize = 12.sp, color = Color(0xFF64748B), maxLines = 1)
+                                    Text("${formatFileSize(song.size)} • ${if (song.artist.isNotBlank()) song.artist else "Unknown Artist"}", fontSize = 12.sp, color = Color(0xFF64748B), maxLines = 1)
                                 }
                                 Text("▶", color = manager.accentColor, fontSize = 14.sp)
                             }
@@ -323,9 +334,9 @@ fun ProfileScreen(
                                 Spacer(modifier = Modifier.width(12.dp))
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(song.title, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = textColor, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                    Text(if (song.artist.isNotBlank()) song.artist else "Unknown Artist", fontSize = 12.sp, color = Color(0xFF64748B), maxLines = 1)
+                                    Text("${formatFileSize(song.size)} • ${if (song.artist.isNotBlank()) song.artist else "Unknown Artist"}", fontSize = 12.sp, color = Color(0xFF64748B), maxLines = 1)
                                 }
-                                Text(formatTime(song.duration), fontSize = 12.sp, color = Color(0xFF94A3B8))
+                                Text(formatTime(song.duration), fontSize = 12.sp, color = Color(0xFF64748B))
                             }
                         }
                     }
@@ -368,7 +379,7 @@ fun FullMostPlayedListScreen(manager: MusicManager, onBack: () -> Unit) {
                     Text("#${index + 1}", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = manager.accentColor, modifier = Modifier.width(36.dp))
                     Column(modifier = Modifier.weight(1f)) {
                         Text(song.title, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = textColor, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Text(if (song.artist.isNotBlank()) song.artist else "Unknown Artist", fontSize = 12.sp, color = Color(0xFF64748B), maxLines = 1)
+                        Text("${formatFileSize(song.size)} • ${if (song.artist.isNotBlank()) song.artist else "Unknown Artist"}", fontSize = 12.sp, color = Color(0xFF64748B), maxLines = 1)
                     }
                     Box(
                         modifier = Modifier
@@ -418,7 +429,7 @@ fun FullHistoryListScreen(manager: MusicManager, onBack: () -> Unit) {
                     Spacer(modifier = Modifier.width(12.dp))
                     Column(modifier = Modifier.weight(1f)) {
                         Text(song.title, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = textColor, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Text("${if (song.artist.isNotBlank()) song.artist else "Unknown"} • ${formatFileSize(song.size)}", fontSize = 12.sp, color = Color(0xFF64748B), maxLines = 1)
+                        Text("${formatFileSize(song.size)} • ${if (song.artist.isNotBlank()) song.artist else "Unknown"}", fontSize = 12.sp, color = Color(0xFF64748B), maxLines = 1)
                     }
                     Text(formatTime(song.duration), fontSize = 12.sp, color = Color(0xFF64748B))
                 }
