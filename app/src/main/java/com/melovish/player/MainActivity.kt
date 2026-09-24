@@ -154,7 +154,6 @@ fun MelovishRootApp(manager: MusicManager) {
     var activeSongInfo by remember { mutableStateOf<Song?>(null) }
     var activeAddToPlaylistSong by remember { mutableStateOf<Song?>(null) }
 
-    // LazyListStates for scroll-to-top
     val homeListState = rememberLazyListState()
     val libraryListState = rememberLazyListState()
     val searchListState = rememberLazyListState()
@@ -291,7 +290,6 @@ fun MelovishRootApp(manager: MusicManager) {
                 EqualizerSheet(manager = manager, onDismiss = { isSettingsEqOpen = false })
             }
 
-            // Universal 9-Option Action Sheet
             if (activeSongForMenu != null) {
                 val s = activeSongForMenu!!
                 SongItemActionModal(
@@ -447,25 +445,26 @@ fun LiveMechanicalGearIcon(
 
             val gearColor = if (isDark) Color(0xFFE2E8F0) else Color(0xFF334155)
 
-            val path = Path()
-            for (i in 0 until teethCount) {
-                val angleStep = (2.0 * Math.PI / teethCount).toFloat()
-                val a1 = i * angleStep
-                val a2 = a1 + (angleStep * 0.35f)
-                val a3 = a1 + (angleStep * 0.65f)
-                val a4 = (i + 1) * angleStep
+            val path = Path().apply {
+                for (i in 0 until teethCount) {
+                    val angleStep = (2.0 * Math.PI / teethCount).toFloat()
+                    val a1 = i * angleStep
+                    val a2 = a1 + (angleStep * 0.35f)
+                    val a3 = a1 + (angleStep * 0.65f)
+                    val a4 = (i + 1) * angleStep
 
-                val p1 = Offset(center.x + (innerRingRadius * cos(a1)), center.y + (innerRingRadius * sin(a1)))
-                val p2 = Offset(center.x + (outerRadius * cos(a2)), center.y + (outerRadius * sin(a2)))
-                val p3 = Offset(center.x + (outerRadius * cos(a3)), center.y + (outerRadius * sin(a3)))
-                val p4 = Offset(center.x + (innerRingRadius * cos(a4)), center.y + (innerRingRadius * sin(a4)))
+                    val p1 = Offset(center.x + (innerRingRadius * cos(a1)), center.y + (innerRingRadius * sin(a1)))
+                    val p2 = Offset(center.x + (outerRadius * cos(a2)), center.y + (outerRadius * sin(a2)))
+                    val p3 = Offset(center.x + (outerRadius * cos(a3)), center.y + (outerRadius * sin(a3)))
+                    val p4 = Offset(center.x + (innerRingRadius * cos(a4)), center.y + (innerRingRadius * sin(a4)))
 
-                if (i == 0) path.moveTo(p1.x, p1.y) else path.lineTo(p1.x, p1.y)
-                path.lineTo(p2.x, p2.y)
-                path.lineTo(p3.x, p3.y)
-                path.lineTo(p4.x, p4.y)
+                    if (i == 0) moveTo(p1.x, p1.y) else lineTo(p1.x, p1.y)
+                    lineTo(p2.x, p2.y)
+                    lineTo(p3.x, p3.y)
+                    lineTo(p4.x, p4.y)
+                }
+                close()
             }
-            path.close()
             drawPath(path, gearColor)
 
             val cavityRadius = innerRingRadius * 0.72f
@@ -551,7 +550,6 @@ fun TopBar(
     }
 }
 
-// Universal Song Row with Active Accent Highlight & Live Audio Waveform Equalizer
 @Composable
 fun UniversalSongRow(
     song: Song,
@@ -612,7 +610,6 @@ fun UniversalSongRow(
             )
         }
 
-        // Live Audio Equalizer in Place of Song Duration when Active!
         if (isPlayingThis) {
             LiveAudioWaveEqualizer(isAnimating = manager.isPlaying, accentColor = accent)
         } else {
@@ -661,7 +658,6 @@ fun HomeScreen(
             contentPadding = PaddingValues(bottom = 80.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            // Recently Played Header (Right-side play button removed per request)
             item {
                 Text(
                     text = "Recently Played",
@@ -697,7 +693,6 @@ fun HomeScreen(
                 }
             }
 
-            // Favourite Playlists
             item {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -753,7 +748,6 @@ fun HomeScreen(
                 }
             }
 
-            // All Songs Header with Persistent Sorting
             item {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -807,7 +801,6 @@ fun HomeScreen(
             }
         }
 
-        // Smart Floating Play Button: Hides when something starts playing
         if (manager.currentSong == null) {
             Box(
                 modifier = Modifier
@@ -851,6 +844,7 @@ fun HomeScreen(
     }
 }
 
+// Library Screen: Single click opens folder, Long press opens color customizer
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun LibraryScreen(
@@ -900,6 +894,7 @@ fun LibraryScreen(
             val totalSize = songs.sumOf { it.size }
             val fColor = manager.getFolderColor(folderName)
 
+            // Entire Row (including icon) respects: Click -> Open, Long Click -> Color Customizer
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -915,7 +910,7 @@ fun LibraryScreen(
             ) {
                 GlassmorphicFolderIcon(
                     folderColor = fColor,
-                    modifier = Modifier.size(42.dp).clickable { customizingFolder = folderName }
+                    modifier = Modifier.size(42.dp)
                 )
 
                 Spacer(modifier = Modifier.width(14.dp))

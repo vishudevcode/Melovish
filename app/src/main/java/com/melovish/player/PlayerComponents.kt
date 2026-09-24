@@ -27,6 +27,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -494,7 +495,7 @@ fun extractMaterialYouPalette(bitmap: Bitmap?, isDarkMode: Boolean, fallbackAcce
     }
 }
 
-// Full Player Sheet with Full-Screen Swipe, Double-Tap 10s Seek, and Reference Controls
+// Full Player Sheet with Exact 50/50 Split, 3D Swipe Tilt/Rotate, and Even Vertical Spacing
 @Composable
 fun FullPlayerSheet(
     manager: MusicManager,
@@ -570,7 +571,24 @@ fun FullPlayerSheet(
     val monoColor = if (isDark) Color.White else Color(0xFF0F172A)
     val userAccent = manager.accentColor
 
+    // Live Touch Drag State for 3D Album Rotation
     var totalDragX by remember { mutableFloatStateOf(0f) }
+
+    val animatedRotationZ by animateFloatAsState(
+        targetValue = (totalDragX / 25f).coerceIn(-16f, 16f),
+        animationSpec = tween(durationMillis = 150, easing = LinearEasing),
+        label = "rotZ"
+    )
+    val animatedRotationY by animateFloatAsState(
+        targetValue = (totalDragX / 28f).coerceIn(-18f, 18f),
+        animationSpec = tween(durationMillis = 150, easing = LinearEasing),
+        label = "rotY"
+    )
+    val animatedTranslationX by animateFloatAsState(
+        targetValue = totalDragX,
+        animationSpec = tween(durationMillis = 120, easing = LinearEasing),
+        label = "transX"
+    )
 
     Box(
         modifier = Modifier
@@ -586,14 +604,15 @@ fun FullPlayerSheet(
                         totalDragX += dragAmount
                     },
                     onDragEnd = {
-                        if (totalDragX < -60f) {
+                        val distance = totalDragX
+                        totalDragX = 0f
+                        if (distance < -60f) {
                             manager.playNext()
                             haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                        } else if (totalDragX > 60f) {
+                        } else if (distance > 60f) {
                             manager.playPrevious()
                             haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                         }
-                        totalDragX = 0f
                     }
                 )
             }
@@ -601,222 +620,249 @@ fun FullPlayerSheet(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(top = 24.dp, bottom = 18.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
+                .padding(top = 10.dp, bottom = 14.dp)
         ) {
-            // Big Album Art
+            // Upper Half: Full Screen Upper Area Dedicated to Big Album Art
             Box(
                 modifier = Modifier
-                    .size(335.dp)
-                    .shadow(20.dp, RoundedCornerShape(32.dp), spotColor = userAccent)
-                    .clip(RoundedCornerShape(32.dp))
-                    .background(animSurface)
-                    .border(1.5.dp, Color(0x33FFFFFF), RoundedCornerShape(32.dp))
-                    .pointerInput(song.id) {
-                        detectTapGestures(
-                            onDoubleTap = { offset ->
-                                if (offset.x < size.width / 2f) {
-                                    showSeekLeftAnim = true
-                                    manager.seekTo((manager.currentPosition - 10000L).coerceAtLeast(0L))
-                                } else {
-                                    showSeekRightAnim = true
-                                    manager.seekTo((manager.currentPosition + 10000L).coerceAtMost(manager.duration))
-                                }
-                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                            }
-                        )
-                    },
+                    .fillMaxWidth()
+                    .weight(1.15f)
+                    .padding(vertical = 4.dp),
                 contentAlignment = Alignment.Center
             ) {
-                if (albumArtBitmap != null) {
-                    Image(
-                        bitmap = albumArtBitmap!!.asImageBitmap(),
-                        contentDescription = "Art",
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize()
-                    )
-                } else {
-                    Text("🎵", fontSize = 110.sp)
-                }
-
-                if (leftSeekAlpha > 0.01f) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxHeight()
-                            .fillMaxWidth(0.5f)
-                            .align(Alignment.CenterStart)
-                            .background(Color(0x66000000).copy(alpha = 0.45f * leftSeekAlpha)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            modifier = Modifier.graphicsLayer { alpha = leftSeekAlpha }
-                        ) {
-                            Text("«", fontSize = 36.sp, color = Color.White, fontWeight = FontWeight.Black)
-                            Text("10s", fontSize = 16.sp, color = Color.White, fontWeight = FontWeight.Bold)
-                        }
-                    }
-                }
-
-                if (rightSeekAlpha > 0.01f) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxHeight()
-                            .fillMaxWidth(0.5f)
-                            .align(Alignment.CenterEnd)
-                            .background(Color(0x66000000).copy(alpha = 0.45f * rightSeekAlpha)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            modifier = Modifier.graphicsLayer { alpha = rightSeekAlpha }
-                        ) {
-                            Text("»", fontSize = 36.sp, color = Color.White, fontWeight = FontWeight.Black)
-                            Text("10s", fontSize = 16.sp, color = Color.White, fontWeight = FontWeight.Bold)
-                        }
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(26.dp))
-
-            Text(
-                text = song.title,
-                color = animTextPrimary,
-                fontSize = 22.sp,
-                fontWeight = FontWeight.ExtraBold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                textAlign = TextAlign.Center
-            )
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                text = "${formatFileSize(song.size)} • ${if (song.artist.isNotBlank()) song.artist else "Unknown Artist"}",
-                color = animTextSecondary,
-                fontSize = 14.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                textAlign = TextAlign.Center
-            )
-
-            Spacer(modifier = Modifier.height(24.dp))
-
-            Slider(
-                value = dragProgressMs.coerceIn(0f, manager.duration.toFloat().coerceAtLeast(1f)),
-                onValueChange = {
-                    isDraggingSlider = true
-                    dragProgressMs = it
-                },
-                onValueChangeFinished = {
-                    isDraggingSlider = false
-                    manager.seekTo(dragProgressMs.toLong())
-                },
-                valueRange = 0f..(manager.duration.toFloat().coerceAtLeast(1f)),
-                colors = SliderDefaults.colors(
-                    thumbColor = userAccent,
-                    activeTrackColor = userAccent,
-                    inactiveTrackColor = if (isDark) Color(0x33FFFFFF) else Color(0x22000000)
-                ),
-                modifier = Modifier.fillMaxWidth()
-            )
-
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text(formatTime(dragProgressMs.toLong()), color = animTextSecondary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                Text(formatTime(manager.duration), color = animTextSecondary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-            }
-
-            Spacer(modifier = Modifier.weight(1f))
-
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                RepeatControlIcon(
-                    repeatMode = manager.repeatModeState,
-                    tint = monoColor,
-                    modifier = Modifier.clickable { manager.toggleRepeat() }.padding(8.dp)
-                )
-
-                PreviousControlIcon(
-                    tint = monoColor,
-                    modifier = Modifier.clickable { manager.playPrevious() }.padding(8.dp)
-                )
-
                 Box(
                     modifier = Modifier
-                        .size(68.dp)
-                        .shadow(8.dp, CircleShape)
-                        .clip(CircleShape)
-                        .background(if (isDark) Color.White else Color(0xFF0F172A))
-                        .clickable { manager.togglePlayPause() },
+                        .fillMaxHeight()
+                        .aspectRatio(1f)
+                        .graphicsLayer {
+                            translationX = animatedTranslationX
+                            rotationZ = animatedRotationZ
+                            rotationY = animatedRotationY
+                            cameraDistance = 14f * density
+                        }
+                        .shadow(22.dp, RoundedCornerShape(32.dp), spotColor = userAccent)
+                        .clip(RoundedCornerShape(32.dp))
+                        .background(animSurface)
+                        .border(1.5.dp, Color(0x33FFFFFF), RoundedCornerShape(32.dp))
+                        .pointerInput(song.id) {
+                            detectTapGestures(
+                                onDoubleTap = { offset ->
+                                    if (offset.x < size.width / 2f) {
+                                        showSeekLeftAnim = true
+                                        manager.seekTo((manager.currentPosition - 10000L).coerceAtLeast(0L))
+                                    } else {
+                                        showSeekRightAnim = true
+                                        manager.seekTo((manager.currentPosition + 10000L).coerceAtMost(manager.duration))
+                                    }
+                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                }
+                            )
+                        },
                     contentAlignment = Alignment.Center
                 ) {
-                    val iconTint = if (isDark) Color(0xFF0F172A) else Color.White
-                    if (manager.isPlaying) {
-                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Box(modifier = Modifier.size(6.dp, 22.dp).clip(RoundedCornerShape(3.dp)).background(iconTint))
-                            Box(modifier = Modifier.size(6.dp, 22.dp).clip(RoundedCornerShape(3.dp)).background(iconTint))
-                        }
+                    if (albumArtBitmap != null) {
+                        Image(
+                            bitmap = albumArtBitmap!!.asImageBitmap(),
+                            contentDescription = "Art",
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize()
+                        )
                     } else {
-                        Canvas(modifier = Modifier.size(24.dp).padding(start = 3.dp)) {
-                            val path = Path().apply {
-                                moveTo(size.width * 0.15f, size.height * 0.10f)
-                                lineTo(size.width * 0.90f, size.height * 0.50f)
-                                lineTo(size.width * 0.15f, size.height * 0.90f)
-                                close()
+                        Text("🎵", fontSize = 110.sp)
+                    }
+
+                    if (leftSeekAlpha > 0.01f) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxHeight()
+                                .fillMaxWidth(0.5f)
+                                .align(Alignment.CenterStart)
+                                .background(Color(0x66000000).copy(alpha = 0.45f * leftSeekAlpha)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                modifier = Modifier.graphicsLayer { alpha = leftSeekAlpha }
+                            ) {
+                                Text("«", fontSize = 36.sp, color = Color.White, fontWeight = FontWeight.Black)
+                                Text("10s", fontSize = 16.sp, color = Color.White, fontWeight = FontWeight.Bold)
                             }
-                            drawPath(path, color = iconTint)
+                        }
+                    }
+
+                    if (rightSeekAlpha > 0.01f) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxHeight()
+                                .fillMaxWidth(0.5f)
+                                .align(Alignment.CenterEnd)
+                                .background(Color(0x66000000).copy(alpha = 0.45f * rightSeekAlpha)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                modifier = Modifier.graphicsLayer { alpha = rightSeekAlpha }
+                            ) {
+                                Text("»", fontSize = 36.sp, color = Color.White, fontWeight = FontWeight.Black)
+                                Text("10s", fontSize = 16.sp, color = Color.White, fontWeight = FontWeight.Bold)
+                            }
                         }
                     }
                 }
-
-                NextControlIcon(
-                    tint = monoColor,
-                    modifier = Modifier.clickable { manager.playNext() }.padding(8.dp)
-                )
-
-                ShuffleControlIcon(
-                    isShuffleOn = manager.isShuffleOn,
-                    tint = monoColor,
-                    modifier = Modifier.clickable { manager.toggleShuffle() }.padding(8.dp)
-                )
             }
 
-            Spacer(modifier = Modifier.height(24.dp))
-
-            Row(
+            // Lower Half: Song Name -> Playing Bar -> Controls -> Dock with Even Spacing
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(26.dp))
-                    .background(animSurface)
-                    .border(1.dp, Color(0x22FFFFFF), RoundedCornerShape(26.dp))
-                    .padding(vertical = 14.dp, horizontal = 24.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                    .weight(1f)
+                    .padding(horizontal = 4.dp),
+                verticalArrangement = Arrangement.SpaceEvenly,
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Text("❝≡", fontSize = 24.sp, fontWeight = FontWeight.Black, color = animTextPrimary, modifier = Modifier.clickable { showLyricsDialog = true })
+                // 1. Song Name & Metadata
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = song.title,
+                        color = animTextPrimary,
+                        fontSize = 22.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        textAlign = TextAlign.Center
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "${formatFileSize(song.size)} • ${if (song.artist.isNotBlank()) song.artist else "Unknown Artist"}",
+                        color = animTextSecondary,
+                        fontSize = 13.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        textAlign = TextAlign.Center
+                    )
+                }
 
-                Text(
-                    text = if (manager.sleepTimerRemainingSeconds > 0) "${manager.sleepTimerRemainingSeconds / 60}m" else "☾",
-                    fontSize = 22.sp,
-                    color = if (manager.sleepTimerRemainingSeconds > 0) userAccent else animTextPrimary,
-                    fontWeight = FontWeight.Black,
-                    modifier = Modifier.clickable { showSleepDialog = true }
-                )
+                // 2. Playing Bar Just Above Controls
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Slider(
+                        value = dragProgressMs.coerceIn(0f, manager.duration.toFloat().coerceAtLeast(1f)),
+                        onValueChange = {
+                            isDraggingSlider = true
+                            dragProgressMs = it
+                        },
+                        onValueChangeFinished = {
+                            isDraggingSlider = false
+                            manager.seekTo(dragProgressMs.toLong())
+                        },
+                        valueRange = 0f..(manager.duration.toFloat().coerceAtLeast(1f)),
+                        colors = SliderDefaults.colors(
+                            thumbColor = userAccent,
+                            activeTrackColor = userAccent,
+                            inactiveTrackColor = if (isDark) Color(0x33FFFFFF) else Color(0x22000000)
+                        ),
+                        modifier = Modifier.fillMaxWidth()
+                    )
 
-                HeartIconVector(
-                    isFavorite = song.isFavorite,
-                    defaultTint = animTextPrimary,
-                    modifier = Modifier.clickable { manager.toggleFavorite(song) }
-                )
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(formatTime(dragProgressMs.toLong()), color = animTextSecondary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                        Text(formatTime(manager.duration), color = animTextSecondary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                    }
+                }
 
-                Text("≡♪", fontSize = 24.sp, fontWeight = FontWeight.Black, color = animTextPrimary, modifier = Modifier.clickable { showQueueSheet = true })
+                // 3. Playback Controls Row (Repeat on Left, Shuffle on Right)
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    RepeatControlIcon(
+                        repeatMode = manager.repeatModeState,
+                        tint = monoColor,
+                        modifier = Modifier.clickable { manager.toggleRepeat() }.padding(8.dp)
+                    )
 
-                Text("•••", fontSize = 24.sp, fontWeight = FontWeight.Black, color = animTextPrimary, modifier = Modifier.clickable { showMenuModal = true })
+                    PreviousControlIcon(
+                        tint = monoColor,
+                        modifier = Modifier.clickable { manager.playPrevious() }.padding(8.dp)
+                    )
+
+                    Box(
+                        modifier = Modifier
+                            .size(68.dp)
+                            .shadow(8.dp, CircleShape)
+                            .clip(CircleShape)
+                            .background(if (isDark) Color.White else Color(0xFF0F172A))
+                            .clickable { manager.togglePlayPause() },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        val iconTint = if (isDark) Color(0xFF0F172A) else Color.White
+                        if (manager.isPlaying) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Box(modifier = Modifier.size(6.dp, 22.dp).clip(RoundedCornerShape(3.dp)).background(iconTint))
+                                Box(modifier = Modifier.size(6.dp, 22.dp).clip(RoundedCornerShape(3.dp)).background(iconTint))
+                            }
+                        } else {
+                            Canvas(modifier = Modifier.size(24.dp).padding(start = 3.dp)) {
+                                val path = Path().apply {
+                                    moveTo(size.width * 0.15f, size.height * 0.10f)
+                                    lineTo(size.width * 0.90f, size.height * 0.50f)
+                                    lineTo(size.width * 0.15f, size.height * 0.90f)
+                                    close()
+                                }
+                                drawPath(path, color = iconTint)
+                            }
+                        }
+                    }
+
+                    NextControlIcon(
+                        tint = monoColor,
+                        modifier = Modifier.clickable { manager.playNext() }.padding(8.dp)
+                    )
+
+                    ShuffleControlIcon(
+                        isShuffleOn = manager.isShuffleOn,
+                        tint = monoColor,
+                        modifier = Modifier.clickable { manager.toggleShuffle() }.padding(8.dp)
+                    )
+                }
+
+                // 4. Bottom Utility Dock
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(26.dp))
+                        .background(animSurface)
+                        .border(1.dp, Color(0x22FFFFFF), RoundedCornerShape(26.dp))
+                        .padding(vertical = 12.dp, horizontal = 24.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("❝≡", fontSize = 24.sp, fontWeight = FontWeight.Black, color = animTextPrimary, modifier = Modifier.clickable { showLyricsDialog = true })
+
+                    Text(
+                        text = if (manager.sleepTimerRemainingSeconds > 0) "${manager.sleepTimerRemainingSeconds / 60}m" else "☾",
+                        fontSize = 22.sp,
+                        color = if (manager.sleepTimerRemainingSeconds > 0) userAccent else animTextPrimary,
+                        fontWeight = FontWeight.Black,
+                        modifier = Modifier.clickable { showSleepDialog = true }
+                    )
+
+                    HeartIconVector(
+                        isFavorite = song.isFavorite,
+                        defaultTint = animTextPrimary,
+                        modifier = Modifier.clickable { manager.toggleFavorite(song) }
+                    )
+
+                    Text("≡♪", fontSize = 24.sp, fontWeight = FontWeight.Black, color = animTextPrimary, modifier = Modifier.clickable { showQueueSheet = true })
+
+                    Text("•••", fontSize = 24.sp, fontWeight = FontWeight.Black, color = animTextPrimary, modifier = Modifier.clickable { showMenuModal = true })
+                }
             }
         }
 
@@ -1520,6 +1566,7 @@ fun NextControlIcon(tint: Color, modifier: Modifier = Modifier) {
     }
 }
 
+// Clean Crossed-Arrow Shuffle Vector Icon Matching Reference 1000153262
 @Composable
 fun ShuffleControlIcon(isShuffleOn: Boolean, tint: Color, modifier: Modifier = Modifier) {
     val alpha = if (isShuffleOn) 1f else 0.4f
@@ -1529,33 +1576,41 @@ fun ShuffleControlIcon(isShuffleOn: Boolean, tint: Color, modifier: Modifier = M
         val h = size.height
         val color = tint.copy(alpha = alpha)
 
+        // Top-left to bottom-right path
         val p1 = Path().apply {
-            moveTo(w * 0.18f, h * 0.30f)
-            cubicTo(w * 0.45f, h * 0.30f, w * 0.55f, h * 0.70f, w * 0.80f, h * 0.70f)
+            moveTo(w * 0.18f, h * 0.28f)
+            lineTo(w * 0.36f, h * 0.28f)
+            lineTo(w * 0.64f, h * 0.72f)
+            lineTo(w * 0.82f, h * 0.72f)
         }
         drawPath(p1, color, style = stroke)
 
+        // Arrowhead at bottom-right
         val a1 = Path().apply {
             moveTo(w * 0.68f, h * 0.60f)
-            lineTo(w * 0.82f, h * 0.70f)
-            lineTo(w * 0.68f, h * 0.80f)
+            lineTo(w * 0.84f, h * 0.72f)
+            lineTo(w * 0.68f, h * 0.84f)
         }
         drawPath(a1, color, style = stroke)
 
+        // Bottom-left to top-right path (split to cross cleanly behind)
         val p2 = Path().apply {
-            moveTo(w * 0.18f, h * 0.70f)
-            cubicTo(w * 0.38f, h * 0.70f, w * 0.44f, h * 0.58f, w * 0.50f, h * 0.50f)
+            moveTo(w * 0.18f, h * 0.72f)
+            lineTo(w * 0.36f, h * 0.72f)
+            lineTo(w * 0.46f, h * 0.56f)
         }
         val p2b = Path().apply {
-            moveTo(w * 0.58f, h * 0.42f)
-            cubicTo(w * 0.64f, h * 0.30f, w * 0.72f, h * 0.30f, w * 0.80f, h * 0.30f)
+            moveTo(w * 0.54f, h * 0.44f)
+            lineTo(w * 0.64f, h * 0.28f)
+            lineTo(w * 0.82f, h * 0.28f)
         }
         drawPath(p2, color, style = stroke)
         drawPath(p2b, color, style = stroke)
 
+        // Arrowhead at top-right
         val a2 = Path().apply {
-            moveTo(w * 0.68f, h * 0.20f)
-            lineTo(w * 0.82f, h * 0.30f)
+            moveTo(w * 0.68f, h * 0.16f)
+            lineTo(w * 0.84f, h * 0.28f)
             lineTo(w * 0.68f, h * 0.40f)
         }
         drawPath(a2, color, style = stroke)
