@@ -1,24 +1,28 @@
 package com.melovish.player
 
+import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
+import android.content.BroadcastReceiver
 import android.content.ContentUris
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.SharedPreferences
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.drawable.Icon
 import android.media.AudioManager
+import android.media.MediaMetadata
 import android.media.MediaMetadataRetriever
 import android.media.audiofx.BassBoost
 import android.media.audiofx.Equalizer
+import android.media.session.MediaSession
+import android.media.session.PlaybackState
 import android.net.Uri
 import android.os.Build
 import android.provider.MediaStore
-import android.support.v4.media.MediaMetadataCompat
-import android.support.v4.media.session.MediaSessionCompat
-import android.support.v4.media.session.PlaybackStateCompat
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
@@ -28,7 +32,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
-import androidx.core.app.NotificationCompat
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
@@ -37,9 +40,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -53,7 +54,7 @@ class MusicManager(private val context: Context) {
         repeatMode = Player.REPEAT_MODE_ALL
     }
 
-    private var mediaSession: MediaSessionCompat? = null
+    private var mediaSession: MediaSession? = null
     private val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
     private val NOTIF_CHANNEL_ID = "melovish_playback_channel"
     private val NOTIF_ID = 1001
@@ -67,7 +68,7 @@ class MusicManager(private val context: Context) {
     var currentPosition by mutableLongStateOf(0L)
     var duration by mutableLongStateOf(0L)
     var playbackSpeed by mutableFloatStateOf(1.0f)
-    var repeatModeState by mutableIntStateOf(Player.REPEAT_MODE_ALL) // 0: OFF, 1: ONE, 2: ALL
+    var repeatModeState by mutableIntStateOf(Player.REPEAT_MODE_ALL)
     var isShuffleOn by mutableStateOf(false)
     var currentSectionName by mutableStateOf("All Songs")
     var currentVolume by mutableFloatStateOf(0.7f)
@@ -119,6 +120,7 @@ class MusicManager(private val context: Context) {
     init {
         initMediaSession()
         createNotificationChannel()
+        setupBroadcastReceiver()
         loadPreferences()
         setupPlayerListener()
         startPositionTracker()
@@ -126,16 +128,18 @@ class MusicManager(private val context: Context) {
     }
 
     private fun initMediaSession() {
-        mediaSession = MediaSessionCompat(context, "MelovishMediaSession").apply {
-            isActive = true
-            setCallback(object : MediaSessionCompat.Callback() {
-                override fun onPlay() { togglePlayPause() }
-                override fun onPause() { togglePlayPause() }
-                override fun onSkipToNext() { playNext() }
-                override fun onSkipToPrevious() { playPrevious() }
-                override fun onSeekTo(pos: Long) { seekTo(pos) }
-            })
-        }
+        try {
+            mediaSession = MediaSession(context, "MelovishMediaSession").apply {
+                isActive = true
+                setCallback(object : MediaSession.Callback() {
+                    override fun onPlay() { togglePlayPause() }
+                    override fun onPause() { togglePlayPause() }
+                    override fun onSkipToNext() { playNext() }
+                    override fun onSkipToPrevious() { playPrevious() }
+                    override fun onSeekTo(pos: Long) { seekTo(pos) }
+                })
+            }
+        } catch (_: Exception) {}
     }
 
     private fun createNotificationChannel() {
@@ -150,6 +154,31 @@ class MusicManager(private val context: Context) {
             }
             notificationManager.createNotificationChannel(channel)
         }
+    }
+
+    private fun setupBroadcastReceiver() {
+        val receiver = object : BroadcastReceiver() {
+            override fun onReceive(c: Context?, intent: Intent?) {
+                when (intent?.action) {
+                    "ACTION_PLAY", "ACTION_PAUSE" -> togglePlayPause()
+                    "ACTION_NEXT" -> playNext()
+                    "ACTION_PREV" -> playPrevious()
+                }
+            }
+        }
+        val filter = IntentFilter().apply {
+            addAction("ACTION_PLAY")
+            addAction("ACTION_PAUSE")
+            addAction("ACTION_NEXT")
+            addAction("ACTION_PREV")
+        }
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                context.registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
+            } else {
+                context.registerReceiver(receiver, filter)
+            }
+        } catch (_: Exception) {}
     }
 
     private fun setupPlayerListener() {
@@ -185,14 +214,14 @@ class MusicManager(private val context: Context) {
     }
 
     private fun updateMediaSessionState() {
-        val state = if (isPlaying) PlaybackStateCompat.STATE_PLAYING else PlaybackStateCompat.STATE_PAUSED
-        val playbackState = PlaybackStateCompat.Builder()
+        val state = if (isPlaying) PlaybackState.STATE_PLAYING else PlaybackState.STATE_PAUSED
+        val playbackState = PlaybackState.Builder()
             .setActions(
-                PlaybackStateCompat.ACTION_PLAY or
-                PlaybackStateCompat.ACTION_PAUSE or
-                PlaybackStateCompat.ACTION_SKIP_TO_NEXT or
-                PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS or
-                PlaybackStateCompat.ACTION_SEEK_TO
+                PlaybackState.ACTION_PLAY or
+                PlaybackState.ACTION_PAUSE or
+                PlaybackState.ACTION_SKIP_TO_NEXT or
+                PlaybackState.ACTION_SKIP_TO_PREVIOUS or
+                PlaybackState.ACTION_SEEK_TO
             )
             .setState(state, player.currentPosition, playbackSpeed)
             .build()
@@ -202,22 +231,23 @@ class MusicManager(private val context: Context) {
     private fun updateMediaSessionMetadata() {
         val song = currentSong ?: return
         val art = getAlbumArt(song)
-        val metadata = MediaMetadataCompat.Builder()
-            .putString(MediaMetadataCompat.METADATA_KEY_TITLE, song.title)
-            .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, if (song.artist.isNotBlank()) song.artist else "Unknown Artist")
-            .putString(MediaMetadataCompat.METADATA_KEY_ALBUM, song.album)
-            .putLong(MediaMetadataCompat.METADATA_KEY_DURATION, duration)
-            .apply {
-                if (art != null) putBitmap(MediaMetadataCompat.METADATA_KEY_ALBUM_ART, art)
-            }
-            .build()
-        mediaSession?.setMetadata(metadata)
+        val metadataBuilder = MediaMetadata.Builder()
+            .putString(MediaMetadata.METADATA_KEY_TITLE, song.title)
+            .putString(MediaMetadata.METADATA_KEY_ARTIST, if (song.artist.isNotBlank()) song.artist else "Unknown Artist")
+            .putString(MediaMetadata.METADATA_KEY_ALBUM, song.album)
+            .putLong(MediaMetadata.METADATA_KEY_DURATION, duration)
+
+        if (art != null) {
+            metadataBuilder.putBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART, art)
+            metadataBuilder.putBitmap(MediaMetadata.METADATA_KEY_ART, art)
+        }
+        mediaSession?.setMetadata(metadataBuilder.build())
     }
 
     fun updateNotification() {
         val song = currentSong ?: return
         val art = getAlbumArt(song)
-        val sessionToken = mediaSession?.sessionToken ?: return
+        val token = mediaSession?.sessionToken ?: return
 
         val intent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_SINGLE_TOP
@@ -227,44 +257,51 @@ class MusicManager(private val context: Context) {
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
 
-        val playPauseAction = if (isPlaying) {
-            NotificationCompat.Action(
-                android.R.drawable.ic_media_pause, "Pause",
-                PendingIntent.getBroadcast(context, 1, Intent("ACTION_PAUSE"), PendingIntent.FLAG_IMMUTABLE)
-            )
+        val playPauseIcon = if (isPlaying) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play
+        val playPauseTitle = if (isPlaying) "Pause" else "Play"
+
+        val prevAction = Notification.Action.Builder(
+            Icon.createWithResource(context, android.R.drawable.ic_media_previous),
+            "Previous",
+            PendingIntent.getBroadcast(context, 1, Intent("ACTION_PREV"), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+        ).build()
+
+        val playPauseAction = Notification.Action.Builder(
+            Icon.createWithResource(context, playPauseIcon),
+            playPauseTitle,
+            PendingIntent.getBroadcast(context, 2, Intent(if (isPlaying) "ACTION_PAUSE" else "ACTION_PLAY"), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+        ).build()
+
+        val nextAction = Notification.Action.Builder(
+            Icon.createWithResource(context, android.R.drawable.ic_media_next),
+            "Next",
+            PendingIntent.getBroadcast(context, 3, Intent("ACTION_NEXT"), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+        ).build()
+
+        val builder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            Notification.Builder(context, NOTIF_CHANNEL_ID)
         } else {
-            NotificationCompat.Action(
-                android.R.drawable.ic_media_play, "Play",
-                PendingIntent.getBroadcast(context, 1, Intent("ACTION_PLAY"), PendingIntent.FLAG_IMMUTABLE)
-            )
+            Notification.Builder(context)
         }
 
-        val prevAction = NotificationCompat.Action(
-            android.R.drawable.ic_media_previous, "Previous",
-            PendingIntent.getBroadcast(context, 2, Intent("ACTION_PREV"), PendingIntent.FLAG_IMMUTABLE)
-        )
-
-        val nextAction = NotificationCompat.Action(
-            android.R.drawable.ic_media_next, "Next",
-            PendingIntent.getBroadcast(context, 3, Intent("ACTION_NEXT"), PendingIntent.FLAG_IMMUTABLE)
-        )
-
-        val builder = NotificationCompat.Builder(context, NOTIF_CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.ic_media_play)
+        builder.setSmallIcon(android.R.drawable.ic_media_play)
             .setContentTitle(song.title)
             .setContentText(if (song.artist.isNotBlank()) song.artist else "Melovish")
             .setContentIntent(contentPendingIntent)
-            .setLargeIcon(art)
+            .setStyle(
+                Notification.MediaStyle()
+                    .setMediaSession(token)
+                    .setShowActionsInCompactView(0, 1, 2)
+            )
             .setOngoing(isPlaying)
-            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setVisibility(Notification.VISIBILITY_PUBLIC)
             .addAction(prevAction)
             .addAction(playPauseAction)
             .addAction(nextAction)
-            .setStyle(
-                androidx.media.app.NotificationCompat.MediaStyle()
-                    .setMediaSession(sessionToken)
-                    .setShowActionsInCompactView(0, 1, 2)
-            )
+
+        if (art != null) {
+            builder.setLargeIcon(art)
+        }
 
         try {
             notificationManager.notify(NOTIF_ID, builder.build())
@@ -290,7 +327,7 @@ class MusicManager(private val context: Context) {
 
     private fun startPositionTracker() {
         scope.launch {
-            while (isActive) {
+            while (true) {
                 if (isPlaying) {
                     currentPosition = player.currentPosition.coerceAtLeast(0L)
                 }
@@ -498,7 +535,6 @@ class MusicManager(private val context: Context) {
         savePlaylists()
     }
 
-    // Magnetic Speed Control (0.25x to 3.0x with magnetic anchors)
     fun setMagneticSpeed(targetSpeed: Float): Float {
         val anchors = floatArrayOf(0.25f, 0.5f, 1.0f, 1.5f, 2.0f, 2.5f, 3.0f)
         val snapThreshold = 0.05f
@@ -543,7 +579,6 @@ class MusicManager(private val context: Context) {
         }
     }
 
-    // Playlists & Pinned Folders
     fun createPlaylist(name: String) {
         val newPl = Playlist(id = System.currentTimeMillis().toString(), name = name)
         customPlaylists.add(newPl)
