@@ -17,6 +17,7 @@ import android.media.AudioDeviceInfo
 import android.media.AudioManager
 import android.media.MediaMetadata
 import android.media.MediaMetadataRetriever
+import android.media.RingtoneManager
 import android.media.audiofx.BassBoost
 import android.media.audiofx.Equalizer
 import android.media.audiofx.LoudnessEnhancer
@@ -25,6 +26,8 @@ import android.media.session.PlaybackState
 import android.net.Uri
 import android.os.Build
 import android.provider.MediaStore
+import android.provider.Settings
+import android.widget.Toast
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
@@ -394,12 +397,8 @@ class MusicManager(private val context: Context) {
         prefs.edit().putString("audio_output", output).apply()
         try {
             when (output) {
-                "Phone" -> {
-                    audioManager.isSpeakerphoneOn = false
-                }
-                "Speaker" -> {
-                    audioManager.isSpeakerphoneOn = true
-                }
+                "Phone" -> audioManager.isSpeakerphoneOn = false
+                "Speaker" -> audioManager.isSpeakerphoneOn = true
                 "Buds" -> {
                     audioManager.isSpeakerphoneOn = false
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -610,6 +609,45 @@ class MusicManager(private val context: Context) {
         player.prepare()
         player.play()
         recordSongPlayed(song)
+    }
+
+    // Play Next In Queue Option
+    fun playNextInQueue(song: Song) {
+        if (playbackQueue.isEmpty()) {
+            playSong(song, listOf(song), currentSectionName)
+            Toast.makeText(context, "Playing ${song.title}", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val currentIndex = player.currentMediaItemIndex
+        val targetIndex = (currentIndex + 1).coerceAtMost(playbackQueue.size)
+        playbackQueue.add(targetIndex, song)
+        player.addMediaItem(targetIndex, MediaItem.fromUri(song.uri))
+        Toast.makeText(context, "Will play next: ${song.title}", Toast.LENGTH_SHORT).show()
+    }
+
+    // Set as Ringtone Feature
+    fun setAsRingtone(song: Song) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            if (!Settings.System.canWrite(context)) {
+                Toast.makeText(context, "Please allow permission to set ringtones", Toast.LENGTH_LONG).show()
+                val intent = Intent(Settings.ACTION_MANAGE_WRITE_SETTINGS).apply {
+                    data = Uri.parse("package:" + context.packageName)
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                }
+                context.startActivity(intent)
+                return
+            }
+        }
+        try {
+            RingtoneManager.setActualDefaultRingtoneUri(
+                context,
+                RingtoneManager.TYPE_RINGTONE,
+                song.uri
+            )
+            Toast.makeText(context, "Ringtone set: ${song.title}", Toast.LENGTH_SHORT).show()
+        } catch (_: Exception) {
+            Toast.makeText(context, "Could not set ringtone", Toast.LENGTH_SHORT).show()
+        }
     }
 
     fun togglePlayPause() {
