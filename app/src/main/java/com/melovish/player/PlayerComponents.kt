@@ -832,7 +832,7 @@ fun FullPlayerSheet(
                         .fillMaxWidth(0.75f)
                         .clip(RoundedCornerShape(topStart = 24.dp, bottomStart = 24.dp))
                         .background(if (isDark) Color(0xFF0F172A) else Color.White)
-                        .border(1.dp, if (isDark) Color(0x22FFFFFF) else Color(0xFFE2E8F0), RoundedCornerShape(topStart = 24.dp, bottomStart = 24.dp))
+                        .border(1.dp, if (isDark) Color(0xFFE2E8F0), RoundedCornerShape(topStart = 24.dp, bottomStart = 24.dp))
                         .padding(20.dp)
                 ) {
                     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -867,6 +867,121 @@ fun FullPlayerSheet(
         if (showTagEditorDialog) TagEditorDialog(manager = manager, song = song, onDismiss = { showTagEditorDialog = false })
         if (showLyricsDialog) LyricsDialog(song = song, isDark = isDark, onDismiss = { showLyricsDialog = false })
         if (showAddToPlaylistDialog) AddToPlaylistDialog(manager = manager, song = song, onDismiss = { showAddToPlaylistDialog = false })
+    }
+}
+
+// Pro-Grade Equalizer Sheet
+@Composable
+fun EqualizerSheet(manager: MusicManager, onDismiss: () -> Unit) {
+    val accent = manager.accentColor
+
+    Box(modifier = Modifier.fillMaxSize().background(Color(0xF50A0F1D)).statusBarsPadding().padding(20.dp)) {
+        LazyColumn(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            item {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    Text("Equalizer & Audio FX", fontSize = 22.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                    Button(onClick = { onDismiss() }, shape = RoundedCornerShape(10.dp), colors = ButtonDefaults.buttonColors(containerColor = accent)) {
+                        Text("Done", color = Color.White, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+
+            item {
+                Row(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Color(0x1AFFFFFF)).padding(16.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    Column {
+                        Text("Master Equalizer", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                        Text(if (manager.isEqEnabled) "Hardware audio processor enabled" else "Processor bypassed", color = Color(0xFF94A3B8), fontSize = 12.sp)
+                    }
+                    Switch(checked = manager.isEqEnabled, onCheckedChange = { manager.toggleEqualizer(it) })
+                }
+            }
+
+            item {
+                Text("Sound Presets", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                Spacer(modifier = Modifier.height(8.dp))
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    items(manager.eqPresetNames) { preset ->
+                        val isSel = manager.selectedEqPreset == preset
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(if (isSel) accent else Color(0x22FFFFFF))
+                                .clickable { manager.applyEqPreset(preset) }
+                                .padding(horizontal = 16.dp, vertical = 8.dp)
+                        ) {
+                            Text(preset, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+
+            item {
+                Text("Frequency Response (-15dB to +15dB)", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                Spacer(modifier = Modifier.height(10.dp))
+                Column(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(Color(0x14FFFFFF)).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    for (i in 0 until manager.eqBandsCount) {
+                        val freq = manager.eqCenterFreqs[i] ?: (60 * (i + 1) * (i + 1))
+                        val label = if (freq >= 1000) "${freq / 1000} kHz" else "$freq Hz"
+                        val level = manager.eqBandLevels[i] ?: 0
+                        val levelDb = level / 100
+
+                        Column {
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text(label, color = Color(0xFFE2E8F0), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                Text("${if (levelDb > 0) "+$levelDb" else "$levelDb"} dB", color = accent, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            }
+                            Slider(
+                                value = level.toFloat(),
+                                onValueChange = { manager.setEqBandLevel(i, it.toInt()) },
+                                valueRange = manager.eqMinLevel.toFloat()..manager.eqMaxLevel.toFloat(),
+                                colors = SliderDefaults.colors(thumbColor = accent, activeTrackColor = accent)
+                            )
+                        }
+                    }
+                }
+            }
+
+            item {
+                Text("Acoustics & Depth", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                Spacer(modifier = Modifier.height(10.dp))
+                Column(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(Color(0x14FFFFFF)).padding(16.dp)) {
+                    Text("Bass Boost: ${manager.bassBoostPercent}%", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                    Slider(
+                        value = manager.bassBoostPercent.toFloat(),
+                        onValueChange = { manager.setBassBoost(it.toInt()) },
+                        valueRange = 0f..100f,
+                        colors = SliderDefaults.colors(thumbColor = accent, activeTrackColor = accent)
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Text("3D Surround (Virtualizer): ${manager.virtualizerPercent}%", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                    Slider(
+                        value = manager.virtualizerPercent.toFloat(),
+                        onValueChange = { manager.setVirtualizer(it.toInt()) },
+                        valueRange = 0f..100f,
+                        colors = SliderDefaults.colors(thumbColor = accent, activeTrackColor = accent)
+                    )
+                }
+            }
+
+            item {
+                Column(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(Color(0x14FFFFFF)).padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                        Column {
+                            Text("Stop Bass (Full Cut)", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                            Text("Completely cuts sub-bass frequencies", color = Color(0xFF94A3B8), fontSize = 11.sp)
+                        }
+                        Switch(checked = manager.isStopBass, onCheckedChange = { manager.toggleStopBass(it) })
+                    }
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                        Column {
+                            Text("Remove Vocals (Center Cut)", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                            Text("Attenuates vocal center frequency bands", color = Color(0xFF94A3B8), fontSize = 11.sp)
+                        }
+                        Switch(checked = manager.isRemoveVocals, onCheckedChange = { manager.toggleRemoveVocals(it) })
+                    }
+                }
+            }
+        }
     }
 }
 
