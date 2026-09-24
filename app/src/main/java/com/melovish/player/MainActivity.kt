@@ -41,8 +41,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
@@ -60,6 +62,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -84,6 +87,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import kotlinx.coroutines.launch
 import java.io.File
 import kotlin.math.cos
 import kotlin.math.sin
@@ -149,6 +153,12 @@ fun MelovishRootApp(manager: MusicManager) {
     var activeTagEditSong by remember { mutableStateOf<Song?>(null) }
     var activeSongInfo by remember { mutableStateOf<Song?>(null) }
     var activeAddToPlaylistSong by remember { mutableStateOf<Song?>(null) }
+
+    // LazyListStates for scroll-to-top
+    val homeListState = rememberLazyListState()
+    val libraryListState = rememberLazyListState()
+    val searchListState = rememberLazyListState()
+    val coroutineScope = rememberCoroutineScope()
 
     BackHandler(enabled = isSettingsEqOpen || isPlayerExpanded || selectedArtist != null || selectedAlbum != null || selectedPlaylist != null || selectedFolder != null || activeScreen != "home") {
         when {
@@ -226,14 +236,17 @@ fun MelovishRootApp(manager: MusicManager) {
                         )
                         activeScreen == "search" -> SearchScreen(
                             manager = manager,
+                            listState = searchListState,
                             onSongMenuClick = { activeSongForMenu = it }
                         )
                         activeScreen == "library" -> LibraryScreen(
                             manager = manager,
+                            listState = libraryListState,
                             onFolderClick = { folder -> selectedFolder = folder }
                         )
                         else -> HomeScreen(
                             manager = manager,
+                            listState = homeListState,
                             onPlaylistClick = { pl -> selectedPlaylist = pl },
                             onResumeClick = { manager.resumeLastPlayed() },
                             onSongMenuClick = { activeSongForMenu = it }
@@ -249,7 +262,19 @@ fun MelovishRootApp(manager: MusicManager) {
                     BottomNavBar(
                         manager = manager,
                         activeTab = activeScreen,
-                        onTabSelected = { activeScreen = it }
+                        onTabSelected = { tab ->
+                            if (activeScreen == tab) {
+                                coroutineScope.launch {
+                                    when (tab) {
+                                        "home" -> homeListState.animateScrollToItem(0)
+                                        "library" -> libraryListState.animateScrollToItem(0)
+                                        "search" -> searchListState.animateScrollToItem(0)
+                                    }
+                                }
+                            } else {
+                                activeScreen = tab
+                            }
+                        }
                     )
                 }
             }
@@ -372,11 +397,7 @@ fun RecentlyPlayedCard(
                 .fillMaxWidth()
                 .background(
                     Brush.verticalGradient(
-                        colors = listOf(
-                            Color.Transparent,
-                            Color(0x88000000),
-                            Color(0xDE000000)
-                        )
+                        colors = listOf(Color.Transparent, Color(0x88000000), Color(0xDE000000))
                     )
                 )
                 .padding(horizontal = 6.dp, vertical = 6.dp),
@@ -450,8 +471,7 @@ fun LiveMechanicalGearIcon(
             val cavityRadius = innerRingRadius * 0.72f
             drawCircle(
                 color = if (isDark) Color(0xFF0F172A) else Color(0xFFE2E8F0),
-                radius = cavityRadius,
-                center = center
+                radius = cavityRadius, center = center
             )
 
             val hubRadius = innerRingRadius * 0.32f
@@ -465,9 +485,7 @@ fun LiveMechanicalGearIcon(
                     center.y + (cavityRadius * sin(spAngle))
                 )
                 drawLine(
-                    color = gearColor,
-                    start = center,
-                    end = spokeEnd,
+                    color = gearColor, start = center, end = spokeEnd,
                     strokeWidth = spokeStroke.width
                 )
             }
@@ -533,6 +551,7 @@ fun TopBar(
     }
 }
 
+// Universal Song Row with Active Accent Highlight & Live Audio Waveform Equalizer
 @Composable
 fun UniversalSongRow(
     song: Song,
@@ -541,8 +560,12 @@ fun UniversalSongRow(
     onPlay: () -> Unit,
     onMenuClick: () -> Unit
 ) {
-    val textColor = if (isDark) Color.White else Color(0xFF0F172A)
-    val cardBg = if (isDark) Color(0xFF0F172A) else Color.White
+    val isPlayingThis = manager.currentSong?.id == song.id
+    val accent = manager.accentColor
+
+    val textColor = if (isPlayingThis) accent else if (isDark) Color.White else Color(0xFF0F172A)
+    val cardBg = if (isPlayingThis) accent.copy(alpha = 0.08f) else if (isDark) Color(0xFF0F172A) else Color.White
+    val borderColor = if (isPlayingThis) accent.copy(alpha = 0.6f) else if (isDark) Color(0x1AFFFFFF) else Color(0xFFECEFF3)
 
     var albumArtBitmap by remember(song.id) { mutableStateOf(manager.getCachedAlbumArt(song.id)) }
     LaunchedEffect(song.id) {
@@ -556,7 +579,7 @@ fun UniversalSongRow(
             .fillMaxWidth()
             .clip(RoundedCornerShape(16.dp))
             .background(cardBg)
-            .border(1.dp, if (isDark) Color(0x1AFFFFFF) else Color(0xFFECEFF3), RoundedCornerShape(16.dp))
+            .border(1.2.dp, borderColor, RoundedCornerShape(16.dp))
             .clickable { onPlay() }
             .padding(horizontal = 12.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -573,11 +596,30 @@ fun UniversalSongRow(
         }
         Spacer(modifier = Modifier.width(12.dp))
         Column(modifier = Modifier.weight(1f)) {
-            Text(song.title, color = textColor, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text("${formatFileSize(song.size)} • ${if (song.artist.isNotBlank()) song.artist else "Unknown"}", color = Color(0xFF64748B), fontSize = 11.sp, maxLines = 1)
+            Text(
+                text = song.title,
+                color = textColor,
+                fontSize = 14.sp,
+                fontWeight = if (isPlayingThis) FontWeight.ExtraBold else FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                text = "${formatFileSize(song.size)} • ${if (song.artist.isNotBlank()) song.artist else "Unknown"}",
+                color = Color(0xFF64748B),
+                fontSize = 11.sp,
+                maxLines = 1
+            )
         }
-        Text(formatTime(song.duration), color = Color(0xFF94A3B8), fontSize = 12.sp)
-        Spacer(modifier = Modifier.width(4.dp))
+
+        // Live Audio Equalizer in Place of Song Duration when Active!
+        if (isPlayingThis) {
+            LiveAudioWaveEqualizer(isAnimating = manager.isPlaying, accentColor = accent)
+        } else {
+            Text(formatTime(song.duration), color = Color(0xFF94A3B8), fontSize = 12.sp)
+        }
+
+        Spacer(modifier = Modifier.width(6.dp))
 
         Box(
             modifier = Modifier
@@ -586,7 +628,7 @@ fun UniversalSongRow(
                 .clickable { onMenuClick() },
             contentAlignment = Alignment.Center
         ) {
-            Text("⋮", color = textColor, fontSize = 20.sp, fontWeight = FontWeight.ExtraBold)
+            Text("⋮", color = if (isDark) Color.White else Color(0xFF0F172A), fontSize = 20.sp, fontWeight = FontWeight.ExtraBold)
         }
     }
 }
@@ -595,6 +637,7 @@ fun UniversalSongRow(
 @Composable
 fun HomeScreen(
     manager: MusicManager,
+    listState: LazyListState,
     onPlaylistClick: (Playlist) -> Unit,
     onResumeClick: () -> Unit,
     onSongMenuClick: (Song) -> Unit
@@ -613,37 +656,20 @@ fun HomeScreen(
 
     Box(modifier = Modifier.fillMaxSize()) {
         LazyColumn(
+            state = listState,
             modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
             contentPadding = PaddingValues(bottom = 80.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            // Recently Played Header with Right-Side Play Button
+            // Recently Played Header (Right-side play button removed per request)
             item {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 8.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text("Recently Played", color = textColor, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-
-                    Box(
-                        modifier = Modifier
-                            .size(34.dp)
-                            .shadow(4.dp, CircleShape)
-                            .clip(CircleShape)
-                            .background(manager.accentColor)
-                            .clickable {
-                                if (recents.isNotEmpty()) {
-                                    manager.playSong(recents.first(), recents, "Recently Played")
-                                }
-                            },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text("▶", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.ExtraBold)
-                    }
-                }
+                Text(
+                    text = "Recently Played",
+                    color = textColor,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(top = 8.dp)
+                )
 
                 Spacer(modifier = Modifier.height(10.dp))
 
@@ -671,7 +697,7 @@ fun HomeScreen(
                 }
             }
 
-            // Favourite Playlists with Glassmorphic Icons & Long-Press Color Picker
+            // Favourite Playlists
             item {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -727,7 +753,7 @@ fun HomeScreen(
                 }
             }
 
-            // All Songs Header with Persistent Sorting Dropdown
+            // All Songs Header with Persistent Sorting
             item {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -781,7 +807,7 @@ fun HomeScreen(
             }
         }
 
-        // Smart Floating Action Button: ONLY SHOWN WHEN NOTHING IS PLAYING
+        // Smart Floating Play Button: Hides when something starts playing
         if (manager.currentSong == null) {
             Box(
                 modifier = Modifier
@@ -812,9 +838,7 @@ fun HomeScreen(
             onColorSelected = { newColor ->
                 manager.updatePlaylistColorOnly(pl, newColor.toArgb().toLong())
             },
-            onOpenRainbowPicker = {
-                showRainbowWheelForPl = true
-            },
+            onOpenRainbowPicker = { showRainbowWheelForPl = true },
             onDismiss = { customizingPlaylist = null }
         )
     }
@@ -827,10 +851,13 @@ fun HomeScreen(
     }
 }
 
-// Library Screen with Persistent Folder Sorting & Full Glassmorphic Folder Color Customization
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun LibraryScreen(manager: MusicManager, onFolderClick: (String) -> Unit) {
+fun LibraryScreen(
+    manager: MusicManager,
+    listState: LazyListState,
+    onFolderClick: (String) -> Unit
+) {
     val isDark = manager.isDarkMode
     val textColor = if (isDark) Color.White else Color(0xFF0F172A)
     val cardBg = if (isDark) Color(0xFF0F172A) else Color.White
@@ -843,6 +870,7 @@ fun LibraryScreen(manager: MusicManager, onFolderClick: (String) -> Unit) {
     val folderMap = manager.allSongs.groupBy { it.folderName }
 
     LazyColumn(
+        state = listState,
         modifier = Modifier.fillMaxSize().padding(16.dp),
         contentPadding = PaddingValues(bottom = 80.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -885,12 +913,9 @@ fun LibraryScreen(manager: MusicManager, onFolderClick: (String) -> Unit) {
                     .padding(16.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Glassmorphic Full-Color Folder Icon
                 GlassmorphicFolderIcon(
                     folderColor = fColor,
-                    modifier = Modifier
-                        .size(42.dp)
-                        .clickable { customizingFolder = folderName }
+                    modifier = Modifier.size(42.dp).clickable { customizingFolder = folderName }
                 )
 
                 Spacer(modifier = Modifier.width(14.dp))
@@ -914,9 +939,7 @@ fun LibraryScreen(manager: MusicManager, onFolderClick: (String) -> Unit) {
             onColorSelected = { newColor ->
                 manager.updateFolderColorOnly(folder, newColor.toArgb().toLong())
             },
-            onOpenRainbowPicker = {
-                showRainbowWheelForFolder = true
-            },
+            onOpenRainbowPicker = { showRainbowWheelForFolder = true },
             onDismiss = { customizingFolder = null }
         )
     }
@@ -930,7 +953,11 @@ fun LibraryScreen(manager: MusicManager, onFolderClick: (String) -> Unit) {
 }
 
 @Composable
-fun SearchScreen(manager: MusicManager, onSongMenuClick: (Song) -> Unit) {
+fun SearchScreen(
+    manager: MusicManager,
+    listState: LazyListState,
+    onSongMenuClick: (Song) -> Unit
+) {
     var query by remember { mutableStateOf("") }
     val focusRequester = remember { FocusRequester() }
     val keyboardController = LocalSoftwareKeyboardController.current
@@ -957,7 +984,7 @@ fun SearchScreen(manager: MusicManager, onSongMenuClick: (Song) -> Unit) {
             shape = RoundedCornerShape(16.dp)
         )
         Spacer(modifier = Modifier.height(14.dp))
-        LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        LazyColumn(state = listState, verticalArrangement = Arrangement.spacedBy(10.dp)) {
             items(filtered, key = { it.id }) { song ->
                 UniversalSongRow(
                     song = song,
@@ -1327,6 +1354,7 @@ fun CreatePlaylistDialog(manager: MusicManager, onDismiss: () -> Unit) {
     }
 }
 
+// Bottom Navigation Bar with Tap-to-Scroll-to-Top Support
 @Composable
 fun BottomNavBar(manager: MusicManager, activeTab: String, onTabSelected: (String) -> Unit) {
     val isDark = manager.isDarkMode
@@ -1348,9 +1376,20 @@ fun BottomNavBar(manager: MusicManager, activeTab: String, onTabSelected: (Strin
             Triple("search", "Search", "🔍")
         ).forEach { (key, label, icon) ->
             val isSel = activeTab == key
-            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.clickable { onTabSelected(key) }) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable { onTabSelected(key) }
+                    .padding(horizontal = 14.dp, vertical = 4.dp)
+            ) {
                 Text(icon, fontSize = 20.sp)
-                Text(text = label, fontSize = 11.sp, color = if (isSel) accent else Color(0xFF64748B), fontWeight = if (isSel) FontWeight.Bold else FontWeight.Normal)
+                Text(
+                    text = label,
+                    fontSize = 11.sp,
+                    color = if (isSel) accent else Color(0xFF64748B),
+                    fontWeight = if (isSel) FontWeight.Bold else FontWeight.Normal
+                )
             }
         }
     }

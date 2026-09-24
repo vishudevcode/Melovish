@@ -5,9 +5,17 @@ import android.graphics.Bitmap
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -15,11 +23,13 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -51,9 +61,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -64,6 +72,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
@@ -72,13 +81,58 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.media3.common.Player
+import kotlinx.coroutines.delay
 import java.util.Locale
 import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.sin
 import kotlin.math.sqrt
 
-// Curved Back Arrow Icon matching your exact reference (Image 1000153218)
+// 4-Bar Animated Live Audio Equalizer for Playing Song Rows
+@Composable
+fun LiveAudioWaveEqualizer(
+    isAnimating: Boolean,
+    accentColor: Color,
+    modifier: Modifier = Modifier
+) {
+    val infiniteTransition = rememberInfiniteTransition(label = "audioWave")
+
+    val h1 by infiniteTransition.animateFloat(
+        initialValue = 0.25f, targetValue = 0.95f,
+        animationSpec = infiniteRepeatable(tween(480, easing = LinearEasing), RepeatMode.Reverse), label = "h1"
+    )
+    val h2 by infiniteTransition.animateFloat(
+        initialValue = 0.85f, targetValue = 0.20f,
+        animationSpec = infiniteRepeatable(tween(560, easing = LinearEasing), RepeatMode.Reverse), label = "h2"
+    )
+    val h3 by infiniteTransition.animateFloat(
+        initialValue = 0.35f, targetValue = 1.0f,
+        animationSpec = infiniteRepeatable(tween(420, easing = LinearEasing), RepeatMode.Reverse), label = "h3"
+    )
+    val h4 by infiniteTransition.animateFloat(
+        initialValue = 0.70f, targetValue = 0.30f,
+        animationSpec = infiniteRepeatable(tween(510, easing = LinearEasing), RepeatMode.Reverse), label = "h4"
+    )
+
+    Row(
+        modifier = modifier.height(16.dp).width(20.dp),
+        horizontalArrangement = Arrangement.spacedBy(2.5.dp),
+        verticalAlignment = Alignment.Bottom
+    ) {
+        val heights = if (isAnimating) listOf(h1, h2, h3, h4) else listOf(0.3f, 0.4f, 0.35f, 0.25f)
+        heights.forEach { frac ->
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight(frac)
+                    .clip(RoundedCornerShape(2.dp))
+                    .background(accentColor)
+            )
+        }
+    }
+}
+
+// Curved Back Arrow Icon matching reference 1000153218
 @Composable
 fun CurvedBackArrowIcon(
     tint: Color,
@@ -101,7 +155,7 @@ fun CurvedBackArrowIcon(
     }
 }
 
-// Circular Embossed Glass Back Button Container (Images 1000153217 & 1000153216)
+// Circular Embossed Glass Back Button Container (1000153217 / 1000153216)
 @Composable
 fun GlassBackButton(
     isDark: Boolean,
@@ -129,7 +183,7 @@ fun GlassBackButton(
     }
 }
 
-// Glassmorphic Full-Color Folder Icon matching your reference (Image 1000153221)
+// Glassmorphic Full-Color Folder Icon (1000153221)
 @Composable
 fun GlassmorphicFolderIcon(
     folderColor: Color,
@@ -139,9 +193,7 @@ fun GlassmorphicFolderIcon(
         val w = size.width
         val h = size.height
 
-        // 1. Solid Back Folder Body with Tab
         val backPath = Path().apply {
-            // Top tab left
             moveTo(w * 0.12f, h * 0.22f)
             quadraticBezierTo(w * 0.12f, h * 0.14f, w * 0.20f, h * 0.14f)
             lineTo(w * 0.42f, h * 0.14f)
@@ -156,15 +208,11 @@ fun GlassmorphicFolderIcon(
             close()
         }
 
-        val backGradient = Brush.verticalGradient(
-            colors = listOf(
-                folderColor,
-                folderColor.copy(alpha = 0.85f)
-            )
+        drawPath(
+            backPath,
+            brush = Brush.verticalGradient(listOf(folderColor, folderColor.copy(alpha = 0.85f)))
         )
-        drawPath(backPath, brush = backGradient)
 
-        // 2. Front Frosted Glass Flap
         val glassPath = Path().apply {
             moveTo(w * 0.15f, h * 0.38f)
             quadraticBezierTo(w * 0.13f, h * 0.38f, w * 0.18f, h * 0.38f)
@@ -177,23 +225,17 @@ fun GlassmorphicFolderIcon(
             close()
         }
 
-        // Translucent Glass Fill
-        val glassFill = Brush.verticalGradient(
-            colors = listOf(
-                Color.White.copy(alpha = 0.50f),
-                folderColor.copy(alpha = 0.58f)
-            )
-        )
-        drawPath(glassPath, brush = glassFill)
-
-        // Crisp Glass Specular Rim Highlight
         drawPath(
             glassPath,
             brush = Brush.verticalGradient(
-                colors = listOf(
-                    Color.White.copy(alpha = 0.85f),
-                    Color.White.copy(alpha = 0.25f)
-                )
+                listOf(Color.White.copy(alpha = 0.50f), folderColor.copy(alpha = 0.58f))
+            )
+        )
+
+        drawPath(
+            glassPath,
+            brush = Brush.verticalGradient(
+                listOf(Color.White.copy(alpha = 0.85f), Color.White.copy(alpha = 0.25f))
             ),
             style = Stroke(width = 1.6f.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
         )
@@ -210,11 +252,10 @@ fun FolderColorDialog(
     onOpenRainbowPicker: () -> Unit,
     onDismiss: () -> Unit
 ) {
-    // 9 Preset Colors with Background Mustard as #1
     val preset9Colors = listOf(
-        Color(0xFFF59E0B), // 1. Background Mustard / Warm Gold (Default)
+        Color(0xFFF59E0B), // 1. Mustard / Gold (Default)
         Color(0xFF00B4D8), // 2. Teal Blue
-        Color(0xFF10B981), // 3. Mint / Emerald Green
+        Color(0xFF10B981), // 3. Mint / Emerald
         Color(0xFF39FF14), // 4. Bright Neon Green
         Color(0xFFFF2A85), // 5. Pink / Rose
         Color(0xFFEF4444), // 6. Crimson Red
@@ -250,7 +291,6 @@ fun FolderColorDialog(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // Live Folder Preview
                 Box(
                     modifier = Modifier
                         .size(72.dp)
@@ -273,9 +313,7 @@ fun FolderColorDialog(
 
                 Spacer(modifier = Modifier.height(10.dp))
 
-                // 2 Rows of 5 items (9 Colors + 10th Rainbow Wheel)
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    // Row 1: Slots 1 to 5
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween
@@ -295,7 +333,6 @@ fun FolderColorDialog(
                         }
                     }
 
-                    // Row 2: Slots 6 to 9 + 10th Circle Rainbow Picker
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
@@ -315,17 +352,14 @@ fun FolderColorDialog(
                             )
                         }
 
-                        // 10th Slot: Circular Rainbow Wheel Icon
+                        // 10th Slot: Circular Rainbow Wheel
                         Box(
                             modifier = Modifier
                                 .size(38.dp)
                                 .clip(CircleShape)
                                 .background(
                                     Brush.sweepGradient(
-                                        listOf(
-                                            Color.Red, Color.Yellow, Color.Green,
-                                            Color.Cyan, Color.Blue, Color.Magenta, Color.Red
-                                        )
+                                        listOf(Color.Red, Color.Yellow, Color.Green, Color.Cyan, Color.Blue, Color.Magenta, Color.Red)
                                     )
                                 )
                                 .border(2.dp, Color.White, CircleShape)
@@ -372,12 +406,8 @@ fun DefaultProfileAvatar(
         )
 
         val bodyBrush = Brush.verticalGradient(
-            colors = listOf(
-                Color(0xFFCBD6FF),
-                Color(0xFF5B82FC)
-            ),
-            startY = h * 0.48f,
-            endY = h * 0.95f
+            colors = listOf(Color(0xFFCBD6FF), Color(0xFF5B82FC)),
+            startY = h * 0.48f, endY = h * 0.95f
         )
 
         val bodyPath = Path().apply {
@@ -392,18 +422,10 @@ fun DefaultProfileAvatar(
         val headRadius = w * 0.235f
         val headCenter = Offset(w * 0.5f, h * 0.285f)
         val headBrush = Brush.verticalGradient(
-            colors = listOf(
-                Color(0xFFE2F1FE),
-                Color(0xFF7FA8FE)
-            ),
-            startY = headCenter.y - headRadius,
-            endY = headCenter.y + headRadius
+            colors = listOf(Color(0xFFE2F1FE), Color(0xFF7FA8FE)),
+            startY = headCenter.y - headRadius, endY = headCenter.y + headRadius
         )
-        drawCircle(
-            brush = headBrush,
-            radius = headRadius,
-            center = headCenter
-        )
+        drawCircle(brush = headBrush, radius = headRadius, center = headCenter)
     }
 }
 
@@ -474,6 +496,7 @@ fun extractMaterialYouPalette(bitmap: Bitmap?, isDarkMode: Boolean, fallbackAcce
     }
 }
 
+// Full Player Sheet with Full-Screen Swipe, Double-Tap 10s Seek, and Reference Controls
 @Composable
 fun FullPlayerSheet(
     manager: MusicManager,
@@ -496,6 +519,23 @@ fun FullPlayerSheet(
     var isDraggingSlider by remember { mutableStateOf(false) }
     var dragProgressMs by remember { mutableFloatStateOf(0f) }
 
+    // Double-tap visual animation ripple states
+    var showSeekLeftAnim by remember { mutableStateOf(false) }
+    var showSeekRightAnim by remember { mutableStateOf(false) }
+
+    LaunchedEffect(showSeekLeftAnim) {
+        if (showSeekLeftAnim) {
+            delay(650)
+            showSeekLeftAnim = false
+        }
+    }
+    LaunchedEffect(showSeekRightAnim) {
+        if (showSeekRightAnim) {
+            delay(650)
+            showSeekRightAnim = false
+        }
+    }
+
     LaunchedEffect(manager.currentPosition) {
         if (!isDraggingSlider) {
             dragProgressMs = manager.currentPosition.toFloat()
@@ -515,12 +555,15 @@ fun FullPlayerSheet(
 
     val animBgTop by animateColorAsState(targetPalette.bgTop, tween(650, easing = FastOutSlowInEasing), label = "bgTop")
     val animBgBottom by animateColorAsState(targetPalette.bgBottom, tween(650, easing = FastOutSlowInEasing), label = "bgBottom")
-    val animAccent by animateColorAsState(targetPalette.primaryAccent, tween(650, easing = FastOutSlowInEasing), label = "accent")
     val animSurface by animateColorAsState(targetPalette.surface, tween(650, easing = FastOutSlowInEasing), label = "surface")
     val animTextPrimary by animateColorAsState(targetPalette.textPrimary, tween(650, easing = FastOutSlowInEasing), label = "textPrimary")
     val animTextSecondary by animateColorAsState(targetPalette.textSecondary, tween(650, easing = FastOutSlowInEasing), label = "textSecondary")
 
     val monoColor = if (isDark) Color.White else Color(0xFF0F172A)
+    val userAccent = manager.accentColor
+
+    // Full-Screen Swipe Tracking: Right-to-Left = Next, Left-to-Right = Previous
+    var totalDragX by remember { mutableFloatStateOf(0f) }
 
     Box(
         modifier = Modifier
@@ -528,77 +571,117 @@ fun FullPlayerSheet(
             .background(Brush.verticalGradient(listOf(animBgTop, animBgBottom)))
             .statusBarsPadding()
             .padding(horizontal = 24.dp)
+            .pointerInput(Unit) {
+                detectHorizontalDragGestures(
+                    onDragStart = { totalDragX = 0f },
+                    onHorizontalDrag = { change, dragAmount ->
+                        change.consume()
+                        totalDragX += dragAmount
+                    },
+                    onDragEnd = {
+                        if (totalDragX < -60f) {
+                            manager.playNext()
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        } else if (totalDragX > 60f) {
+                            manager.playPrevious()
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        }
+                    }
+                )
+            }
     ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(top = 28.dp, bottom = 18.dp),
+                .padding(top = 24.dp, bottom = 18.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
+            // 1. Big Album Art (Dominating Upper Half, Double-Tap to Seek)
             Box(
                 modifier = Modifier
-                    .size(310.dp)
-                    .shadow(16.dp, RoundedCornerShape(32.dp), spotColor = animAccent)
+                    .size(335.dp)
+                    .shadow(20.dp, RoundedCornerShape(32.dp), spotColor = userAccent)
                     .clip(RoundedCornerShape(32.dp))
                     .background(animSurface)
                     .border(1.5.dp, Color(0x33FFFFFF), RoundedCornerShape(32.dp))
                     .pointerInput(song.id) {
-                        detectHorizontalDragGestures { change, dragAmount ->
-                            change.consume()
-                            if (dragAmount < -35f) {
-                                manager.playNext()
-                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                            } else if (dragAmount > 35f) {
-                                manager.playPrevious()
+                        detectTapGestures(
+                            onDoubleTap = { offset ->
+                                if (offset.x < size.width / 2f) {
+                                    showSeekLeftAnim = true
+                                    manager.seekTo((manager.currentPosition - 10000L).coerceAtLeast(0L))
+                                } else {
+                                    showSeekRightAnim = true
+                                    manager.seekTo((manager.currentPosition + 10000L).coerceAtMost(manager.duration))
+                                }
                                 haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                             }
-                        }
+                        )
                     },
                 contentAlignment = Alignment.Center
             ) {
                 if (albumArtBitmap != null) {
-                    Image(bitmap = albumArtBitmap!!.asImageBitmap(), contentDescription = "Art", modifier = Modifier.fillMaxSize())
+                    Image(
+                        bitmap = albumArtBitmap!!.asImageBitmap(),
+                        contentDescription = "Art",
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
+                    )
                 } else {
-                    Text("🎵", fontSize = 96.sp)
+                    Text("🎵", fontSize = 110.sp)
+                }
+
+                // Left Ripple Overlay: « 10s
+                AnimatedVisibility(
+                    visible = showSeekLeftAnim,
+                    enter = fadeIn(tween(150)),
+                    exit = fadeOut(tween(400)),
+                    modifier = Modifier.align(Alignment.CenterStart)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxHeight()
+                            .fillMaxWidth(0.5f)
+                            .background(Color(0x66000000)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("«", fontSize = 36.sp, color = Color.White, fontWeight = FontWeight.Black)
+                            Text("10s", fontSize = 16.sp, color = Color.White, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+
+                // Right Ripple Overlay: 10s »
+                AnimatedVisibility(
+                    visible = showSeekRightAnim,
+                    enter = fadeIn(tween(150)),
+                    exit = fadeOut(tween(400)),
+                    modifier = Modifier.align(Alignment.CenterEnd)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxHeight()
+                            .fillMaxWidth(0.5f)
+                            .background(Color(0x66000000)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("»", fontSize = 36.sp, color = Color.White, fontWeight = FontWeight.Black)
+                            Text("10s", fontSize = 16.sp, color = Color.White, fontWeight = FontWeight.Bold)
+                        }
+                    }
                 }
             }
 
             Spacer(modifier = Modifier.height(26.dp))
 
-            Slider(
-                value = dragProgressMs.coerceIn(0f, manager.duration.toFloat().coerceAtLeast(1f)),
-                onValueChange = {
-                    isDraggingSlider = true
-                    dragProgressMs = it
-                },
-                onValueChangeFinished = {
-                    isDraggingSlider = false
-                    manager.seekTo(dragProgressMs.toLong())
-                },
-                valueRange = 0f..(manager.duration.toFloat().coerceAtLeast(1f)),
-                colors = SliderDefaults.colors(
-                    thumbColor = animAccent,
-                    activeTrackColor = animAccent,
-                    inactiveTrackColor = if (isDark) Color(0x33FFFFFF) else Color(0x22000000)
-                ),
-                modifier = Modifier.fillMaxWidth()
-            )
-
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text(formatTime(dragProgressMs.toLong()), color = animTextSecondary, fontSize = 12.sp)
-                Text(formatTime(manager.duration), color = animTextSecondary, fontSize = 12.sp)
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
-
+            // 2. Song Name & Metadata
             Text(
                 text = song.title,
                 color = animTextPrimary,
-                fontSize = 20.sp,
-                fontWeight = FontWeight.Bold,
+                fontSize = 22.sp,
+                fontWeight = FontWeight.ExtraBold,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 textAlign = TextAlign.Center
@@ -613,104 +696,144 @@ fun FullPlayerSheet(
                 textAlign = TextAlign.Center
             )
 
-            Spacer(modifier = Modifier.height(28.dp))
+            Spacer(modifier = Modifier.height(24.dp))
+
+            // 3. Song Progress Bar (Driven by User Selected Accent Color)
+            Slider(
+                value = dragProgressMs.coerceIn(0f, manager.duration.toFloat().coerceAtLeast(1f)),
+                onValueChange = {
+                    isDraggingSlider = true
+                    dragProgressMs = it
+                },
+                onValueChangeFinished = {
+                    isDraggingSlider = false
+                    manager.seekTo(dragProgressMs.toLong())
+                },
+                valueRange = 0f..(manager.duration.toFloat().coerceAtLeast(1f)),
+                colors = SliderDefaults.colors(
+                    thumbColor = userAccent,
+                    activeTrackColor = userAccent,
+                    inactiveTrackColor = if (isDark) Color(0x33FFFFFF) else Color(0x22000000)
+                ),
+                modifier = Modifier.fillMaxWidth()
+            )
 
             Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
+                horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                val isRepeatActive = manager.repeatModeState != Player.REPEAT_MODE_OFF
-                RepeatVectorIcon(
-                    isActive = isRepeatActive,
-                    isRepeatOne = manager.repeatModeState == Player.REPEAT_MODE_ONE,
-                    monoColor = monoColor,
-                    modifier = Modifier.clickable { manager.toggleRepeat() }.padding(8.dp)
-                )
-
-                Text(
-                    text = "⏮",
-                    fontSize = 32.sp,
-                    color = monoColor,
-                    modifier = Modifier.clickable { manager.playPrevious() }.padding(8.dp)
-                )
-
-                Text(
-                    text = if (manager.isPlaying) "❚❚" else "▶",
-                    color = monoColor,
-                    fontSize = 44.sp,
-                    fontWeight = FontWeight.Black,
-                    modifier = Modifier.clickable { manager.togglePlayPause() }.padding(8.dp)
-                )
-
-                Text(
-                    text = "⏭",
-                    fontSize = 32.sp,
-                    color = monoColor,
-                    modifier = Modifier.clickable { manager.playNext() }.padding(8.dp)
-                )
-
-                ShuffleVectorIcon(
-                    isActive = manager.isShuffleOn,
-                    monoColor = monoColor,
-                    modifier = Modifier.clickable { manager.toggleShuffle() }.padding(8.dp)
-                )
-            }
-
-            Spacer(modifier = Modifier.height(22.dp))
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                Text("🔈", fontSize = 16.sp)
-                Slider(
-                    value = manager.currentVolume,
-                    onValueChange = { manager.setHardwareVolume(it) },
-                    valueRange = 0f..1f,
-                    colors = SliderDefaults.colors(
-                        thumbColor = animAccent,
-                        activeTrackColor = animAccent,
-                        inactiveTrackColor = if (isDark) Color(0x33FFFFFF) else Color(0x22000000)
-                    ),
-                    modifier = Modifier.weight(1f)
-                )
-                Text("🔊", fontSize = 16.sp)
+                Text(formatTime(dragProgressMs.toLong()), color = animTextSecondary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                Text(formatTime(manager.duration), color = animTextSecondary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
             }
 
             Spacer(modifier = Modifier.weight(1f))
 
+            // 4. Primary Playback Controls Row (Shifted Just Above Bottom Bar)
+            // Order: [Repeat] [Prev] [Play/Pause] [Next] [Shuffle]
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(24.dp))
-                    .background(animSurface)
-                    .border(1.dp, Color(0x22FFFFFF), RoundedCornerShape(24.dp))
-                    .padding(vertical = 12.dp, horizontal = 20.dp),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("❝≡", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = animTextPrimary, modifier = Modifier.clickable { showLyricsDialog = true })
+                // Far Left: Repeat Button
+                RepeatControlIcon(
+                    repeatMode = manager.repeatModeState,
+                    tint = monoColor,
+                    modifier = Modifier.clickable { manager.toggleRepeat() }.padding(8.dp)
+                )
+
+                // Previous
+                PreviousControlIcon(
+                    tint = monoColor,
+                    modifier = Modifier.clickable { manager.playPrevious() }.padding(8.dp)
+                )
+
+                // Center: High-Contrast Solid Circular Play/Pause Button
+                Box(
+                    modifier = Modifier
+                        .size(68.dp)
+                        .shadow(8.dp, CircleShape)
+                        .clip(CircleShape)
+                        .background(if (isDark) Color.White else Color(0xFF0F172A))
+                        .clickable { manager.togglePlayPause() },
+                    contentAlignment = Alignment.Center
+                ) {
+                    val iconTint = if (isDark) Color(0xFF0F172A) else Color.White
+                    if (manager.isPlaying) {
+                        // Clean Pause Bars
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Box(modifier = Modifier.size(6.dp, 22.dp).clip(RoundedCornerShape(3.dp)).background(iconTint))
+                            Box(modifier = Modifier.size(6.dp, 22.dp).clip(RoundedCornerShape(3.dp)).background(iconTint))
+                        }
+                    } else {
+                        // Clean Centered Play Triangle
+                        Canvas(modifier = Modifier.size(24.dp).padding(start = 3.dp)) {
+                            val path = Path().apply {
+                                moveTo(size.width * 0.15f, size.height * 0.10f)
+                                lineTo(size.width * 0.90f, size.height * 0.50f)
+                                lineTo(size.width * 0.15f, size.height * 0.90f)
+                                close()
+                            }
+                            drawPath(path, color = iconTint)
+                        }
+                    }
+                }
+
+                // Next
+                NextControlIcon(
+                    tint = monoColor,
+                    modifier = Modifier.clickable { manager.playNext() }.padding(8.dp)
+                )
+
+                // Far Right: Shuffle Button
+                ShuffleControlIcon(
+                    isShuffleOn = manager.isShuffleOn,
+                    tint = monoColor,
+                    modifier = Modifier.clickable { manager.toggleShuffle() }.padding(8.dp)
+                )
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            // 5. Bottom Utility Dock (Enlarged Bold Icons, Consistent Heart Shape)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(26.dp))
+                    .background(animSurface)
+                    .border(1.dp, Color(0x22FFFFFF), RoundedCornerShape(26.dp))
+                    .padding(vertical = 14.dp, horizontal = 24.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Lyrics
+                Text("❝≡", fontSize = 24.sp, fontWeight = FontWeight.Black, color = animTextPrimary, modifier = Modifier.clickable { showLyricsDialog = true })
+
+                // Sleep Timer
                 Text(
                     text = if (manager.sleepTimerRemainingSeconds > 0) "${manager.sleepTimerRemainingSeconds / 60}m" else "☾",
-                    fontSize = 20.sp,
-                    color = if (manager.sleepTimerRemainingSeconds > 0) animAccent else animTextPrimary,
-                    fontWeight = FontWeight.ExtraBold,
+                    fontSize = 22.sp,
+                    color = if (manager.sleepTimerRemainingSeconds > 0) userAccent else animTextPrimary,
+                    fontWeight = FontWeight.Black,
                     modifier = Modifier.clickable { showSleepDialog = true }
                 )
-                Text(
-                    text = if (song.isFavorite) "♥" else "♡",
-                    fontSize = 22.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = if (song.isFavorite) Color(0xFFEF4444) else animTextPrimary,
+
+                // Consistent Heart Shape (Red When Favorited)
+                HeartIconVector(
+                    isFavorite = song.isFavorite,
+                    defaultTint = animTextPrimary,
                     modifier = Modifier.clickable { manager.toggleFavorite(song) }
                 )
-                Text("≡♪", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = animTextPrimary, modifier = Modifier.clickable { showQueueSheet = true })
-                Text("•••", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = animTextPrimary, modifier = Modifier.clickable { showMenuModal = true })
+
+                // Queue
+                Text("≡♪", fontSize = 24.sp, fontWeight = FontWeight.Black, color = animTextPrimary, modifier = Modifier.clickable { showQueueSheet = true })
+
+                // More Menu
+                Text("•••", fontSize = 24.sp, fontWeight = FontWeight.Black, color = animTextPrimary, modifier = Modifier.clickable { showMenuModal = true })
             }
         }
 
+        // More Modal Sheet
         if (showMenuModal) {
             Box(
                 modifier = Modifier
@@ -762,9 +885,182 @@ fun FullPlayerSheet(
     }
 }
 
+// Consistent Heart Shape (Vibrant Red When Favorited)
+@Composable
+fun HeartIconVector(
+    isFavorite: Boolean,
+    defaultTint: Color,
+    modifier: Modifier = Modifier
+) {
+    Canvas(modifier = modifier.size(24.dp)) {
+        val w = size.width
+        val h = size.height
+
+        val path = Path().apply {
+            moveTo(w * 0.5f, h * 0.85f)
+            cubicTo(w * 0.15f, h * 0.60f, 0f, h * 0.38f, 0f, h * 0.22f)
+            cubicTo(0f, h * 0.08f, w * 0.18f, 0f, w * 0.36f, 0f)
+            cubicTo(w * 0.44f, 0f, w * 0.5f, h * 0.08f, w * 0.5f, h * 0.12f)
+            cubicTo(w * 0.5f, h * 0.08f, w * 0.56f, 0f, w * 0.64f, 0f)
+            cubicTo(w * 0.82f, 0f, w, h * 0.08f, w, h * 0.22f)
+            cubicTo(w, h * 0.38f, w * 0.85f, h * 0.60f, w * 0.5f, h * 0.85f)
+            close()
+        }
+
+        if (isFavorite) {
+            drawPath(path, color = Color(0xFFEF4444))
+        } else {
+            drawPath(
+                path,
+                color = defaultTint,
+                style = Stroke(width = 2.2f.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
+            )
+        }
+    }
+}
+
+// Sleek Clean Controls Vector Set (Matching Reference 1000153233)
+@Composable
+fun RepeatControlIcon(repeatMode: Int, tint: Color, modifier: Modifier = Modifier) {
+    val isActive = repeatMode != Player.REPEAT_MODE_OFF
+    val alpha = if (isActive) 1f else 0.4f
+    Box(modifier = modifier.size(26.dp), contentAlignment = Alignment.Center) {
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val stroke = Stroke(width = 2.4f.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
+            val w = size.width
+            val h = size.height
+            val color = tint.copy(alpha = alpha)
+
+            val p1 = Path().apply {
+                moveTo(w * 0.22f, h * 0.55f)
+                lineTo(w * 0.22f, h * 0.30f)
+                lineTo(w * 0.78f, h * 0.30f)
+            }
+            drawPath(p1, color, style = stroke)
+
+            val a1 = Path().apply {
+                moveTo(w * 0.66f, h * 0.18f)
+                lineTo(w * 0.82f, h * 0.30f)
+                lineTo(w * 0.66f, h * 0.42f)
+            }
+            drawPath(a1, color, style = stroke)
+
+            val p2 = Path().apply {
+                moveTo(w * 0.78f, h * 0.45f)
+                lineTo(w * 0.78f, h * 0.70f)
+                lineTo(w * 0.22f, h * 0.70f)
+            }
+            drawPath(p2, color, style = stroke)
+
+            val a2 = Path().apply {
+                moveTo(w * 0.34f, h * 0.58f)
+                lineTo(w * 0.18f, h * 0.70f)
+                lineTo(w * 0.34f, h * 0.82f)
+            }
+            drawPath(a2, color, style = stroke)
+        }
+        if (repeatMode == Player.REPEAT_MODE_ONE) {
+            Text("1", color = tint, fontSize = 10.sp, fontWeight = FontWeight.Black)
+        }
+    }
+}
+
+@Composable
+fun PreviousControlIcon(tint: Color, modifier: Modifier = Modifier) {
+    Canvas(modifier = modifier.size(28.dp)) {
+        val w = size.width
+        val h = size.height
+
+        // Left Stop Bar
+        drawLine(
+            color = tint,
+            start = Offset(w * 0.22f, h * 0.20f),
+            end = Offset(w * 0.22f, h * 0.80f),
+            strokeWidth = 3.5f.dp.toPx(),
+            cap = StrokeCap.Round
+        )
+
+        // Triangle
+        val tri = Path().apply {
+            moveTo(w * 0.80f, h * 0.20f)
+            lineTo(w * 0.34f, h * 0.50f)
+            lineTo(w * 0.80f, h * 0.80f)
+            close()
+        }
+        drawPath(tri, color = tint)
+    }
+}
+
+@Composable
+fun NextControlIcon(tint: Color, modifier: Modifier = Modifier) {
+    Canvas(modifier = modifier.size(28.dp)) {
+        val w = size.width
+        val h = size.height
+
+        // Triangle
+        val tri = Path().apply {
+            moveTo(w * 0.20f, h * 0.20f)
+            lineTo(w * 0.66f, h * 0.50f)
+            lineTo(w * 0.20f, h * 0.80f)
+            close()
+        }
+        drawPath(tri, color = tint)
+
+        // Right Stop Bar
+        drawLine(
+            color = tint,
+            start = Offset(w * 0.78f, h * 0.20f),
+            end = Offset(w * 0.78f, h * 0.80f),
+            strokeWidth = 3.5f.dp.toPx(),
+            cap = StrokeCap.Round
+        )
+    }
+}
+
+@Composable
+fun ShuffleControlIcon(isShuffleOn: Boolean, tint: Color, modifier: Modifier = Modifier) {
+    val alpha = if (isShuffleOn) 1f else 0.4f
+    Canvas(modifier = modifier.size(26.dp)) {
+        val stroke = Stroke(width = 2.4f.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
+        val w = size.width
+        val h = size.height
+        val color = tint.copy(alpha = alpha)
+
+        val p1 = Path().apply {
+            moveTo(w * 0.18f, h * 0.30f)
+            cubicTo(w * 0.45f, h * 0.30f, w * 0.55f, h * 0.70f, w * 0.80f, h * 0.70f)
+        }
+        drawPath(p1, color, style = stroke)
+
+        val a1 = Path().apply {
+            moveTo(w * 0.68f, h * 0.60f)
+            lineTo(w * 0.82f, h * 0.70f)
+            lineTo(w * 0.68f, h * 0.80f)
+        }
+        drawPath(a1, color, style = stroke)
+
+        val p2 = Path().apply {
+            moveTo(w * 0.18f, h * 0.70f)
+            cubicTo(w * 0.38f, h * 0.70f, w * 0.44f, h * 0.58f, w * 0.50f, h * 0.50f)
+        }
+        val p2b = Path().apply {
+            moveTo(w * 0.58f, h * 0.42f)
+            cubicTo(w * 0.64f, h * 0.30f, w * 0.72f, h * 0.30f, w * 0.80f, h * 0.30f)
+        }
+        drawPath(p2, color, style = stroke)
+        drawPath(p2b, color, style = stroke)
+
+        val a2 = Path().apply {
+            moveTo(w * 0.68f, h * 0.20f)
+            lineTo(w * 0.82f, h * 0.30f)
+            lineTo(w * 0.68f, h * 0.40f)
+        }
+        drawPath(a2, color, style = stroke)
+    }
+}
+
 @Composable
 fun EqualizerSheet(manager: MusicManager, onDismiss: () -> Unit) {
-    val isDark = manager.isDarkMode
     val accent = manager.accentColor
 
     Box(modifier = Modifier.fillMaxSize().background(Color(0xF50A0F1D)).statusBarsPadding().padding(20.dp)) {
@@ -874,99 +1170,6 @@ fun EqualizerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                 }
             }
         }
-    }
-}
-
-@Composable
-fun RepeatVectorIcon(isActive: Boolean, isRepeatOne: Boolean, monoColor: Color, modifier: Modifier = Modifier) {
-    val strokeWidth = if (isActive) 3.8f else 2.0f
-    val alpha = if (isActive) 1.0f else 0.38f
-
-    Box(modifier = modifier.size(24.dp), contentAlignment = Alignment.Center) {
-        Canvas(modifier = Modifier.fillMaxSize()) {
-            val color = monoColor.copy(alpha = alpha)
-            val w = size.width
-            val h = size.height
-            val stroke = Stroke(width = strokeWidth * density, cap = StrokeCap.Round, join = StrokeJoin.Round)
-
-            val topPath = Path().apply {
-                moveTo(w * 0.2f, h * 0.55f)
-                lineTo(w * 0.2f, h * 0.35f)
-                quadraticBezierTo(w * 0.2f, h * 0.25f, w * 0.35f, h * 0.25f)
-                lineTo(w * 0.75f, h * 0.25f)
-            }
-            drawPath(topPath, color, style = stroke)
-
-            val topArrow = Path().apply {
-                moveTo(w * 0.65f, h * 0.15f)
-                lineTo(w * 0.82f, h * 0.25f)
-                lineTo(w * 0.65f, h * 0.35f)
-            }
-            drawPath(topArrow, color, style = stroke)
-
-            val botPath = Path().apply {
-                moveTo(w * 0.8f, h * 0.45f)
-                lineTo(w * 0.8f, h * 0.65f)
-                quadraticBezierTo(w * 0.8f, h * 0.75f, w * 0.65f, h * 0.75f)
-                lineTo(w * 0.25f, h * 0.75f)
-            }
-            drawPath(botPath, color, style = stroke)
-
-            val botArrow = Path().apply {
-                moveTo(w * 0.35f, h * 0.65f)
-                lineTo(w * 0.18f, h * 0.75f)
-                lineTo(w * 0.35f, h * 0.85f)
-            }
-            drawPath(botArrow, color, style = stroke)
-        }
-
-        if (isRepeatOne) {
-            Text("1", color = monoColor, fontSize = 10.sp, fontWeight = FontWeight.ExtraBold)
-        }
-    }
-}
-
-@Composable
-fun ShuffleVectorIcon(isActive: Boolean, monoColor: Color, modifier: Modifier = Modifier) {
-    val strokeWidth = if (isActive) 3.8f else 2.0f
-    val alpha = if (isActive) 1.0f else 0.38f
-
-    Canvas(modifier = modifier.size(24.dp)) {
-        val color = monoColor.copy(alpha = alpha)
-        val w = size.width
-        val h = size.height
-        val stroke = Stroke(width = strokeWidth * density, cap = StrokeCap.Round, join = StrokeJoin.Round)
-
-        val p1 = Path().apply {
-            moveTo(w * 0.18f, h * 0.32f)
-            cubicTo(w * 0.42f, h * 0.32f, w * 0.58f, h * 0.68f, w * 0.80f, h * 0.68f)
-        }
-        drawPath(p1, color, style = stroke)
-
-        val a1 = Path().apply {
-            moveTo(w * 0.70f, h * 0.58f)
-            lineTo(w * 0.84f, h * 0.68f)
-            lineTo(w * 0.70f, h * 0.78f)
-        }
-        drawPath(a1, color, style = stroke)
-
-        val p2 = Path().apply {
-            moveTo(w * 0.18f, h * 0.68f)
-            cubicTo(w * 0.38f, h * 0.68f, w * 0.45f, h * 0.56f, w * 0.50f, h * 0.50f)
-        }
-        val p2b = Path().apply {
-            moveTo(w * 0.58f, h * 0.42f)
-            cubicTo(w * 0.64f, h * 0.32f, w * 0.72f, h * 0.32f, w * 0.80f, h * 0.32f)
-        }
-        drawPath(p2, color, style = stroke)
-        drawPath(p2b, color, style = stroke)
-
-        val a2 = Path().apply {
-            moveTo(w * 0.70f, h * 0.22f)
-            lineTo(w * 0.84f, h * 0.32f)
-            lineTo(w * 0.70f, h * 0.42f)
-        }
-        drawPath(a2, color, style = stroke)
     }
 }
 
@@ -1101,7 +1304,6 @@ fun SleepTimerDialog(manager: MusicManager, onDismiss: () -> Unit) {
     }
 }
 
-// 10th Circle Rainbow Color Picker Dialog
 @Composable
 fun CircularColorPickerDialog(manager: MusicManager, onDismiss: () -> Unit) {
     val isDark = manager.isDarkMode

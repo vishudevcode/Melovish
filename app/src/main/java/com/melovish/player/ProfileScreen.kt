@@ -425,7 +425,8 @@ fun ProfileSongRow(
     rank: Int? = null,
     onClick: () -> Unit
 ) {
-    val textColor = if (isDark) Color.White else Color(0xFF0F172A)
+    val isPlayingThis = manager.currentSong?.id == song.id
+    val textColor = if (isPlayingThis) accent else if (isDark) Color.White else Color(0xFF0F172A)
     var albumArtBitmap by remember(song.id) { mutableStateOf(manager.getCachedAlbumArt(song.id)) }
 
     LaunchedEffect(song.id) {
@@ -438,7 +439,8 @@ fun ProfileSongRow(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(14.dp))
-            .background(if (isDark) Color(0x14FFFFFF) else Color(0xFFF8FAFC))
+            .background(if (isPlayingThis) accent.copy(alpha = 0.08f) else if (isDark) Color(0x14FFFFFF) else Color(0xFFF8FAFC))
+            .border(1.2.dp, if (isPlayingThis) accent.copy(alpha = 0.6f) else Color.Transparent, RoundedCornerShape(14.dp))
             .clickable { onClick() }
             .padding(10.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -474,7 +476,7 @@ fun ProfileSongRow(
                 text = song.title,
                 color = textColor,
                 fontSize = 14.sp,
-                fontWeight = FontWeight.SemiBold,
+                fontWeight = if (isPlayingThis) FontWeight.ExtraBold else FontWeight.SemiBold,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
@@ -489,7 +491,9 @@ fun ProfileSongRow(
 
         Spacer(modifier = Modifier.width(8.dp))
 
-        if (showPlayCount) {
+        if (isPlayingThis) {
+            LiveAudioWaveEqualizer(isAnimating = manager.isPlaying, accentColor = accent)
+        } else if (showPlayCount) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("🔥", fontSize = 12.sp)
                 Spacer(modifier = Modifier.width(4.dp))

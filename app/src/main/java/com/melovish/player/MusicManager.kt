@@ -57,7 +57,7 @@ import java.io.FileOutputStream
 import java.util.Locale
 
 class MusicManager(private val context: Context) {
-    private val prefs: SharedPreferences = context.getSharedPreferences("melovish_prefs_v7", Context.MODE_PRIVATE)
+    private val prefs: SharedPreferences = context.getSharedPreferences("melovish_prefs_v8", Context.MODE_PRIVATE)
     private val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
 
     val player: ExoPlayer = ExoPlayer.Builder(context).build().apply {
@@ -97,10 +97,9 @@ class MusicManager(private val context: Context) {
     val customPlaylists = mutableStateListOf<Playlist>()
     val hiddenFolders = mutableStateListOf<String>()
     val hiddenAudioIds = mutableStateListOf<Long>()
-    val folderIcons = mutableStateMapOf<String, String>()
     val folderColors = mutableStateMapOf<String, Long>()
 
-    // Persistent Sort State
+    // Persistent Sort Preferences
     var currentSortOrder by mutableStateOf(
         try {
             SongSortOrder.valueOf(prefs.getString("saved_song_sort", SongSortOrder.A_TO_Z.name) ?: SongSortOrder.A_TO_Z.name)
@@ -816,8 +815,8 @@ class MusicManager(private val context: Context) {
     }
 
     fun seekTo(positionMs: Long) {
-        currentPosition = positionMs
-        player.seekTo(positionMs)
+        currentPosition = positionMs.coerceIn(0L, duration)
+        player.seekTo(currentPosition)
         updateMediaSessionState()
     }
 
@@ -926,7 +925,7 @@ class MusicManager(private val context: Context) {
             songIds = songsInFolder.toMutableList(),
             isFolderPinned = true,
             folderName = folderName,
-            icon = getFolderIcon(folderName),
+            icon = "📁",
             iconColorHex = getFolderColor(folderName).toArgb().toLong()
         )
         customPlaylists.add(newPl)
@@ -962,12 +961,8 @@ class MusicManager(private val context: Context) {
         savePlaylists()
     }
 
-    fun getFolderIcon(folderName: String): String {
-        return folderIcons[folderName] ?: prefs.getString("folder_icon_$folderName", "📁") ?: "📁"
-    }
-
     fun getFolderColor(folderName: String): Color {
-        val defaultMustard = 0xFFF59E0B // Background mustard color
+        val defaultMustard = 0xFFF59E0B
         val hex = folderColors[folderName] ?: prefs.getLong("folder_color_$folderName", defaultMustard)
         return Color(hex)
     }
