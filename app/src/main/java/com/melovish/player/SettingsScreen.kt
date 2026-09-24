@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
@@ -28,8 +29,6 @@ import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -43,37 +42,35 @@ import androidx.compose.ui.unit.sp
 
 @Composable
 fun SettingsScreen(
-    onBackClick: () -> Unit
+    manager: MusicManager,
+    onBackClick: () -> Unit,
+    onOpenProfile: () -> Unit,
+    onOpenEqualizer: () -> Unit
 ) {
-    val emeraldAccent = Color(0xFF10B981)
-    val cardBackground = Color(0xFFFFFFFF)
-    val screenBackground = Color(0xFFF6F8FA)
-    val textPrimary = Color(0xFF1E293B)
-    val textSecondary = Color(0xFF64748B)
+    val emerald = Color(0xFF10B981)
+    var showHideFolderDialog by remember { mutableStateOf(false) }
+    var showHideAudioDialog by remember { mutableStateOf(false) }
 
-    var selectedTheme by remember { mutableStateOf("System") }
-    var selectedPaletteIndex by remember { mutableIntStateOf(0) }
+    if (showHideFolderDialog) {
+        ManageHiddenFoldersSheet(
+            manager = manager,
+            onDismiss = { showHideFolderDialog = false }
+        )
+        return
+    }
 
-    // Player Settings States
-    var colorfulPlayer by remember { mutableStateOf(false) }
-    var resumeFirstFile by remember { mutableStateOf(false) }
-    var fadeOnStart by remember { mutableStateOf(false) }
-    var gaplessPlayback by remember { mutableStateOf(false) }
-    var crossfadeEnabled by remember { mutableStateOf(false) }
-    var crossfadeSeconds by remember { mutableFloatStateOf(0f) }
-
-    // Audio Settings States
-    var losslessAudio by remember { mutableStateOf(false) }
-    var volumeNormalization by remember { mutableStateOf(false) }
-    var volumeBoost by remember { mutableFloatStateOf(100f) }
-    var monoAudio by remember { mutableStateOf(false) }
-    var audioOutput by remember { mutableStateOf("Phone") }
-    var equalizerEnabled by remember { mutableStateOf(false) }
+    if (showHideAudioDialog) {
+        ManageHiddenAudioSheet(
+            manager = manager,
+            onDismiss = { showHideAudioDialog = false }
+        )
+        return
+    }
 
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
-            .background(screenBackground),
+            .background(Color(0xFFF6F8FA)),
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 20.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
@@ -82,29 +79,24 @@ fun SettingsScreen(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(vertical = 12.dp),
+                    .padding(vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Box(
                     modifier = Modifier
-                        .size(38.dp)
+                        .size(36.dp)
                         .clip(CircleShape)
                         .clickable { onBackClick() },
                     contentAlignment = Alignment.Center
                 ) {
-                    Text("←", fontSize = 22.sp, color = textPrimary, fontWeight = FontWeight.Bold)
+                    Text("←", fontSize = 22.sp, color = Color(0xFF1E293B), fontWeight = FontWeight.Bold)
                 }
                 Spacer(modifier = Modifier.width(12.dp))
-                Text(
-                    text = "Settings",
-                    fontSize = 22.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = textPrimary
-                )
+                Text("Settings", fontSize = 22.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1E293B))
             }
         }
 
-        // 1. Profile Section
+        // 1. Profile Summary Card
         item {
             SettingsCard(title = "Profile", subtitle = "Manage your profile information and preferences.") {
                 Row(
@@ -112,6 +104,7 @@ fun SettingsScreen(
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(14.dp))
                         .border(1.dp, Color(0xFFE2E8F0), RoundedCornerShape(14.dp))
+                        .clickable { onOpenProfile() }
                         .padding(14.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
@@ -121,28 +114,28 @@ fun SettingsScreen(
                             modifier = Modifier
                                 .size(44.dp)
                                 .clip(CircleShape)
-                                .background(Color(0xFFE2E8F0)),
+                                .background(Color(0xFF0F172A)),
                             contentAlignment = Alignment.Center
                         ) {
                             Text("👤", fontSize = 20.sp)
                         }
                         Spacer(modifier = Modifier.width(14.dp))
                         Text(
-                            text = "Bharat Bhushan",
+                            text = manager.profileName,
                             fontSize = 16.sp,
                             fontWeight = FontWeight.SemiBold,
-                            color = textPrimary
+                            color = Color(0xFF1E293B)
                         )
                     }
-                    Text("›", fontSize = 22.sp, color = textSecondary)
+                    Text("›", fontSize = 22.sp, color = Color(0xFF64748B))
                 }
             }
         }
 
-        // 2. Appearance Section
+        // 2. Appearance Card
         item {
             SettingsCard(title = "Appearance", subtitle = "Customize the look and feel of your music player.") {
-                Text("Theme", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = textPrimary)
+                Text("Theme", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF1E293B))
                 Spacer(modifier = Modifier.height(10.dp))
 
                 Row(
@@ -150,9 +143,9 @@ fun SettingsScreen(
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     listOf(
-                        Triple("System", "💻", selectedTheme == "System"),
-                        Triple("Light", "☼", selectedTheme == "Light"),
-                        Triple("Dark", "☾", selectedTheme == "Dark")
+                        Triple("System", "💻", manager.selectedTheme == "System"),
+                        Triple("Light", "☼", manager.selectedTheme == "Light"),
+                        Triple("Dark", "☾", manager.selectedTheme == "Dark")
                     ).forEach { (theme, icon, isSelected) ->
                         Box(
                             modifier = Modifier
@@ -161,26 +154,25 @@ fun SettingsScreen(
                                 .clip(RoundedCornerShape(12.dp))
                                 .border(
                                     width = if (isSelected) 1.5.dp else 1.dp,
-                                    color = if (isSelected) emeraldAccent else Color(0xFFE2E8F0),
+                                    color = if (isSelected) emerald else Color(0xFFE2E8F0),
                                     shape = RoundedCornerShape(12.dp)
                                 )
                                 .background(if (isSelected) Color(0x1010B981) else Color.Transparent)
-                                .clickable { selectedTheme = theme },
+                                .clickable { manager.selectedTheme = theme },
                             contentAlignment = Alignment.Center
                         ) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text(icon, fontSize = 14.sp, color = if (isSelected) emeraldAccent else textSecondary)
-                                Text(theme, fontSize = 12.sp, fontWeight = FontWeight.Medium, color = textPrimary)
+                                Text(icon, fontSize = 14.sp, color = if (isSelected) emerald else Color(0xFF64748B))
+                                Text(theme, fontSize = 12.sp, fontWeight = FontWeight.Medium, color = Color(0xFF1E293B))
                             }
                         }
                     }
                 }
 
                 Spacer(modifier = Modifier.height(18.dp))
-                Text("Color Palette", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = textPrimary)
+                Text("Color Palette", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF1E293B))
                 Spacer(modifier = Modifier.height(12.dp))
 
-                // Color Palette Grid
                 val palettes = listOf(
                     Color(0xFF10B981), Color(0xFF06B6D4), Color(0xFFEC4899),
                     Color(0xFF0EA5E9), Color(0xFFF97316), Color(0xFF84CC16),
@@ -194,8 +186,8 @@ fun SettingsScreen(
                     palettes.take(5).forEachIndexed { index, color ->
                         ColorPaletteCircle(
                             color = color,
-                            isSelected = selectedPaletteIndex == index,
-                            onClick = { selectedPaletteIndex = index }
+                            isSelected = manager.selectedPaletteIndex == index,
+                            onClick = { manager.selectedPaletteIndex = index }
                         )
                     }
                 }
@@ -208,80 +200,76 @@ fun SettingsScreen(
                         val realIndex = index + 5
                         ColorPaletteCircle(
                             color = color,
-                            isSelected = selectedPaletteIndex == realIndex,
-                            onClick = { selectedPaletteIndex = realIndex }
+                            isSelected = manager.selectedPaletteIndex == realIndex,
+                            onClick = { manager.selectedPaletteIndex = realIndex }
                         )
                     }
                 }
             }
         }
 
-        // 3. Player Settings Section
+        // 3. Player Settings Card
         item {
             SettingsCard(title = "Player Settings", subtitle = "Configure playback behavior.") {
-                SettingsToggleRow("🎨", "Colourful Player", "Player background adapts to album art.", colorfulPlayer) { colorfulPlayer = it }
-                SettingsToggleRow("⏯", "Resume only the first file", "Playback will only resume for the first track.", resumeFirstFile) { resumeFirstFile = it }
-                SettingsToggleRow("🔉", "Fade on start", "Gently fade in audio on playback.", fadeOnStart) { fadeOnStart = it }
-                SettingsToggleRow("♾", "Gapless Playback", "Removes pauses between tracks.", gaplessPlayback) { gaplessPlayback = it }
-
-                SettingsToggleRow("⇹", "Crossfade", "Adjust the fade duration between tracks.", crossfadeEnabled) { crossfadeEnabled = it }
-                if (crossfadeEnabled) {
+                SettingsToggleRow("🎨", "Colourful Player", "Player background adapts to album art.", manager.isColorfulPlayer) { manager.isColorfulPlayer = it }
+                SettingsToggleRow("⏯", "Resume only the first file", "Playback will only resume for the first track.", manager.isResumeFirstOnly) { manager.isResumeFirstOnly = it }
+                SettingsToggleRow("🔉", "Fade on start", "Gently fade in audio on playback.", manager.isFadeOnStart) { manager.isFadeOnStart = it }
+                SettingsToggleRow("♾", "Gapless Playback", "Removes pauses between tracks.", manager.isGaplessEnabled) { manager.isGaplessEnabled = it }
+                SettingsToggleRow("⇹", "Crossfade", "Adjust the fade duration between tracks.", manager.crossfadeDuration > 0f) {
+                    manager.crossfadeDuration = if (it) 3f else 0f
+                }
+                if (manager.crossfadeDuration > 0f) {
                     Row(
                         modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Slider(
-                            value = crossfadeSeconds,
-                            onValueChange = { crossfadeSeconds = it },
+                            value = manager.crossfadeDuration,
+                            onValueChange = { manager.crossfadeDuration = it },
                             valueRange = 0f..12f,
                             modifier = Modifier.weight(1f),
-                            colors = SliderDefaults.colors(thumbColor = emeraldAccent, activeTrackColor = emeraldAccent)
+                            colors = SliderDefaults.colors(thumbColor = emerald, activeTrackColor = emerald)
                         )
                         Spacer(modifier = Modifier.width(12.dp))
-                        Text("${crossfadeSeconds.toInt()}s", fontSize = 12.sp, color = textSecondary)
+                        Text("${manager.crossfadeDuration.toInt()}s", fontSize = 12.sp, color = Color(0xFF64748B))
                     }
                 }
             }
         }
 
-        // 4. Audio Section
+        // 4. Audio Settings Card
         item {
             SettingsCard(title = "Audio", subtitle = "Adjust audio playback settings.") {
-                SettingsToggleRow("📶", "Lossless Audio", "Use Dolby Atmos and Hi-Res Audio.", losslessAudio) { losslessAudio = it }
-                SettingsToggleRow("🔊", "Volume Normalization", "Set the same loudness level for all tracks.", volumeNormalization) { volumeNormalization = it }
+                SettingsToggleRow("📶", "Lossless Audio", "Use Dolby Atmos and Hi-Res Audio.", manager.isLosslessEnabled) { manager.isLosslessEnabled = it }
+                SettingsToggleRow("🔊", "Volume Normalization", "Set the same loudness level for all tracks.", manager.isVolumeNormalized) { manager.isVolumeNormalized = it }
 
-                // Volume Boost
                 Column(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp, horizontal = 4.dp)) {
-                    Text("Volume Boost", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = textPrimary)
-                    Text("Increase the maximum volume.", fontSize = 12.sp, color = textSecondary)
+                    Text("Volume Boost", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF1E293B))
+                    Text("Increase the maximum volume.", fontSize = 12.sp, color = Color(0xFF64748B))
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Slider(
-                            value = volumeBoost,
-                            onValueChange = { volumeBoost = it },
-                            valueRange = 0f..150f,
+                            value = manager.volumeBoostLevel,
+                            onValueChange = { manager.volumeBoostLevel = it },
+                            valueRange = 100f..200f,
                             modifier = Modifier.weight(1f),
-                            colors = SliderDefaults.colors(thumbColor = emeraldAccent, activeTrackColor = emeraldAccent)
+                            colors = SliderDefaults.colors(thumbColor = emerald, activeTrackColor = emerald)
                         )
                         Spacer(modifier = Modifier.width(10.dp))
-                        Text("${volumeBoost.toInt()}%", fontSize = 12.sp, color = textSecondary)
+                        Text("${manager.volumeBoostLevel.toInt()}%", fontSize = 12.sp, color = Color(0xFF64748B))
                     }
                 }
 
-                SettingsToggleRow("🎚", "Mono Audio", "Combine left and right channels.", monoAudio) { monoAudio = it }
+                SettingsToggleRow("🎚", "Mono Audio", "Combine left and right channels.", manager.isMonoAudio) { manager.isMonoAudio = it }
 
                 Spacer(modifier = Modifier.height(10.dp))
-                Text("Audio Output", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = textPrimary)
+                Text("Audio Output", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF1E293B))
                 Spacer(modifier = Modifier.height(8.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    listOf(
-                        Pair("Phone", "📱"),
-                        Pair("Speaker", "🔊"),
-                        Pair("Buds", "🎧")
-                    ).forEach { (output, icon) ->
-                        val isSelected = audioOutput == output
+                    listOf(Pair("Phone", "📱"), Pair("Speaker", "🔊"), Pair("Buds", "🎧")).forEach { (output, icon) ->
+                        val isSelected = manager.selectedAudioOutput == output
                         Box(
                             modifier = Modifier
                                 .weight(1f)
@@ -289,37 +277,36 @@ fun SettingsScreen(
                                 .clip(RoundedCornerShape(12.dp))
                                 .border(
                                     width = if (isSelected) 1.5.dp else 1.dp,
-                                    color = if (isSelected) emeraldAccent else Color(0xFFE2E8F0),
+                                    color = if (isSelected) emerald else Color(0xFFE2E8F0),
                                     shape = RoundedCornerShape(12.dp)
                                 )
                                 .background(if (isSelected) Color(0x1010B981) else Color.Transparent)
-                                .clickable { audioOutput = output },
+                                .clickable { manager.selectedAudioOutput = output },
                             contentAlignment = Alignment.Center
                         ) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text(icon, fontSize = 14.sp)
                                 Spacer(modifier = Modifier.width(6.dp))
-                                Text(output, fontSize = 12.sp, fontWeight = FontWeight.Medium, color = textPrimary)
+                                Text(output, fontSize = 12.sp, fontWeight = FontWeight.Medium, color = Color(0xFF1E293B))
                             }
                         }
                     }
                 }
 
                 Spacer(modifier = Modifier.height(14.dp))
-                // Equalizer Row
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
-                        Text("Equalizer", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = textPrimary)
-                        Text("Fine-tune your audio experience.", fontSize = 12.sp, color = textSecondary)
+                        Text("Equalizer", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF1E293B))
+                        Text("Fine-tune your audio experience.", fontSize = 12.sp, color = Color(0xFF64748B))
                     }
                     Switch(
-                        checked = equalizerEnabled,
-                        onCheckedChange = { equalizerEnabled = it },
-                        colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = emeraldAccent)
+                        checked = manager.isEqEnabled,
+                        onCheckedChange = { manager.isEqEnabled = it },
+                        colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = emerald)
                     )
                 }
                 Row(
@@ -327,142 +314,149 @@ fun SettingsScreen(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("Original", fontSize = 12.sp, color = textSecondary)
+                    Text("Original", fontSize = 12.sp, color = Color(0xFF64748B))
                     Button(
-                        onClick = { },
+                        onClick = { onOpenEqualizer() },
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF1F5F9)),
                         shape = RoundedCornerShape(8.dp)
                     ) {
-                        Text("Adjust", color = textPrimary, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                        Text("Adjust", color = Color(0xFF1E293B), fontSize = 12.sp, fontWeight = FontWeight.Medium)
                     }
                 }
             }
         }
 
-        // 5. Content Section
+        // 5. Content Management Card
         item {
             SettingsCard(title = "Content", subtitle = "Manage what music appears in your library.") {
-                ContentManageRow("Hide Folders", "Exclude specific folders from your library.")
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Hide Folders", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF1E293B))
+                        Text("Exclude specific folders from your library.", fontSize = 12.sp, color = Color(0xFF64748B))
+                    }
+                    Button(
+                        onClick = { showHideFolderDialog = true },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF1F5F9)),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Text("Manage", color = Color(0xFF1E293B), fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                    }
+                }
                 Divider(color = Color(0xFFF1F5F9), thickness = 1.dp)
-                ContentManageRow("Hide Audio", "Hide specific audio files from your library.")
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Hide Audio", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF1E293B))
+                        Text("Hide specific audio files from your library.", fontSize = 12.sp, color = Color(0xFF64748B))
+                    }
+                    Button(
+                        onClick = { showHideAudioDialog = true },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF1F5F9)),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Text("Manage", color = Color(0xFF1E293B), fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                    }
+                }
             }
         }
 
-        item {
-            Spacer(modifier = Modifier.height(24.dp))
-        }
+        item { Spacer(modifier = Modifier.height(60.dp)) }
     }
 }
 
 @Composable
-fun SettingsCard(
-    title: String,
-    subtitle: String,
-    content: @Composable () -> Unit
+fun ManageHiddenFoldersSheet(
+    manager: MusicManager,
+    onDismiss: () -> Unit
 ) {
-    Box(
+    val folders = manager.allSongs.map { it.folderName }.distinct()
+    Column(
         modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(20.dp))
-            .background(Color.White)
-            .border(1.dp, Color(0xFFECEFF3), RoundedCornerShape(20.dp))
-            .padding(18.dp)
+            .fillMaxSize()
+            .background(Color(0xFFF6F8FA))
+            .padding(16.dp)
     ) {
-        Column(modifier = Modifier.fillMaxWidth()) {
-            Text(title, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1E293B))
-            Text(subtitle, fontSize = 12.sp, color = Color(0xFF64748B))
-            Spacer(modifier = Modifier.height(14.dp))
-            content()
-        }
-    }
-}
-
-@Composable
-fun SettingsToggleRow(
-    icon: String,
-    title: String,
-    subtitle: String,
-    checked: Boolean,
-    onCheckedChange: (Boolean) -> Unit
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween
-    ) {
-        Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                modifier = Modifier
-                    .size(32.dp)
-                    .clip(CircleShape)
-                    .background(Color(0x1010B981)),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(icon, fontSize = 14.sp)
-            }
-            Spacer(modifier = Modifier.width(12.dp))
-            Column {
-                Text(title, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF1E293B))
-                Text(subtitle, fontSize = 12.sp, color = Color(0xFF64748B))
-            }
-        }
-        Switch(
-            checked = checked,
-            onCheckedChange = onCheckedChange,
-            colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = Color(0xFF10B981))
-        )
-    }
-}
-
-@Composable
-fun ColorPaletteCircle(
-    color: Color,
-    isSelected: Boolean,
-    onClick: () -> Unit
-) {
-    Box(
-        modifier = Modifier
-            .size(34.dp)
-            .clip(CircleShape)
-            .background(color)
-            .border(
-                width = if (isSelected) 2.5.dp else 0.dp,
-                color = if (isSelected) Color(0xFF0F172A) else Color.Transparent,
-                shape = CircleShape
-            )
-            .clickable { onClick() },
-        contentAlignment = Alignment.Center
-    ) {
-        if (isSelected) {
-            Text("✓", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-        }
-    }
-}
-
-@Composable
-fun ContentManageRow(
-    title: String,
-    subtitle: String
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween
-    ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text(title, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF1E293B))
-            Text(subtitle, fontSize = 12.sp, color = Color(0xFF64748B))
-        }
-        Button(
-            onClick = { },
-            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF1F5F9)),
-            shape = RoundedCornerShape(8.dp)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Text("Manage", color = Color(0xFF1E293B), fontSize = 12.sp, fontWeight = FontWeight.Medium)
+            Text("Exclude Folders", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1E293B))
+            Button(onClick = { onDismiss() }, shape = RoundedCornerShape(8.dp)) {
+                Text("Done")
+            }
+        }
+        Spacer(modifier = Modifier.height(14.dp))
+        LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            items(folders) { folder ->
+                val isHidden = folder in manager.hiddenFolders
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(Color.White)
+                        .clickable { manager.toggleHideFolder(folder) }
+                        .padding(14.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(folder, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                    Switch(checked = !isHidden, onCheckedChange = { manager.toggleHideFolder(folder) })
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun ManageHiddenAudioSheet(
+    manager: MusicManager,
+    onDismiss: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color(0xFFF6F8FA))
+            .padding(16.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text("Hide Audio Tracks", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1E293B))
+            Button(onClick = { onDismiss() }, shape = RoundedCornerShape(8.dp)) {
+                Text("Done")
+            }
+        }
+        Spacer(modifier = Modifier.height(14.dp))
+        LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            items(manager.allSongs) { song ->
+                val isHidden = song.id in manager.hiddenAudioIds
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(Color.White)
+                        .clickable { manager.toggleHideAudio(song.id) }
+                        .padding(14.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(song.title, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                        Text(song.folderName, fontSize = 12.sp, color = Color(0xFF64748B))
+                    }
+                    Switch(checked = !isHidden, onCheckedChange = { manager.toggleHideAudio(song.id) })
+                }
+            }
         }
     }
 }

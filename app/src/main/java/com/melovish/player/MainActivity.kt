@@ -1,20 +1,14 @@
 package com.melovish.player
 
 import android.Manifest
-import android.content.ContentUris
-import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
-import android.provider.MediaStore
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -31,18 +25,22 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -57,36 +55,19 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
-import androidx.media3.common.MediaItem
-import androidx.media3.common.Player
-import androidx.media3.exoplayer.ExoPlayer
-import java.util.Locale
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        val manager = MusicManager(this)
         setContent {
-            MelovishAppRoot()
+            MelovishRootApp(manager)
         }
     }
 }
 
 @Composable
-fun MelovishAppRoot() {
-    var showSettings by remember { mutableStateOf(false) }
-
-    if (showSettings) {
-        BackHandler { showSettings = false }
-        SettingsScreen(onBackClick = { showSettings = false })
-    } else {
-        MelovishMusicPlayer(onProfileClick = { showSettings = true })
-    }
-}
-
-@Composable
-fun MelovishMusicPlayer(
-    onProfileClick: () -> Unit
-) {
+fun MelovishRootApp(manager: MusicManager) {
     val context = LocalContext.current
     val permission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
         Manifest.permission.READ_MEDIA_AUDIO
@@ -104,216 +85,400 @@ fun MelovishMusicPlayer(
         contract = ActivityResultContracts.RequestPermission()
     ) { granted ->
         hasPermission = granted
+        if (granted) manager.scanStorage()
     }
-
-    val songs = remember { mutableStateListOf<Song>() }
 
     LaunchedEffect(hasPermission) {
-        if (hasPermission) {
-            songs.clear()
-            songs.addAll(fetchLocalSongs(context))
-        }
+        if (hasPermission) manager.scanStorage()
     }
 
-    val player = remember {
-        ExoPlayer.Builder(context).build().apply {
-            repeatMode = Player.REPEAT_MODE_ALL
-        }
-    }
+    var activeScreen by remember { mutableStateOf("home") } // "home", "search", "playlist", "settings", "profile", "all_songs"
+    var isPlayerExpanded by remember { mutableStateOf(false) }
+    var showLayoutDialog by remember { mutableStateOf(false) }
 
-    var isPlaying by remember { mutableStateOf(false) }
-    var currentSong by remember { mutableStateOf<Song?>(null) }
+    // Per-page layout options
+    var homeIsGrid by remember { mutableStateOf(false) }
+    var homeSortCriteria by remember { mutableStateOf("A-Z") }
+    var homeSortAsc by remember { mutableStateOf(true) }
 
-    DisposableEffect(player) {
-        val listener = object : Player.Listener {
-            override fun onIsPlayingChanged(playing: Boolean) {
-                isPlaying = playing
-            }
-        }
-        player.addListener(listener)
-        onDispose {
-            player.removeListener(listener)
-            player.release()
-        }
-    }
-
-    fun playTrack(song: Song) {
-        if (currentSong?.id == song.id) {
-            if (player.isPlaying) player.pause() else player.play()
+    BackHandler(enabled = activeScreen != "home" || isPlayerExpanded) {
+        if (isPlayerExpanded) {
+            isPlayerExpanded = false
         } else {
-            currentSong = song
-            val mediaItem = MediaItem.fromUri(song.uri)
-            player.setMediaItem(mediaItem)
-            player.prepare()
-            player.play()
+            activeScreen = "home"
         }
     }
 
-    val darkGradient = Brush.verticalGradient(
-        colors = listOf(
-            Color(0xFF0F172A),
-            Color(0xFF020617)
-        )
-    )
+    val darkGradient = Brush.verticalGradient(listOf(Color(0xFF0F172A), Color(0xFF020617)))
 
-    Surface(
-        modifier = Modifier.fillMaxSize(),
-        color = Color.Transparent
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(darkGradient)
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(horizontal = 20.dp)
-            ) {
-                Spacer(modifier = Modifier.height(48.dp))
+    Surface(modifier = Modifier.fillMaxSize(), color = Color.Transparent) {
+        Box(modifier = Modifier.fillMaxSize().background(darkGradient)) {
+            Column(modifier = Modifier.fillMaxSize()) {
+                // Top App Bar
+                TopBar(
+                    onProfileClick = { activeScreen = "profile" },
+                    onSettingsClick = { activeScreen = "settings" },
+                    onLayoutClick = { showLayoutDialog = true }
+                )
 
-                // Top Header with Profile Picture
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column {
-                        Text(
-                            text = "Melovish",
-                            color = Color.White,
-                            fontSize = 28.sp,
-                            fontWeight = FontWeight.Bold,
-                            letterSpacing = 1.sp
+                // Body based on active screen
+                Box(modifier = Modifier.weight(1f)) {
+                    when (activeScreen) {
+                        "settings" -> SettingsScreen(
+                            manager = manager,
+                            onBackClick = { activeScreen = "home" },
+                            onOpenProfile = { activeScreen = "profile" },
+                            onOpenEqualizer = { isPlayerExpanded = true }
                         )
-                        Text(
-                            text = "Liquid Glass Audio",
-                            color = Color(0xFFD4AF37),
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            letterSpacing = 1.sp
+                        "profile" -> ProfileScreen(
+                            manager = manager,
+                            onBackClick = { activeScreen = "home" }
                         )
-                    }
-
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(
-                            modifier = Modifier
-                                .clip(CircleShape)
-                                .background(Color(0x1AD4AF37))
-                                .border(1.dp, Color(0x66D4AF37), CircleShape)
-                                .padding(horizontal = 10.dp, vertical = 5.dp)
-                        ) {
-                            Text(
-                                text = "${songs.size} Tracks",
-                                color = Color(0xFFE2E8F0),
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Medium
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.width(10.dp))
-
-                        // Profile Picture Button
-                        Box(
-                            modifier = Modifier
-                                .size(40.dp)
-                                .clip(CircleShape)
-                                .background(Color(0x33FFFFFF))
-                                .border(1.5.dp, Color(0xFFD4AF37), CircleShape)
-                                .clickable { onProfileClick() },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text("👤", fontSize = 18.sp)
-                        }
+                        "search" -> SearchScreen(manager = manager)
+                        "playlist" -> PlaylistFolderScreen(
+                            manager = manager,
+                            onResumeClick = { manager.resumeLastPlayed("Storage") }
+                        )
+                        "all_songs" -> AllSongsScreen(
+                            manager = manager,
+                            onBackClick = { activeScreen = "home" }
+                        )
+                        else -> HomeScreen(
+                            manager = manager,
+                            isGrid = homeIsGrid,
+                            onViewAllClick = { activeScreen = "all_songs" },
+                            onResumeClick = { manager.resumeLastPlayed() }
+                        )
                     }
                 }
 
-                Spacer(modifier = Modifier.height(20.dp))
+                // Mini Player Dock above Navigation Bar
+                if (manager.currentSong != null && !isPlayerExpanded) {
+                    MiniPlayerDock(
+                        manager = manager,
+                        onClick = { isPlayerExpanded = true }
+                    )
+                }
 
-                if (!hasPermission) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .weight(1f),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
+                // Bottom Navigation Bar
+                if (activeScreen in listOf("home", "search", "playlist")) {
+                    BottomNavBar(
+                        activeTab = activeScreen,
+                        onTabSelected = { activeScreen = it }
+                    )
+                }
+            }
+
+            // Full Player Screen Overlay
+            if (isPlayerExpanded) {
+                FullPlayerSheet(
+                    manager = manager,
+                    onDismiss = { isPlayerExpanded = false }
+                )
+            }
+
+            // Layout & Sorting Dialog
+            if (showLayoutDialog) {
+                LayoutSortDialog(
+                    isGrid = homeIsGrid,
+                    criteria = homeSortCriteria,
+                    isAsc = homeSortAsc,
+                    onApply = { g, c, a ->
+                        homeIsGrid = g
+                        homeSortCriteria = c
+                        homeSortAsc = a
+                        showLayoutDialog = false
+                    },
+                    onDismiss = { showLayoutDialog = false }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun TopBar(
+    onProfileClick: () -> Unit,
+    onSettingsClick: () -> Unit,
+    onLayoutClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp, vertical = 14.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        // Profile Picture Avatar Icon on LEFT
+        Box(
+            modifier = Modifier
+                .size(40.dp)
+                .clip(CircleShape)
+                .background(Color(0x33FFFFFF))
+                .border(1.5.dp, Color(0xFFD4AF37), CircleShape)
+                .clickable { onProfileClick() },
+            contentAlignment = Alignment.Center
+        ) {
+            Text("👤", fontSize = 18.sp)
+        }
+
+        // App Logo / Name in Center
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text("Melovish", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+            Text("Liquid Glass Audio", color = Color(0xFFD4AF37), fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+        }
+
+        // Sorting & Settings on RIGHT
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .clip(CircleShape)
+                    .background(Color(0x1AFFFFFF))
+                    .clickable { onLayoutClick() },
+                contentAlignment = Alignment.Center
+            ) {
+                Text("⇅", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+            }
+            Spacer(modifier = Modifier.width(10.dp))
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .clip(CircleShape)
+                    .background(Color(0x1AFFFFFF))
+                    .clickable { onSettingsClick() },
+                contentAlignment = Alignment.Center
+            ) {
+                Text("⚙", color = Color.White, fontSize = 18.sp)
+            }
+        }
+    }
+}
+
+@Composable
+fun HomeScreen(
+    manager: MusicManager,
+    isGrid: Boolean,
+    onViewAllClick: () -> Unit,
+    onResumeClick: () -> Unit
+) {
+    Box(modifier = Modifier.fillMaxSize()) {
+        Column(modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
+            // Top 25%: Recent 50 tracks in horizontal carousel (3 visible)
+            Text(
+                text = "Recently Played",
+                color = Color.White,
+                fontSize = 17.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(top = 10.dp, bottom = 10.dp)
+            )
+
+            val recents = manager.historySongs.take(50)
+            if (recents.isEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(110.dp)
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(Color(0x0FFFFFFF)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("No recent tracks played yet.", color = Color(0xFF64748B), fontSize = 13.sp)
+                }
+            } else {
+                LazyRow(
+                    modifier = Modifier.fillMaxWidth().height(120.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    items(recents) { song ->
+                        Box(
                             modifier = Modifier
-                                .clip(RoundedCornerShape(24.dp))
+                                .width(110.dp)
+                                .clip(RoundedCornerShape(14.dp))
                                 .background(Color(0x1AFFFFFF))
-                                .border(1.dp, Color(0x33D4AF37), RoundedCornerShape(24.dp))
-                                .padding(28.dp)
+                                .border(1.dp, Color(0x26FFFFFF), RoundedCornerShape(14.dp))
+                                .clickable { manager.playSong(song, recents, "Recent Tracks") }
+                                .padding(10.dp)
                         ) {
-                            Text(
-                                text = "Library Access Needed",
-                                color = Color.White,
-                                fontSize = 18.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Text(
-                                text = "Melovish needs storage permission to play your audio tracks.",
-                                color = Color(0xFF94A3B8),
-                                fontSize = 13.sp,
-                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                            )
-                            Spacer(modifier = Modifier.height(20.dp))
-                            Button(
-                                onClick = { launcher.launch(permission) },
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD4AF37)),
-                                shape = RoundedCornerShape(12.dp)
-                            ) {
-                                Text(text = "Grant Access", color = Color(0xFF0F172A), fontWeight = FontWeight.Bold)
+                            Column {
+                                Box(
+                                    modifier = Modifier
+                                        .size(50.dp)
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(Color(0xFF1E293B)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text("🎵", fontSize = 24.sp)
+                                }
+                                Spacer(modifier = Modifier.height(6.dp))
+                                Text(song.title, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text(if (song.artist.isNotBlank()) song.artist else "Audio", color = Color(0xFFD4AF37), fontSize = 10.sp, maxLines = 1)
                             }
                         }
                     }
-                } else if (songs.isEmpty()) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .weight(1f),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = "No audio tracks detected on device.",
-                            color = Color(0xFF64748B),
-                            fontSize = 14.sp
-                        )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(20.dp))
+
+            // Lower 75%: All Songs Section with "View All" Button
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("All Songs", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                Button(
+                    onClick = { onViewAllClick() },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0x1AD4AF37)),
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Text("View All", color = Color(0xFFD4AF37), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            if (isGrid) {
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(2),
+                    modifier = Modifier.fillMaxWidth().weight(1f),
+                    contentPadding = PaddingValues(bottom = 80.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    items(manager.allSongs) { song ->
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(16.dp))
+                                .background(Color(0x14FFFFFF))
+                                .border(1.dp, Color(0x1AFFFFFF), RoundedCornerShape(16.dp))
+                                .clickable { manager.playSong(song, manager.allSongs, "All Songs") }
+                                .padding(12.dp)
+                        ) {
+                            Column {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(100.dp)
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .background(Color(0xFF1E293B)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text("🎵", fontSize = 42.sp)
+                                }
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(song.title, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                                Text(if (song.artist.isNotBlank()) song.artist else "Audio", color = Color(0xFF94A3B8), fontSize = 11.sp, maxLines = 1)
+                            }
+                        }
                     }
-                } else {
-                    LazyColumn(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .weight(1f),
-                        contentPadding = PaddingValues(bottom = if (currentSong != null) 100.dp else 24.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        items(songs, key = { it.id }) { song ->
-                            SongItemCard(
-                                song = song,
-                                isCurrent = currentSong?.id == song.id,
-                                isPlaying = isPlaying && currentSong?.id == song.id,
-                                onSelect = { playTrack(song) }
-                            )
+                }
+            } else {
+                LazyColumn(
+                    modifier = Modifier.fillMaxWidth().weight(1f),
+                    contentPadding = PaddingValues(bottom = 80.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    items(manager.allSongs) { song ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(16.dp))
+                                .background(Color(0x14FFFFFF))
+                                .border(1.dp, Color(0x1AFFFFFF), RoundedCornerShape(16.dp))
+                                .clickable { manager.playSong(song, manager.allSongs, "All Songs") }
+                                .padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(contentAlignment = Alignment.BottomEnd) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(48.dp)
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .background(Color(0xFF1E293B)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text("🎵", fontSize = 22.sp)
+                                }
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(4.dp))
+                                        .background(Color(0xCC000000))
+                                        .padding(horizontal = 3.dp, vertical = 1.dp)
+                                ) {
+                                    Text(formatTime(song.duration), color = Color.White, fontSize = 9.sp)
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.width(12.dp))
+
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(song.title, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text(
+                                    text = "${if (song.artist.isNotBlank()) song.artist else "Audio"} • ${formatFileSize(song.size)}",
+                                    color = Color(0xFF94A3B8),
+                                    fontSize = 11.sp,
+                                    maxLines = 1
+                                )
+                            }
                         }
                     }
                 }
             }
+        }
 
-            AnimatedVisibility(
-                visible = currentSong != null,
-                enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(16.dp)
-            ) {
-                currentSong?.let { song ->
-                    BottomGlassPlayer(
-                        song = song,
-                        isPlaying = isPlaying,
-                        onPlayPauseToggle = { playTrack(song) }
-                    )
+        // Floating Resume Button in Bottom Right Corner
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(bottom = 16.dp, end = 16.dp)
+                .size(54.dp)
+                .clip(CircleShape)
+                .background(Color(0xFFD4AF37))
+                .clickable { onResumeClick() },
+            contentAlignment = Alignment.Center
+        ) {
+            Text("▶", color = Color(0xFF0F172A), fontSize = 22.sp, fontWeight = FontWeight.ExtraBold)
+        }
+    }
+}
+
+@Composable
+fun SearchScreen(manager: MusicManager) {
+    var query by remember { mutableStateOf("") }
+    val filtered = manager.allSongs.filter {
+        it.title.contains(query, ignoreCase = true) ||
+        it.artist.contains(query, ignoreCase = true) ||
+        it.folderName.contains(query, ignoreCase = true)
+    }
+
+    Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
+        OutlinedTextField(
+            value = query,
+            onValueChange = { query = it },
+            placeholder = { Text("Search songs, artists, or folders...", color = Color(0xFF64748B)) },
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(16.dp)
+        )
+        Spacer(modifier = Modifier.height(14.dp))
+        LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            items(filtered) { song ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(Color(0x14FFFFFF))
+                        .clickable { manager.playSong(song, filtered, "Search Results") }
+                        .padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("🎵", fontSize = 20.sp)
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column {
+                        Text(song.title, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                        Text("${song.folderName} • ${song.artist}", color = Color(0xFF94A3B8), fontSize = 11.sp)
+                    }
                 }
             }
         }
@@ -321,28 +486,71 @@ fun MelovishMusicPlayer(
 }
 
 @Composable
-fun SongItemCard(
-    song: Song,
-    isCurrent: Boolean,
-    isPlaying: Boolean,
-    onSelect: () -> Unit
+fun PlaylistFolderScreen(
+    manager: MusicManager,
+    onResumeClick: () -> Unit
 ) {
-    val cardShape = RoundedCornerShape(18.dp)
-    val cardBackground = if (isCurrent) Color(0x2BD4AF37) else Color(0x0FFFFFFF)
-    val cardBorder = if (isCurrent) {
-        Brush.linearGradient(listOf(Color(0xFFD4AF37), Color(0x33D4AF37)))
-    } else {
-        Brush.linearGradient(listOf(Color(0x26FFFFFF), Color(0x0DFFFFFF)))
-    }
+    val folderMap = manager.allSongs.groupBy { it.folderName }
 
-    Box(
+    Box(modifier = Modifier.fillMaxSize()) {
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            item {
+                Text("Folders", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+            }
+            items(folderMap.keys.toList()) { folderName ->
+                val songs = folderMap[folderName] ?: emptyList()
+                val totalSize = songs.sumOf { it.size }
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(Color(0x14FFFFFF))
+                        .border(1.dp, Color(0x1AFFFFFF), RoundedCornerShape(16.dp))
+                        .clickable { manager.playSong(songs.first(), songs, folderName) }
+                        .padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("📁", fontSize = 26.sp)
+                    Spacer(modifier = Modifier.width(14.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(folderName, color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                        Text("${songs.size} songs • ${formatFileSize(totalSize)}", color = Color(0xFF94A3B8), fontSize = 12.sp)
+                    }
+                    Text("▶", color = Color(0xFFD4AF37), fontSize = 16.sp)
+                }
+            }
+        }
+
+        // Floating Resume Button
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(bottom = 16.dp, end = 16.dp)
+                .size(54.dp)
+                .clip(CircleShape)
+                .background(Color(0xFFD4AF37))
+                .clickable { onResumeClick() },
+            contentAlignment = Alignment.Center
+        ) {
+            Text("▶", color = Color(0xFF0F172A), fontSize = 22.sp, fontWeight = FontWeight.ExtraBold)
+        }
+    }
+}
+
+@Composable
+fun AllSongsScreen(
+    manager: MusicManager,
+    onBackClick: () -> Unit
+) {
+    Column(
         modifier = Modifier
-            .fillMaxWidth()
-            .clip(cardShape)
-            .background(cardBackground)
-            .border(1.dp, cardBorder, cardShape)
-            .clickable { onSelect() }
-            .padding(horizontal = 16.dp, vertical = 14.dp)
+            .fillMaxSize()
+            .background(Color(0xFF0F172A))
+            .padding(16.dp)
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -350,167 +558,143 @@ fun SongItemCard(
         ) {
             Box(
                 modifier = Modifier
-                    .size(42.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(if (isCurrent) Color(0xFFD4AF37) else Color(0x1AFFFFFF)),
+                    .size(36.dp)
+                    .clip(CircleShape)
+                    .clickable { onBackClick() },
                 contentAlignment = Alignment.Center
             ) {
-                Text(
-                    text = if (isPlaying) "❚❚" else "▶",
-                    color = if (isCurrent) Color(0xFF0F172A) else Color(0xFFD4AF37),
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold
-                )
+                Text("←", fontSize = 22.sp, color = Color.White, fontWeight = FontWeight.Bold)
             }
-
-            Spacer(modifier = Modifier.width(14.dp))
-
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = song.title,
-                    color = if (isCurrent) Color(0xFFD4AF37) else Color.White,
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Spacer(modifier = Modifier.height(2.dp))
-                Text(
-                    text = song.artist,
-                    color = Color(0xFF94A3B8),
-                    fontSize = 12.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
+            Spacer(modifier = Modifier.width(12.dp))
+            Text("All Songs (${manager.allSongs.size})", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color.White)
+        }
+        Spacer(modifier = Modifier.height(14.dp))
+        LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            items(manager.allSongs) { song ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(Color(0x14FFFFFF))
+                        .clickable { manager.playSong(song, manager.allSongs, "All Songs") }
+                        .padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("🎵", fontSize = 20.sp)
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(song.title, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                        Text("${if (song.artist.isNotBlank()) song.artist else "Audio"} • ${song.folderName}", color = Color(0xFF94A3B8), fontSize = 11.sp)
+                    }
+                    Text(formatTime(song.duration), color = Color(0xFF64748B), fontSize = 12.sp)
+                }
             }
-
-            Spacer(modifier = Modifier.width(8.dp))
-
-            Text(
-                text = formatDuration(song.duration),
-                color = Color(0xFF64748B),
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Medium
-            )
         }
     }
 }
 
 @Composable
-fun BottomGlassPlayer(
-    song: Song,
-    isPlaying: Boolean,
-    onPlayPauseToggle: () -> Unit
+fun BottomNavBar(
+    activeTab: String,
+    onTabSelected: (String) -> Unit
 ) {
-    val dockShape = RoundedCornerShape(26.dp)
-    val dockBorder = Brush.linearGradient(
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Color(0xE60A0F1D))
+            .border(1.dp, Color(0x1AFFFFFF), RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp))
+            .padding(vertical = 12.dp),
+        horizontalArrangement = Arrangement.SpaceAround,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
         listOf(
-            Color(0x99D4AF37),
-            Color(0x33FFFFFF),
-            Color(0x4D0F172A)
-        )
-    )
+            Triple("home", "Home", "🏠"),
+            Triple("search", "Search", "🔍"),
+            Triple("playlist", "Playlist", "📑")
+        ).forEach { (key, label, icon) ->
+            val isSel = activeTab == key
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.clickable { onTabSelected(key) }
+            ) {
+                Text(icon, fontSize = 18.sp)
+                Text(
+                    text = label,
+                    fontSize = 11.sp,
+                    color = if (isSel) Color(0xFFD4AF37) else Color(0xFF64748B),
+                    fontWeight = if (isSel) FontWeight.Bold else FontWeight.Normal
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun LayoutSortDialog(
+    isGrid: Boolean,
+    criteria: String,
+    isAsc: Boolean,
+    onApply: (Boolean, String, Boolean) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var tempGrid by remember { mutableStateOf(isGrid) }
+    var tempCriteria by remember { mutableStateOf(criteria) }
+    var tempAsc by remember { mutableStateOf(isAsc) }
 
     Box(
         modifier = Modifier
-            .fillMaxWidth()
-            .clip(dockShape)
-            .background(Color(0xE60A0F1D))
-            .border(1.5.dp, dockBorder, dockShape)
-            .padding(horizontal = 20.dp, vertical = 14.dp)
+            .fillMaxSize()
+            .background(Color(0xCC000000))
+            .clickable { onDismiss() },
+        contentAlignment = Alignment.Center
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
+        Box(
+            modifier = Modifier
+                .fillMaxWidth(0.85f)
+                .clip(RoundedCornerShape(20.dp))
+                .background(Color(0xFF1E293B))
+                .padding(20.dp)
         ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = song.title,
-                    color = Color.White,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Text(
-                    text = song.artist,
-                    color = Color(0xFFD4AF37),
-                    fontSize = 12.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
+            Column {
+                Text("Page Layout & Sorting", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.height(14.dp))
+                Text("Layout View", color = Color(0xFFD4AF37), fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    RadioButton(selected = !tempGrid, onClick = { tempGrid = false })
+                    Text("List View", color = Color.White, fontSize = 13.sp)
+                    Spacer(modifier = Modifier.width(16.dp))
+                    RadioButton(selected = tempGrid, onClick = { tempGrid = true })
+                    Text("Grid View (2 Cols)", color = Color.White, fontSize = 13.sp)
+                }
 
-            Spacer(modifier = Modifier.width(16.dp))
+                Spacer(modifier = Modifier.height(14.dp))
+                Text("Sort Criteria", color = Color(0xFFD4AF37), fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                listOf("A-Z", "Date", "Status").forEach { crit ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        RadioButton(selected = tempCriteria == crit, onClick = { tempCriteria = crit })
+                        Text(crit, color = Color.White, fontSize = 13.sp)
+                    }
+                }
 
-            Box(
-                modifier = Modifier
-                    .size(46.dp)
-                    .clip(CircleShape)
-                    .background(Color(0xFFD4AF37))
-                    .clickable { onPlayPauseToggle() },
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = if (isPlaying) "❚❚" else "▶",
-                    color = Color(0xFF0F172A),
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.ExtraBold
-                )
-            }
-        }
-    }
-}
+                Spacer(modifier = Modifier.height(14.dp))
+                Text("Order", color = Color(0xFFD4AF37), fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    RadioButton(selected = tempAsc, onClick = { tempAsc = true })
+                    Text("Ascending", color = Color.White, fontSize = 13.sp)
+                    Spacer(modifier = Modifier.width(16.dp))
+                    RadioButton(selected = !tempAsc, onClick = { tempAsc = false })
+                    Text("Descending", color = Color.White, fontSize = 13.sp)
+                }
 
-fun fetchLocalSongs(context: Context): List<Song> {
-    val songList = mutableListOf<Song>()
-    val collection = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-        MediaStore.Audio.Media.getContentUri(MediaStore.VOLUME_EXTERNAL)
-    } else {
-        MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
-    }
-
-    val projection = arrayOf(
-        MediaStore.Audio.Media._ID,
-        MediaStore.Audio.Media.TITLE,
-        MediaStore.Audio.Media.ARTIST,
-        MediaStore.Audio.Media.DURATION
-    )
-    val selection = "${MediaStore.Audio.Media.IS_MUSIC} != 0"
-    val sortOrder = "${MediaStore.Audio.Media.TITLE} COLLATE NOCASE ASC"
-
-    try {
-        context.contentResolver.query(
-            collection,
-            projection,
-            selection,
-            null,
-            sortOrder
-        )?.use { cursor ->
-            val idCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media._ID)
-            val titleCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.TITLE)
-            val artistCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.ARTIST)
-            val durationCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DURATION)
-
-            while (cursor.moveToNext()) {
-                val id = cursor.getLong(idCol)
-                val title = cursor.getString(titleCol) ?: "Unknown Track"
-                val artist = cursor.getString(artistCol) ?: "Unknown Artist"
-                val duration = cursor.getLong(durationCol)
-                val uri = ContentUris.withAppendedId(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, id)
-                songList.add(Song(id, title, artist, duration, uri))
+                Spacer(modifier = Modifier.height(18.dp))
+                Button(
+                    onClick = { onApply(tempGrid, tempCriteria, tempAsc) },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Text("Apply Settings")
+                }
             }
         }
-    } catch (e: Exception) {
-        e.printStackTrace()
     }
-    return songList
-}
-
-fun formatDuration(durationMs: Long): String {
-    val totalSeconds = durationMs / 1000
-    val minutes = totalSeconds / 60
-    val seconds = totalSeconds % 60
-    return String.format(Locale.getDefault(), "%02d:%02d", minutes, seconds)
 }
