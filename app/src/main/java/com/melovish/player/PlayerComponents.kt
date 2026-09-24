@@ -593,6 +593,7 @@ fun FullPlayerSheet(
                             manager.playPrevious()
                             haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                         }
+                        totalDragX = 0f
                     }
                 )
             }
@@ -832,7 +833,7 @@ fun FullPlayerSheet(
                         .fillMaxWidth(0.75f)
                         .clip(RoundedCornerShape(topStart = 24.dp, bottomStart = 24.dp))
                         .background(if (isDark) Color(0xFF0F172A) else Color.White)
-                        .border(1.dp, if (isDark) Color(0xFFE2E8F0), RoundedCornerShape(topStart = 24.dp, bottomStart = 24.dp))
+                        .border(1.dp, if (isDark) Color(0x22FFFFFF) else Color(0xFFE2E8F0), RoundedCornerShape(topStart = 24.dp, bottomStart = 24.dp))
                         .padding(20.dp)
                 ) {
                     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -860,13 +861,27 @@ fun FullPlayerSheet(
             }
         }
 
-        if (showEqualizerSheet) EqualizerSheet(manager = manager, onDismiss = { showEqualizerSheet = false })
-        if (showSpeedDialog) MagneticSpeedDialog(manager = manager, onDismiss = { showSpeedDialog = false })
-        if (showSleepDialog) SleepTimerDialog(manager = manager, onDismiss = { showSleepDialog = false })
-        if (showQueueSheet) QueueSheet(manager = manager, onDismiss = { showQueueSheet = false })
-        if (showTagEditorDialog) TagEditorDialog(manager = manager, song = song, onDismiss = { showTagEditorDialog = false })
-        if (showLyricsDialog) LyricsDialog(song = song, isDark = isDark, onDismiss = { showLyricsDialog = false })
-        if (showAddToPlaylistDialog) AddToPlaylistDialog(manager = manager, song = song, onDismiss = { showAddToPlaylistDialog = false })
+        if (showEqualizerSheet) {
+            EqualizerSheet(manager = manager, onDismiss = { showEqualizerSheet = false })
+        }
+        if (showSpeedDialog) {
+            MagneticSpeedDialog(manager = manager, onDismiss = { showSpeedDialog = false })
+        }
+        if (showSleepDialog) {
+            SleepTimerDialog(manager = manager, onDismiss = { showSleepDialog = false })
+        }
+        if (showQueueSheet) {
+            QueueSheet(manager = manager, onDismiss = { showQueueSheet = false })
+        }
+        if (showTagEditorDialog) {
+            TagEditorDialog(manager = manager, song = song, onDismiss = { showTagEditorDialog = false })
+        }
+        if (showLyricsDialog) {
+            LyricsDialog(song = song, isDark = isDark, onDismiss = { showLyricsDialog = false })
+        }
+        if (showAddToPlaylistDialog) {
+            AddToPlaylistDialog(manager = manager, song = song, onDismiss = { showAddToPlaylistDialog = false })
+        }
     }
 }
 
@@ -924,11 +939,12 @@ fun EqualizerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                         val label = if (freq >= 1000) "${freq / 1000} kHz" else "$freq Hz"
                         val level = manager.eqBandLevels[i] ?: 0
                         val levelDb = level / 100
+                        val levelString = if (levelDb > 0) "+$levelDb dB" else "$levelDb dB"
 
                         Column {
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                                 Text(label, color = Color(0xFFE2E8F0), fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                                Text("${if (levelDb > 0) "+$levelDb" else "$levelDb"} dB", color = accent, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                Text(levelString, color = accent, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                             }
                             Slider(
                                 value = level.toFloat(),
@@ -988,7 +1004,11 @@ fun EqualizerSheet(manager: MusicManager, onDismiss: () -> Unit) {
 // Menu Row Helper for More Modal Sheet
 @Composable
 fun MenuRow(icon: String, text: String, isDark: Boolean, isDanger: Boolean = false, onClick: () -> Unit) {
-    val textColor = if (isDanger) Color(0xFFEF4444) else if (isDark) Color.White else Color(0xFF0F172A)
+    val textColor = when {
+        isDanger -> Color(0xFFEF4444)
+        isDark -> Color.White
+        else -> Color(0xFF0F172A)
+    }
     Row(
         modifier = Modifier.fillMaxWidth().clickable { onClick() }.padding(vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically
