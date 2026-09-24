@@ -67,13 +67,16 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -322,6 +325,71 @@ fun MelovishRootApp(manager: MusicManager) {
     }
 }
 
+// 3-Layout Recently Played Cover Card with Bottom Translucent Scrim
+@Composable
+fun RecentlyPlayedCard(
+    song: Song,
+    manager: MusicManager,
+    onClick: () -> Unit
+) {
+    var albumArtBitmap by remember(song.id) { mutableStateOf(manager.getCachedAlbumArt(song.id)) }
+    LaunchedEffect(song.id) {
+        if (albumArtBitmap == null) {
+            albumArtBitmap = manager.loadAlbumArtAsync(song)
+        }
+    }
+
+    Box(
+        modifier = Modifier
+            .width(116.dp)
+            .height(124.dp)
+            .clip(RoundedCornerShape(20.dp))
+            .background(Color(0xFF1E293B))
+            .clickable { onClick() }
+    ) {
+        if (albumArtBitmap != null) {
+            Image(
+                bitmap = albumArtBitmap!!.asImageBitmap(),
+                contentDescription = song.title,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize()
+            )
+        } else {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Text("🎵", fontSize = 36.sp)
+            }
+        }
+
+        // Bottom Translucent Opaque Blur-Gradient Area
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .background(
+                    Brush.verticalGradient(
+                        colors = listOf(
+                            Color.Transparent,
+                            Color(0x88000000),
+                            Color(0xDE000000)
+                        )
+                    )
+                )
+                .padding(horizontal = 6.dp, vertical = 6.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = song.title,
+                color = Color.White,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.Center
+            )
+        }
+    }
+}
+
 @Composable
 fun LiveMechanicalGearIcon(
     isDark: Boolean,
@@ -528,6 +596,7 @@ fun HomeScreen(
     var showCreatePlaylistDialog by remember { mutableStateOf(false) }
 
     val sortedSongs = manager.getSortedSongs()
+    val recents = manager.historySongs.take(30)
 
     Box(modifier = Modifier.fillMaxSize()) {
         LazyColumn(
@@ -535,47 +604,62 @@ fun HomeScreen(
             contentPadding = PaddingValues(bottom = 80.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
+            // 1. Recently Played Header with Right-Side Play Button
             item {
-                Text("Recently Played", color = textColor, fontSize = 18.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 8.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Recently Played", color = textColor, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+
+                    Box(
+                        modifier = Modifier
+                            .size(34.dp)
+                            .shadow(4.dp, CircleShape)
+                            .clip(CircleShape)
+                            .background(manager.accentColor)
+                            .clickable {
+                                if (recents.isNotEmpty()) {
+                                    manager.playSong(recents.first(), recents, "Recently Played")
+                                }
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text("▶", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.ExtraBold)
+                    }
+                }
+
                 Spacer(modifier = Modifier.height(10.dp))
 
-                val recents = manager.historySongs.take(30)
+                // 3-Card Scrollable Row Matching Reference
                 if (recents.isEmpty()) {
                     Box(
-                        modifier = Modifier.fillMaxWidth().height(100.dp).clip(RoundedCornerShape(18.dp)).background(if (isDark) Color(0x14FFFFFF) else Color(0x14000000)),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(110.dp)
+                            .clip(RoundedCornerShape(18.dp))
+                            .background(if (isDark) Color(0x14FFFFFF) else Color(0x14000000)),
                         contentAlignment = Alignment.Center
                     ) {
                         Text("No recently played tracks yet.", color = Color(0xFF64748B), fontSize = 13.sp)
                     }
                 } else {
-                    LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         items(recents, key = { it.id }) { song ->
-                            Box(
-                                modifier = Modifier
-                                    .width(130.dp)
-                                    .clip(RoundedCornerShape(18.dp))
-                                    .background(cardBg)
-                                    .border(1.dp, if (isDark) Color(0x22FFFFFF) else Color(0xFFE2E8F0), RoundedCornerShape(18.dp))
-                                    .clickable { manager.playSong(song, recents, "Recent Tracks") }
-                                    .padding(10.dp)
-                            ) {
-                                Column {
-                                    Box(
-                                        modifier = Modifier.size(64.dp).clip(RoundedCornerShape(12.dp)).background(Color(0xFF1E293B)),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Text("🎵", fontSize = 28.sp)
-                                    }
-                                    Spacer(modifier = Modifier.height(8.dp))
-                                    Text(song.title, color = textColor, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                    Text("${formatFileSize(song.size)} • ${if (song.artist.isNotBlank()) song.artist else "Melovish"}", color = manager.accentColor, fontSize = 10.sp, maxLines = 1)
-                                }
-                            }
+                            RecentlyPlayedCard(
+                                song = song,
+                                manager = manager,
+                                onClick = { manager.playSong(song, recents, "Recent Tracks") }
+                            )
                         }
                     }
                 }
             }
 
+            // 2. Favourite Playlists
             item {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -595,7 +679,11 @@ fun HomeScreen(
 
                 if (manager.customPlaylists.isEmpty()) {
                     Box(
-                        modifier = Modifier.fillMaxWidth().height(90.dp).clip(RoundedCornerShape(18.dp)).background(if (isDark) Color(0x14FFFFFF) else Color(0x14000000)),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(90.dp)
+                            .clip(RoundedCornerShape(18.dp))
+                            .background(if (isDark) Color(0x14FFFFFF) else Color(0x14000000)),
                         contentAlignment = Alignment.Center
                     ) {
                         Text("No playlists yet. Tap '+ New' to create one.", color = Color(0xFF64748B), fontSize = 13.sp)
@@ -624,6 +712,7 @@ fun HomeScreen(
                 }
             }
 
+            // 3. All Songs Header with Sort Dropdown
             item {
                 Row(
                     modifier = Modifier.fillMaxWidth(),

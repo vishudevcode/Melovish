@@ -21,10 +21,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -101,22 +99,37 @@ fun ProfileScreen(
         val isMostPlayedView = viewingAllType == "most_played"
         val fullList = if (isMostPlayedView) manager.getMostPlayedSongs() else manager.historySongs
 
-        Column(modifier = Modifier.fillMaxSize().padding(16.dp).statusBarsPadding()) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 16.dp)
+        ) {
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 8.dp, bottom = 4.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(modifier = Modifier.size(36.dp).clip(CircleShape).clickable { viewingAllType = null }, contentAlignment = Alignment.Center) {
-                        Text("←", fontSize = 22.sp, color = textColor, fontWeight = FontWeight.Bold)
+                    Box(
+                        modifier = Modifier
+                            .size(38.dp)
+                            .shadow(4.dp, CircleShape)
+                            .clip(CircleShape)
+                            .background(if (isDark) Color(0x1FFFFFFF) else Color(0x0F000000))
+                            .border(1.2.dp, if (isDark) Color(0x33FFFFFF) else Color(0x18000000), CircleShape)
+                            .clickable { viewingAllType = null },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text("←", fontSize = 20.sp, color = textColor, fontWeight = FontWeight.ExtraBold)
                     }
-                    Spacer(modifier = Modifier.width(12.dp))
+                    Spacer(modifier = Modifier.width(14.dp))
                     Column {
                         Text(
-                            text = if (isMostPlayedView) "Most Played (Top 500)" else "Playback History (Last 500)",
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.Bold,
+                            text = if (isMostPlayedView) "Most Played" else "History",
+                            fontSize = 20.sp,
+                            fontWeight = FontWeight.ExtraBold,
                             color = textColor
                         )
                         Text("${fullList.size} tracks available", fontSize = 12.sp, color = Color(0xFF64748B))
@@ -134,7 +147,7 @@ fun ProfileScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(14.dp))
 
             if (fullList.isEmpty()) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -163,20 +176,48 @@ fun ProfileScreen(
         return
     }
 
-    // Default Profile Screen
+    // Default Profile Screen with Height Matching Home Screen's Recently Played
     LazyColumn(
-        modifier = Modifier.fillMaxSize().padding(16.dp).statusBarsPadding(),
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 16.dp),
         contentPadding = PaddingValues(bottom = 80.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+        verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        // Header
+        // Top Header with Bold & Stylized Back Arrow Button
         item {
-            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Box(modifier = Modifier.size(36.dp).clip(CircleShape).clickable { onBackClick() }, contentAlignment = Alignment.Center) {
-                    Text("←", fontSize = 22.sp, color = textColor, fontWeight = FontWeight.Bold)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 8.dp, bottom = 2.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(38.dp)
+                        .shadow(4.dp, CircleShape)
+                        .clip(CircleShape)
+                        .background(if (isDark) Color(0x1FFFFFFF) else Color(0x0F000000))
+                        .border(1.2.dp, if (isDark) Color(0x33FFFFFF) else Color(0x18000000), CircleShape)
+                        .clickable { onBackClick() },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "←",
+                        fontSize = 20.sp,
+                        color = textColor,
+                        fontWeight = FontWeight.ExtraBold
+                    )
                 }
-                Spacer(modifier = Modifier.width(12.dp))
-                Text("My Profile", fontSize = 22.sp, fontWeight = FontWeight.Bold, color = textColor)
+
+                Spacer(modifier = Modifier.width(14.dp))
+
+                Text(
+                    text = "My Profile",
+                    fontSize = 22.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = textColor
+                )
             }
         }
 
@@ -215,7 +256,7 @@ fun ProfileScreen(
                 Spacer(modifier = Modifier.height(18.dp))
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    // Profile Avatar with Real-Time Preview Before Save
+                    // Profile Avatar with Immediate Photo Preview Before Save
                     Box(
                         modifier = Modifier
                             .size(76.dp)
@@ -407,7 +448,6 @@ fun ProfileScreen(
     }
 }
 
-// Consistent Song Card for Profile Preview & Full 500-Item View
 @Composable
 fun ProfileSongRow(
     song: Song,
@@ -482,7 +522,6 @@ fun ProfileSongRow(
 
         Spacer(modifier = Modifier.width(8.dp))
 
-        // Right-Side Metric: Play Count Badge for Most Played, Track Duration for History
         if (showPlayCount) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("🔥", fontSize = 12.sp)

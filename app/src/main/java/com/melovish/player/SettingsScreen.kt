@@ -8,6 +8,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -15,7 +16,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -67,18 +67,48 @@ fun SettingsScreen(
         BitmapFactory.decodeFile(avatarFile.absolutePath)
     } else null
 
+    // Exact height alignment with Home Screen's Recently Played section
     LazyColumn(
-        modifier = Modifier.fillMaxSize().padding(16.dp).statusBarsPadding(),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 16.dp),
+        contentPadding = PaddingValues(bottom = 80.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        // Top Header
+        // Top Header with Bold & Stylized Back Arrow Button
         item {
-            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Box(modifier = Modifier.size(36.dp).clip(CircleShape).clickable { onBackClick() }, contentAlignment = Alignment.Center) {
-                    Text("←", fontSize = 22.sp, color = textColor, fontWeight = FontWeight.Bold)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 8.dp, bottom = 2.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(38.dp)
+                        .shadow(4.dp, CircleShape)
+                        .clip(CircleShape)
+                        .background(if (isDark) Color(0x1FFFFFFF) else Color(0x0F000000))
+                        .border(1.2.dp, if (isDark) Color(0x33FFFFFF) else Color(0x18000000), CircleShape)
+                        .clickable { onBackClick() },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "←",
+                        fontSize = 20.sp,
+                        color = textColor,
+                        fontWeight = FontWeight.ExtraBold
+                    )
                 }
-                Spacer(modifier = Modifier.width(12.dp))
-                Text("Settings", fontSize = 22.sp, fontWeight = FontWeight.Bold, color = textColor)
+
+                Spacer(modifier = Modifier.width(14.dp))
+
+                Text(
+                    text = "Settings",
+                    fontSize = 22.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = textColor
+                )
             }
         }
 
