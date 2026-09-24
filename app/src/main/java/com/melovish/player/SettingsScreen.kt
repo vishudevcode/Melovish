@@ -54,8 +54,8 @@ fun SettingsScreen(
     onOpenEqualizer: () -> Unit
 ) {
     val isDark = manager.isDarkMode
-    val textColor = if (isDark) Color.White else Color(0xFF0F172A)
-    val cardBg = if (isDark) Color(0xFF0F172A) else Color.White
+    val textColor = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A)
+    val cardBg = if (isDark) Color(0xFF131B2E) else Color.White
     val accent = manager.accentColor
 
     var showCircularPicker by remember { mutableStateOf(false) }
@@ -63,34 +63,21 @@ fun SettingsScreen(
     var showHideAudioDialog by remember { mutableStateOf(false) }
 
     val avatarFile = manager.profileImagePath?.let { File(it) }
-    val avatarBitmap = if (avatarFile != null && avatarFile.exists()) {
-        BitmapFactory.decodeFile(avatarFile.absolutePath)
-    } else null
+    val avatarBitmap = if (avatarFile != null && avatarFile.exists()) BitmapFactory.decodeFile(avatarFile.absolutePath) else null
 
     LazyColumn(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(horizontal = 16.dp),
+        modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
         contentPadding = PaddingValues(bottom = 80.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         item {
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 8.dp, bottom = 2.dp),
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 2.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 GlassBackButton(isDark = isDark, onClick = onBackClick)
-
                 Spacer(modifier = Modifier.width(14.dp))
-
-                Text(
-                    text = "Settings",
-                    fontSize = 22.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = textColor
-                )
+                Text(text = "Settings", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = textColor)
             }
         }
 
@@ -110,20 +97,11 @@ fun SettingsScreen(
                 Spacer(modifier = Modifier.height(14.dp))
 
                 Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(if (isDark) Color(0x14FFFFFF) else Color(0xFFF8FAFC))
-                        .padding(14.dp),
+                    modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(if (isDark) Color(0x14FFFFFF) else Color(0xFFF8FAFC)).padding(14.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Box(
-                        modifier = Modifier
-                            .size(54.dp)
-                            .shadow(4.dp, CircleShape)
-                            .clip(CircleShape)
-                            .background(Color(0xFF030712))
-                            .border(2.dp, accent, CircleShape),
+                        modifier = Modifier.size(54.dp).shadow(4.dp, CircleShape).clip(CircleShape).background(Color(0xFF030712)).border(2.dp, accent, CircleShape),
                         contentAlignment = Alignment.Center
                     ) {
                         if (avatarBitmap != null) {
@@ -182,19 +160,8 @@ fun SettingsScreen(
                 Text("Color Palette", color = textColor, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
                 Spacer(modifier = Modifier.height(10.dp))
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    val colors = listOf(
-                        Color(0xFF00B4D8),
-                        Color(0xFF2EC4B6),
-                        Color(0xFF39FF14),
-                        Color(0xFFFF2A85),
-                        Color(0xFFFF3B30)
-                    )
-
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    val colors = listOf(Color(0xFF00B4D8), Color(0xFF2EC4B6), Color(0xFF39FF14), Color(0xFFFF2A85), Color(0xFFFF3B30))
                     colors.forEach { col ->
                         Box(
                             modifier = Modifier
@@ -210,14 +177,7 @@ fun SettingsScreen(
                         modifier = Modifier
                             .size(38.dp)
                             .clip(CircleShape)
-                            .background(
-                                Brush.sweepGradient(
-                                    listOf(
-                                        Color.Red, Color.Yellow, Color.Green,
-                                        Color.Cyan, Color.Blue, Color.Magenta, Color.Red
-                                    )
-                                )
-                            )
+                            .background(Brush.sweepGradient(listOf(Color.Red, Color.Yellow, Color.Green, Color.Cyan, Color.Blue, Color.Magenta, Color.Red)))
                             .border(2.dp, Color.White, CircleShape)
                             .clickable { showCircularPicker = true },
                         contentAlignment = Alignment.Center
@@ -242,35 +202,20 @@ fun SettingsScreen(
                 Text("Configure playback behavior.", color = Color(0xFF64748B), fontSize = 12.sp)
                 Spacer(modifier = Modifier.height(16.dp))
 
-                SettingSwitchRow("🎨", "Colourful Player", "Player background adapts to album art.", manager.isColorfulPlayer, textColor) {
-                    manager.isColorfulPlayer = it
-                }
+                SettingSwitchRow("🎨", "Colourful Player", "Player background adapts to album art.", manager.isColorfulPlayer, textColor) { manager.isColorfulPlayer = it }
                 Spacer(modifier = Modifier.height(14.dp))
-                SettingSwitchRow("⏯️", "Resume only the first file", "Playback will only resume for the first track.", manager.isResumeFirstOnly, textColor) {
-                    manager.isResumeFirstOnly = it
-                }
+                SettingSwitchRow("⏯️", "Resume only the first file", "Playback will only resume for the first track.", manager.isResumeFirstOnly, textColor) { manager.isResumeFirstOnly = it }
                 Spacer(modifier = Modifier.height(14.dp))
-                SettingSwitchRow("🔊", "Fade on start", "Gently fade in audio on playback.", manager.isFadeOnStart, textColor) {
-                    manager.isFadeOnStart = it
-                }
+                SettingSwitchRow("🔊", "Fade on start", "Gently fade in audio on playback.", manager.isFadeOnStart, textColor) { manager.isFadeOnStart = it }
                 Spacer(modifier = Modifier.height(14.dp))
-                SettingSwitchRow("♾️", "Gapless Playback", "Removes pauses between tracks.", manager.isGaplessEnabled, textColor) {
-                    manager.isGaplessEnabled = it
-                }
+                SettingSwitchRow("♾️", "Gapless Playback", "Removes pauses between tracks.", manager.isGaplessEnabled, textColor) { manager.isGaplessEnabled = it }
                 Spacer(modifier = Modifier.height(14.dp))
-                SettingSwitchRow("↔️", "Crossfade", "Adjust the fade duration between tracks.", manager.isCrossfadeEnabled, textColor) {
-                    manager.isCrossfadeEnabled = it
-                }
+                SettingSwitchRow("↔️", "Crossfade", "Adjust the fade duration between tracks.", manager.isCrossfadeEnabled, textColor) { manager.isCrossfadeEnabled = it }
 
                 if (manager.isCrossfadeEnabled) {
                     Spacer(modifier = Modifier.height(10.dp))
                     Text("Duration: ${manager.crossfadeDuration.toInt()}s", color = Color(0xFF64748B), fontSize = 12.sp)
-                    Slider(
-                        value = manager.crossfadeDuration,
-                        onValueChange = { manager.crossfadeDuration = it },
-                        valueRange = 1f..10f,
-                        colors = SliderDefaults.colors(thumbColor = accent, activeTrackColor = accent)
-                    )
+                    Slider(value = manager.crossfadeDuration, onValueChange = { manager.crossfadeDuration = it }, valueRange = 1f..10f, colors = SliderDefaults.colors(thumbColor = accent, activeTrackColor = accent))
                 }
             }
         }
@@ -289,31 +234,15 @@ fun SettingsScreen(
                 Text("Adjust audio playback settings.", color = Color(0xFF64748B), fontSize = 12.sp)
                 Spacer(modifier = Modifier.height(16.dp))
 
-                SettingSwitchRow("📶", "Lossless Audio", "Use Dolby Atmos and Hi-Res Audio.", manager.isLosslessEnabled, textColor) {
-                    manager.isLosslessEnabled = it
-                }
+                SettingSwitchRow("📶", "Lossless Audio", "Use Dolby Atmos and Hi-Res Audio.", manager.isLosslessEnabled, textColor) { manager.isLosslessEnabled = it }
                 Spacer(modifier = Modifier.height(14.dp))
-                SettingSwitchRow("🔉", "Volume Normalization", "Set the same loudness level for all tracks.", manager.isVolumeNormalized, textColor) {
-                    manager.isVolumeNormalized = it
-                }
-
+                SettingSwitchRow("🔉", "Volume Normalization", "Set the same loudness level for all tracks.", manager.isVolumeNormalized, textColor) { manager.isVolumeNormalized = it }
                 Spacer(modifier = Modifier.height(14.dp))
                 Text("Volume Boost", color = textColor, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                 Text("Increase the maximum volume (${manager.volumeBoostLevel.toInt()}%).", color = Color(0xFF64748B), fontSize = 12.sp)
-                Slider(
-                    value = manager.volumeBoostLevel,
-                    onValueChange = {
-                        manager.volumeBoostLevel = it
-                        manager.attachAudioEffects()
-                    },
-                    valueRange = 100f..200f,
-                    colors = SliderDefaults.colors(thumbColor = accent, activeTrackColor = accent)
-                )
-
+                Slider(value = manager.volumeBoostLevel, onValueChange = { manager.volumeBoostLevel = it; manager.attachAudioEffects() }, valueRange = 100f..200f, colors = SliderDefaults.colors(thumbColor = accent, activeTrackColor = accent))
                 Spacer(modifier = Modifier.height(14.dp))
-                SettingSwitchRow("🎚️", "Mono Audio", "Combine left and right channels.", manager.isMonoAudio, textColor) {
-                    manager.isMonoAudio = it
-                }
+                SettingSwitchRow("🎚️", "Mono Audio", "Combine left and right channels.", manager.isMonoAudio, textColor) { manager.isMonoAudio = it }
 
                 Spacer(modifier = Modifier.height(16.dp))
                 Text("Audio Output", color = textColor, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
@@ -342,21 +271,13 @@ fun SettingsScreen(
                 }
 
                 Spacer(modifier = Modifier.height(18.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                     Column {
                         Text("Equalizer", color = textColor, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                         Text(manager.selectedEqPreset, color = accent, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                     }
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Button(
-                            onClick = { onOpenEqualizer() },
-                            colors = ButtonDefaults.buttonColors(containerColor = if (isDark) Color(0x22FFFFFF) else Color(0xFFF1F5F9)),
-                            shape = RoundedCornerShape(10.dp)
-                        ) {
+                        Button(onClick = { onOpenEqualizer() }, colors = ButtonDefaults.buttonColors(containerColor = if (isDark) Color(0x22FFFFFF) else Color(0xFFF1F5F9)), shape = RoundedCornerShape(10.dp)) {
                             Text("Adjust", color = textColor, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                         }
                         Spacer(modifier = Modifier.width(10.dp))
@@ -366,7 +287,7 @@ fun SettingsScreen(
             }
         }
 
-        // 5. Content Manager Section (Renamed from Content)
+        // Content Manager
         item {
             Column(
                 modifier = Modifier
@@ -380,40 +301,24 @@ fun SettingsScreen(
                 Text("Manage what music appears in your library.", color = Color(0xFF64748B), fontSize = 12.sp)
                 Spacer(modifier = Modifier.height(16.dp))
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                     Column {
                         Text("Hide Folders", color = textColor, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                         Text("Exclude specific folders from your library.", color = Color(0xFF64748B), fontSize = 12.sp)
                     }
-                    Button(
-                        onClick = { showHideFoldersDialog = true },
-                        colors = ButtonDefaults.buttonColors(containerColor = if (isDark) Color(0x22FFFFFF) else Color(0xFFF1F5F9)),
-                        shape = RoundedCornerShape(10.dp)
-                    ) {
+                    Button(onClick = { showHideFoldersDialog = true }, colors = ButtonDefaults.buttonColors(containerColor = if (isDark) Color(0x22FFFFFF) else Color(0xFFF1F5F9)), shape = RoundedCornerShape(10.dp)) {
                         Text("Manage", color = textColor, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                     }
                 }
 
                 Spacer(modifier = Modifier.height(14.dp))
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                     Column {
                         Text("Hide Audio", color = textColor, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                         Text("Hide specific audio files from your library.", color = Color(0xFF64748B), fontSize = 12.sp)
                     }
-                    Button(
-                        onClick = { showHideAudioDialog = true },
-                        colors = ButtonDefaults.buttonColors(containerColor = if (isDark) Color(0x22FFFFFF) else Color(0xFFF1F5F9)),
-                        shape = RoundedCornerShape(10.dp)
-                    ) {
+                    Button(onClick = { showHideAudioDialog = true }, colors = ButtonDefaults.buttonColors(containerColor = if (isDark) Color(0x22FFFFFF) else Color(0xFFF1F5F9)), shape = RoundedCornerShape(10.dp)) {
                         Text("Manage", color = textColor, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                     }
                 }
@@ -421,17 +326,9 @@ fun SettingsScreen(
         }
     }
 
-    if (showCircularPicker) {
-        CircularColorPickerDialog(manager = manager, onDismiss = { showCircularPicker = false })
-    }
-
-    if (showHideFoldersDialog) {
-        ManageHiddenFoldersDialog(manager = manager, onDismiss = { showHideFoldersDialog = false })
-    }
-
-    if (showHideAudioDialog) {
-        ManageHiddenAudioDialog(manager = manager, onDismiss = { showHideAudioDialog = false })
-    }
+    if (showCircularPicker) CircularColorPickerDialog(manager = manager, onDismiss = { showCircularPicker = false })
+    if (showHideFoldersDialog) ManageHiddenFoldersDialog(manager = manager, onDismiss = { showHideFoldersDialog = false })
+    if (showHideAudioDialog) ManageHiddenAudioDialog(manager = manager, onDismiss = { showHideAudioDialog = false })
 }
 
 @Composable
@@ -454,10 +351,10 @@ fun ManageHiddenFoldersDialog(manager: MusicManager, onDismiss: () -> Unit) {
     val isDark = manager.isDarkMode
     val folders = manager.allSongs.map { it.folderName }.distinct()
 
-    Box(modifier = Modifier.fillMaxSize().background(Color(0xCC000000)).clickable { onDismiss() }, contentAlignment = Alignment.Center) {
-        Box(modifier = Modifier.fillMaxWidth(0.9f).height(500.dp).clip(RoundedCornerShape(24.dp)).background(if (isDark) Color(0xFF0F172A) else Color.White).padding(20.dp)) {
+    Box(modifier = Modifier.fillMaxSize().background(Color(0x33000000)).clickable { onDismiss() }, contentAlignment = Alignment.BottomCenter) {
+        Box(modifier = Modifier.fillMaxWidth().fillMaxHeight(0.7f).clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)).background(if (isDark) Color(0xFF1E293B) else Color.White).clickable(enabled = false) {}.padding(22.dp)) {
             Column {
-                Text("Exclude Folders", color = if (isDark) Color.White else Color(0xFF0F172A), fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                Text("Exclude Folders", color = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A), fontSize = 18.sp, fontWeight = FontWeight.Bold)
                 Spacer(modifier = Modifier.height(14.dp))
                 LazyColumn(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(folders) { folder ->
@@ -465,12 +362,14 @@ fun ManageHiddenFoldersDialog(manager: MusicManager, onDismiss: () -> Unit) {
                         Row(modifier = Modifier.fillMaxWidth().clickable { manager.toggleHideFolder(folder) }, verticalAlignment = Alignment.CenterVertically) {
                             Checkbox(checked = isHidden, onCheckedChange = { manager.toggleHideFolder(folder) }, colors = CheckboxDefaults.colors(checkedColor = manager.accentColor))
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text(folder, color = if (isDark) Color.White else Color(0xFF0F172A), fontSize = 14.sp)
+                            Text(folder, color = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A), fontSize = 14.sp)
                         }
                     }
                 }
                 Spacer(modifier = Modifier.height(14.dp))
-                Button(onClick = { onDismiss() }, modifier = Modifier.fillMaxWidth()) { Text("Done") }
+                Button(onClick = { onDismiss() }, modifier = Modifier.fillMaxWidth().height(48.dp), colors = ButtonDefaults.buttonColors(containerColor = if (isDark) Color(0x22FFFFFF) else Color(0xFFF1F5F9)), shape = RoundedCornerShape(12.dp)) {
+                    Text("Done", color = if (isDark) Color.White else Color(0xFF0F172A), fontWeight = FontWeight.Bold)
+                }
             }
         }
     }
@@ -479,10 +378,10 @@ fun ManageHiddenFoldersDialog(manager: MusicManager, onDismiss: () -> Unit) {
 @Composable
 fun ManageHiddenAudioDialog(manager: MusicManager, onDismiss: () -> Unit) {
     val isDark = manager.isDarkMode
-    Box(modifier = Modifier.fillMaxSize().background(Color(0xCC000000)).clickable { onDismiss() }, contentAlignment = Alignment.Center) {
-        Box(modifier = Modifier.fillMaxWidth(0.9f).height(500.dp).clip(RoundedCornerShape(24.dp)).background(if (isDark) Color(0xFF0F172A) else Color.White).padding(20.dp)) {
+    Box(modifier = Modifier.fillMaxSize().background(Color(0x33000000)).clickable { onDismiss() }, contentAlignment = Alignment.BottomCenter) {
+        Box(modifier = Modifier.fillMaxWidth().fillMaxHeight(0.7f).clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)).background(if (isDark) Color(0xFF1E293B) else Color.White).clickable(enabled = false) {}.padding(22.dp)) {
             Column {
-                Text("Exclude Audio Files", color = if (isDark) Color.White else Color(0xFF0F172A), fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                Text("Exclude Audio Files", color = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A), fontSize = 18.sp, fontWeight = FontWeight.Bold)
                 Spacer(modifier = Modifier.height(14.dp))
                 LazyColumn(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(manager.allSongs, key = { it.id }) { song ->
@@ -491,14 +390,16 @@ fun ManageHiddenAudioDialog(manager: MusicManager, onDismiss: () -> Unit) {
                             Checkbox(checked = isHidden, onCheckedChange = { manager.toggleHideAudio(song.id) }, colors = CheckboxDefaults.colors(checkedColor = manager.accentColor))
                             Spacer(modifier = Modifier.width(8.dp))
                             Column {
-                                Text(song.title, color = if (isDark) Color.White else Color(0xFF0F172A), fontSize = 13.sp, maxLines = 1)
+                                Text(song.title, color = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A), fontSize = 13.sp, maxLines = 1)
                                 Text(song.artist, color = Color(0xFF64748B), fontSize = 11.sp)
                             }
                         }
                     }
                 }
                 Spacer(modifier = Modifier.height(14.dp))
-                Button(onClick = { onDismiss() }, modifier = Modifier.fillMaxWidth()) { Text("Done") }
+                Button(onClick = { onDismiss() }, modifier = Modifier.fillMaxWidth().height(48.dp), colors = ButtonDefaults.buttonColors(containerColor = if (isDark) Color(0x22FFFFFF) else Color(0xFFF1F5F9)), shape = RoundedCornerShape(12.dp)) {
+                    Text("Done", color = if (isDark) Color.White else Color(0xFF0F172A), fontWeight = FontWeight.Bold)
+                }
             }
         }
     }

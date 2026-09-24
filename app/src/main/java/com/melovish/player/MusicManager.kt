@@ -57,7 +57,12 @@ import java.io.FileOutputStream
 import java.util.Locale
 
 class MusicManager(private val context: Context) {
-    private val prefs: SharedPreferences = context.getSharedPreferences("melovish_prefs_v8", Context.MODE_PRIVATE)
+
+    companion object {
+        var activeInstance: MusicManager? = null
+    }
+
+    private val prefs: SharedPreferences = context.getSharedPreferences("melovish_prefs_v10", Context.MODE_PRIVATE)
     private val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
 
     val player: ExoPlayer = ExoPlayer.Builder(context).build().apply {
@@ -69,13 +74,11 @@ class MusicManager(private val context: Context) {
     private val NOTIF_CHANNEL_ID = "melovish_playback_channel"
     private val NOTIF_ID = 1001
 
-    // Audio Effects Hardware
     private var equalizer: Equalizer? = null
     private var bassBoost: BassBoost? = null
     private var virtualizer: Virtualizer? = null
     private var loudnessEnhancer: LoudnessEnhancer? = null
 
-    // Playback State
     var currentSong by mutableStateOf<Song?>(null)
     var isPlaying by mutableStateOf(false)
     var currentPosition by mutableLongStateOf(0L)
@@ -86,11 +89,9 @@ class MusicManager(private val context: Context) {
     var currentSectionName by mutableStateOf("All Songs")
     var currentVolume by mutableFloatStateOf(0.7f)
 
-    // Sleep Timer
     var sleepTimerRemainingSeconds by mutableIntStateOf(0)
     private var sleepTimerJob: Job? = null
 
-    // Lists & Sorting
     val allSongs = mutableStateListOf<Song>()
     val playbackQueue = mutableStateListOf<Song>()
     val historySongs = mutableStateListOf<Song>()
@@ -99,7 +100,13 @@ class MusicManager(private val context: Context) {
     val hiddenAudioIds = mutableStateListOf<Long>()
     val folderColors = mutableStateMapOf<String, Long>()
 
-    // Persistent Sort Preferences
+    // Default System Theme
+    var themeMode by mutableStateOf(prefs.getString("theme_mode", "System") ?: "System")
+    var isDarkMode by mutableStateOf(false)
+    var accentColor by mutableStateOf(Color(prefs.getInt("accent_color", 0xFF00B4D8.toInt())))
+    val userSavedColorPresets = mutableStateListOf<Color>()
+
+    // Persistent Sort
     var currentSortOrder by mutableStateOf(
         try {
             SongSortOrder.valueOf(prefs.getString("saved_song_sort", SongSortOrder.A_TO_Z.name) ?: SongSortOrder.A_TO_Z.name)
@@ -107,7 +114,6 @@ class MusicManager(private val context: Context) {
             SongSortOrder.A_TO_Z
         }
     )
-
     var currentFolderSortOrder by mutableStateOf(
         try {
             FolderSortOrder.valueOf(prefs.getString("saved_folder_sort", FolderSortOrder.A_TO_Z.name) ?: FolderSortOrder.A_TO_Z.name)
@@ -116,21 +122,11 @@ class MusicManager(private val context: Context) {
         }
     )
 
-    // Memory-Bounded Bitmap Cache
     private val maxCacheSize = (Runtime.getRuntime().maxMemory() / 1024 / 8).toInt()
     private val memoryCache = object : LruCache<Long, Bitmap>(maxCacheSize) {
-        override fun sizeOf(key: Long, bitmap: Bitmap): Int {
-            return bitmap.byteCount / 1024
-        }
+        override fun sizeOf(key: Long, bitmap: Bitmap): Int = bitmap.byteCount / 1024
     }
 
-    // Appearance & Theming
-    var themeMode by mutableStateOf(prefs.getString("theme_mode", "Dark") ?: "Dark")
-    var isDarkMode by mutableStateOf(prefs.getBoolean("dark_mode", false))
-    var accentColor by mutableStateOf(Color(prefs.getInt("accent_color", 0xFF00B4D8.toInt())))
-    val userSavedColorPresets = mutableStateListOf<Color>()
-
-    // Player Settings
     var isColorfulPlayer by mutableStateOf(prefs.getBoolean("colorful_player", true))
     var isResumeFirstOnly by mutableStateOf(prefs.getBoolean("resume_first", false))
     var isFadeOnStart by mutableStateOf(prefs.getBoolean("fade_start", false))
@@ -138,14 +134,12 @@ class MusicManager(private val context: Context) {
     var isCrossfadeEnabled by mutableStateOf(prefs.getBoolean("crossfade_enabled", false))
     var crossfadeDuration by mutableFloatStateOf(prefs.getFloat("crossfade_duration", 3.0f))
 
-    // Audio Engine Settings
     var isLosslessEnabled by mutableStateOf(prefs.getBoolean("lossless", true))
     var isVolumeNormalized by mutableStateOf(prefs.getBoolean("vol_norm", false))
     var volumeBoostLevel by mutableFloatStateOf(prefs.getFloat("vol_boost", 100f))
     var isMonoAudio by mutableStateOf(prefs.getBoolean("mono", false))
     var selectedAudioOutput by mutableStateOf(prefs.getString("audio_output", "Phone") ?: "Phone")
 
-    // Full Hardware Equalizer State
     var isEqEnabled by mutableStateOf(prefs.getBoolean("eq_enabled", true))
     var eqBandsCount by mutableIntStateOf(5)
     val eqBandLevels = mutableStateMapOf<Int, Int>()
@@ -160,7 +154,6 @@ class MusicManager(private val context: Context) {
     var isStopBass by mutableStateOf(prefs.getBoolean("stop_bass", false))
     var isRemoveVocals by mutableStateOf(prefs.getBoolean("remove_vocals", false))
 
-    // Profile Info
     var profileName by mutableStateOf(prefs.getString("prof_name", "Bharat Bhushan") ?: "Bharat Bhushan")
     var profileEmail by mutableStateOf(prefs.getString("prof_email", "") ?: "")
     var profileImagePath by mutableStateOf(prefs.getString("prof_image_path", null))
@@ -168,6 +161,7 @@ class MusicManager(private val context: Context) {
     private val scope = CoroutineScope(Dispatchers.Main)
 
     init {
+        activeInstance = this
         initMediaSession()
         createNotificationChannel()
         setupBroadcastReceiver()
@@ -210,7 +204,7 @@ class MusicManager(private val context: Context) {
                 "Playback Controls",
                 NotificationManager.IMPORTANCE_LOW
             ).apply {
-                description = "Notification and lock screen media player"
+                description = "Notification media player controls"
                 setShowBadge(false)
             }
             notificationManager.createNotificationChannel(channel)
@@ -304,7 +298,6 @@ class MusicManager(private val context: Context) {
 
         if (art != null) {
             metadataBuilder.putBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART, art)
-            metadataBuilder.putBitmap(MediaMetadata.METADATA_KEY_ART, art)
             metadataBuilder.putBitmap(MediaMetadata.METADATA_KEY_DISPLAY_ICON, art)
         }
         mediaSession?.setMetadata(metadataBuilder.build())
@@ -378,9 +371,7 @@ class MusicManager(private val context: Context) {
         } catch (_: Exception) {}
     }
 
-    fun getCachedAlbumArt(songId: Long): Bitmap? {
-        return memoryCache.get(songId)
-    }
+    fun getCachedAlbumArt(songId: Long): Bitmap? = memoryCache.get(songId)
 
     suspend fun loadAlbumArtAsync(song: Song): Bitmap? = withContext(Dispatchers.IO) {
         val cached = memoryCache.get(song.id)
@@ -437,9 +428,7 @@ class MusicManager(private val context: Context) {
             val audioSessionId = player.audioSessionId
             if (audioSessionId != 0) {
                 if (equalizer == null) {
-                    equalizer = Equalizer(0, audioSessionId).apply {
-                        enabled = isEqEnabled
-                    }
+                    equalizer = Equalizer(0, audioSessionId).apply { enabled = isEqEnabled }
                     eqBandsCount = (equalizer?.numberOfBands?.toInt() ?: 5).coerceAtLeast(1)
                     val range = equalizer?.bandLevelRange
                     if (range != null && range.size >= 2) {
@@ -449,39 +438,29 @@ class MusicManager(private val context: Context) {
                     for (i in 0 until eqBandsCount) {
                         val freq = (equalizer?.getCenterFreq(i.toShort()) ?: 0) / 1000
                         eqCenterFreqs[i] = if (freq > 0) freq else (60 * (i + 1) * (i + 1))
-                        val level = equalizer?.getBandLevel(i.toShort())?.toInt() ?: 0
-                        eqBandLevels[i] = level
+                        eqBandLevels[i] = equalizer?.getBandLevel(i.toShort())?.toInt() ?: 0
                     }
                     eqPresetNames.clear()
                     val presetsCount = equalizer?.numberOfPresets?.toInt() ?: 0
                     for (p in 0 until presetsCount) {
-                        val name = equalizer?.getPresetName(p.toShort()) ?: "Preset $p"
-                        eqPresetNames.add(name)
+                        eqPresetNames.add(equalizer?.getPresetName(p.toShort()) ?: "Preset $p")
                     }
                     if (eqPresetNames.isEmpty()) {
-                        listOf("Flat", "Rock", "Pop", "Jazz", "Classical", "Hip Hop", "Dance").forEach {
-                            eqPresetNames.add(it)
-                        }
+                        listOf("Flat", "Rock", "Pop", "Jazz", "Classical", "Hip Hop", "Dance").forEach { eqPresetNames.add(it) }
                     }
                 } else {
                     equalizer?.enabled = isEqEnabled
                 }
 
-                if (bassBoost == null) {
-                    bassBoost = BassBoost(0, audioSessionId)
-                }
+                if (bassBoost == null) bassBoost = BassBoost(0, audioSessionId)
                 bassBoost?.enabled = !isStopBass && isEqEnabled
                 bassBoost?.setStrength((bassBoostPercent * 10).toShort().coerceIn(0, 1000))
 
-                if (virtualizer == null) {
-                    virtualizer = Virtualizer(0, audioSessionId)
-                }
+                if (virtualizer == null) virtualizer = Virtualizer(0, audioSessionId)
                 virtualizer?.enabled = isEqEnabled
                 virtualizer?.setStrength((virtualizerPercent * 10).toShort().coerceIn(0, 1000))
 
-                if (loudnessEnhancer == null) {
-                    loudnessEnhancer = LoudnessEnhancer(audioSessionId)
-                }
+                if (loudnessEnhancer == null) loudnessEnhancer = LoudnessEnhancer(audioSessionId)
                 val boostGainMb = ((volumeBoostLevel - 100f) * 30f).toInt()
                 loudnessEnhancer?.setTargetGain(boostGainMb.coerceAtLeast(0))
                 loudnessEnhancer?.enabled = volumeBoostLevel > 100f
@@ -511,8 +490,7 @@ class MusicManager(private val context: Context) {
             if (index >= 0 && index < (equalizer?.numberOfPresets ?: 0)) {
                 equalizer?.usePreset(index.toShort())
                 for (i in 0 until eqBandsCount) {
-                    val lvl = equalizer?.getBandLevel(i.toShort())?.toInt() ?: 0
-                    eqBandLevels[i] = lvl
+                    eqBandLevels[i] = equalizer?.getBandLevel(i.toShort())?.toInt() ?: 0
                 }
             }
         } catch (_: Exception) {}
@@ -531,17 +509,13 @@ class MusicManager(private val context: Context) {
     fun setBassBoost(percent: Int) {
         bassBoostPercent = percent
         prefs.edit().putInt("bass_boost", percent).apply()
-        try {
-            bassBoost?.setStrength((percent * 10).toShort().coerceIn(0, 1000))
-        } catch (_: Exception) {}
+        try { bassBoost?.setStrength((percent * 10).toShort().coerceIn(0, 1000)) } catch (_: Exception) {}
     }
 
     fun setVirtualizer(percent: Int) {
         virtualizerPercent = percent
         prefs.edit().putInt("virtualizer", percent).apply()
-        try {
-            virtualizer?.setStrength((percent * 10).toShort().coerceIn(0, 1000))
-        } catch (_: Exception) {}
+        try { virtualizer?.setStrength((percent * 10).toShort().coerceIn(0, 1000)) } catch (_: Exception) {}
     }
 
     fun toggleStopBass(stop: Boolean) {
@@ -584,9 +558,7 @@ class MusicManager(private val context: Context) {
                             it.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO ||
                             it.type == AudioDeviceInfo.TYPE_HEARING_AID
                         }
-                        if (btDevice != null) {
-                            audioManager.setCommunicationDevice(btDevice)
-                        }
+                        if (btDevice != null) audioManager.setCommunicationDevice(btDevice)
                     }
                 }
             }
@@ -618,8 +590,7 @@ class MusicManager(private val context: Context) {
         currentVolume = volFraction.coerceIn(0f, 1f)
         try {
             val max = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
-            val target = (currentVolume * max).toInt()
-            audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, target, 0)
+            audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, (currentVolume * max).toInt(), 0)
         } catch (_: Exception) {}
     }
 
@@ -746,6 +717,7 @@ class MusicManager(private val context: Context) {
         }
     }
 
+    // Play Song with sequential continuity
     fun playSong(song: Song, queue: List<Song>, section: String) {
         currentSectionName = section
         currentSong = song
@@ -759,6 +731,17 @@ class MusicManager(private val context: Context) {
         player.prepare()
         player.play()
         recordSongPlayed(song)
+    }
+
+    // Live Reorder Playing Queue
+    fun moveQueueItem(fromIndex: Int, toIndex: Int) {
+        if (fromIndex in playbackQueue.indices && toIndex in playbackQueue.indices && fromIndex != toIndex) {
+            val moved = playbackQueue.removeAt(fromIndex)
+            playbackQueue.add(toIndex, moved)
+            try {
+                player.moveMediaItem(fromIndex, toIndex)
+            } catch (_: Exception) {}
+        }
     }
 
     fun playNextInQueue(song: Song) {
@@ -1076,9 +1059,7 @@ class MusicManager(private val context: Context) {
     }
 
     fun addColorPreset(color: Color) {
-        if (userSavedColorPresets.size >= 10) {
-            userSavedColorPresets.removeAt(0)
-        }
+        if (userSavedColorPresets.size >= 10) userSavedColorPresets.removeAt(0)
         if (color !in userSavedColorPresets) {
             userSavedColorPresets.add(color)
             saveColorPresets()
@@ -1097,9 +1078,7 @@ class MusicManager(private val context: Context) {
         if (str != null) {
             try {
                 val arr = JSONArray(str)
-                for (i in 0 until arr.length()) {
-                    userSavedColorPresets.add(Color(arr.getInt(i)))
-                }
+                for (i in 0 until arr.length()) userSavedColorPresets.add(Color(arr.getInt(i)))
             } catch (_: Exception) {}
         }
         if (userSavedColorPresets.isEmpty()) {
@@ -1113,10 +1092,6 @@ class MusicManager(private val context: Context) {
     fun setTheme(mode: String) {
         themeMode = mode
         prefs.edit().putString("theme_mode", mode).apply()
-        when (mode) {
-            "Light" -> isDarkMode = false
-            "Dark" -> isDarkMode = true
-        }
     }
 
     fun toggleHideFolder(folder: String) {
@@ -1173,23 +1148,5 @@ class MusicManager(private val context: Context) {
                 }
             } catch (_: Exception) {}
         }
-    }
-}
-
-// Global Formatting Utilities
-fun formatTime(ms: Long): String {
-    val totalSeconds = (ms / 1000).coerceAtLeast(0)
-    val minutes = totalSeconds / 60
-    val seconds = totalSeconds % 60
-    return String.format(Locale.getDefault(), "%02d:%02d", minutes, seconds)
-}
-
-fun formatFileSize(bytes: Long): String {
-    if (bytes <= 0) return "0 MB"
-    val mb = bytes / (1024.0 * 1024.0)
-    return if (mb >= 1024.0) {
-        String.format(Locale.getDefault(), "%.2f GB", mb / 1024.0)
-    } else {
-        String.format(Locale.getDefault(), "%.1f MB", mb)
     }
 }

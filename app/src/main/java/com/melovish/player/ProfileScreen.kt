@@ -50,14 +50,11 @@ import androidx.compose.ui.unit.sp
 import java.io.File
 
 @Composable
-fun ProfileScreen(
-    manager: MusicManager,
-    onBackClick: () -> Unit
-) {
+fun ProfileScreen(manager: MusicManager, onBackClick: () -> Unit) {
     val context = LocalContext.current
     val isDark = manager.isDarkMode
-    val textColor = if (isDark) Color.White else Color(0xFF0F172A)
-    val cardBg = if (isDark) Color(0xFF0F172A) else Color.White
+    val textColor = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A)
+    val cardBg = if (isDark) Color(0xFF131B2E) else Color.White
     val accent = manager.accentColor
 
     var isEditMode by remember { mutableStateOf(false) }
@@ -66,69 +63,40 @@ fun ProfileScreen(
     var pickedImageUri by remember { mutableStateOf<Uri?>(null) }
     var pickedImagePreviewBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var showBigPicturePreview by remember { mutableStateOf(false) }
-
     var viewingAllType by remember { mutableStateOf<String?>(null) }
 
-    BackHandler(enabled = viewingAllType != null) {
-        viewingAllType = null
-    }
+    BackHandler(enabled = viewingAllType != null) { viewingAllType = null }
 
-    val photoPicker = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent()
-    ) { uri: Uri? ->
+    val photoPicker = rememberLauncherForActivityResult(contract = ActivityResultContracts.GetContent()) { uri ->
         if (uri != null) {
             pickedImageUri = uri
             try {
-                context.contentResolver.openInputStream(uri)?.use { stream ->
-                    pickedImagePreviewBitmap = BitmapFactory.decodeStream(stream)
-                }
+                context.contentResolver.openInputStream(uri)?.use { stream -> pickedImagePreviewBitmap = BitmapFactory.decodeStream(stream) }
             } catch (_: Exception) {}
         }
     }
 
     val savedAvatarFile = manager.profileImagePath?.let { File(it) }
-    val savedAvatarBitmap = if (savedAvatarFile != null && savedAvatarFile.exists()) {
-        BitmapFactory.decodeFile(savedAvatarFile.absolutePath)
-    } else null
-
+    val savedAvatarBitmap = if (savedAvatarFile != null && savedAvatarFile.exists()) BitmapFactory.decodeFile(savedAvatarFile.absolutePath) else null
     val currentDisplayAvatar = pickedImagePreviewBitmap ?: savedAvatarBitmap
 
     if (viewingAllType != null) {
         val isMostPlayedView = viewingAllType == "most_played"
         val fullList = if (isMostPlayedView) manager.getMostPlayedSongs() else manager.historySongs
 
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 16.dp)
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 8.dp, bottom = 4.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
+        Column(modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
+            Row(modifier = Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 4.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     GlassBackButton(isDark = isDark, onClick = { viewingAllType = null })
                     Spacer(modifier = Modifier.width(14.dp))
                     Column {
-                        Text(
-                            text = if (isMostPlayedView) "Most Played" else "History",
-                            fontSize = 20.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = textColor
-                        )
+                        Text(text = if (isMostPlayedView) "Most Played" else "History", fontSize = 20.sp, fontWeight = FontWeight.ExtraBold, color = textColor)
                         Text("${fullList.size} tracks available", fontSize = 12.sp, color = Color(0xFF64748B))
                     }
                 }
 
                 if (!isMostPlayedView && fullList.isNotEmpty()) {
-                    Button(
-                        onClick = { manager.clearHistory(); viewingAllType = null },
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0x1AEF4444)),
-                        shape = RoundedCornerShape(8.dp)
-                    ) {
+                    Button(onClick = { manager.clearHistory(); viewingAllType = null }, colors = ButtonDefaults.buttonColors(containerColor = Color(0x1AEF4444)), shape = RoundedCornerShape(8.dp)) {
                         Text("Clear", color = Color(0xFFEF4444), fontSize = 11.sp, fontWeight = FontWeight.Bold)
                     }
                 }
@@ -141,21 +109,11 @@ fun ProfileScreen(
                     Text("No tracks found.", color = Color(0xFF64748B))
                 }
             } else {
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(bottom = 80.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
+                LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 80.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     itemsIndexed(fullList, key = { _, s -> s.id }) { index, song ->
-                        ProfileSongRow(
-                            song = song,
-                            manager = manager,
-                            isDark = isDark,
-                            accent = accent,
-                            showPlayCount = isMostPlayedView,
-                            rank = if (isMostPlayedView) index + 1 else null,
-                            onClick = { manager.playSong(song, fullList, if (isMostPlayedView) "Most Played" else "History") }
-                        )
+                        ProfileSongRow(song = song, manager = manager, isDark = isDark, accent = accent, showPlayCount = isMostPlayedView, rank = if (isMostPlayedView) index + 1 else null, onClick = {
+                            manager.playSong(song, fullList, if (isMostPlayedView) "Most Played" else "History")
+                        })
                     }
                 }
             }
@@ -163,48 +121,18 @@ fun ProfileScreen(
         return
     }
 
-    LazyColumn(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(horizontal = 16.dp),
-        contentPadding = PaddingValues(bottom = 80.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
-    ) {
+    LazyColumn(modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp), contentPadding = PaddingValues(bottom = 80.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         item {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 8.dp, bottom = 2.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
+            Row(modifier = Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 2.dp), verticalAlignment = Alignment.CenterVertically) {
                 GlassBackButton(isDark = isDark, onClick = onBackClick)
-
                 Spacer(modifier = Modifier.width(14.dp))
-
-                Text(
-                    text = "My Profile",
-                    fontSize = 22.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = textColor
-                )
+                Text(text = "My Profile", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = textColor)
             }
         }
 
-        // Profile Info Card
         item {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(24.dp))
-                    .background(cardBg)
-                    .border(1.dp, if (isDark) Color(0x22FFFFFF) else Color(0xFFE2E8F0), RoundedCornerShape(24.dp))
-                    .padding(20.dp)
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
+            Column(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(24.dp)).background(cardBg).border(1.dp, if (isDark) Color(0x22FFFFFF) else Color(0xFFE2E8F0), RoundedCornerShape(24.dp)).padding(20.dp)) {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                     Text("Profile Info", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = textColor)
                     Button(
                         onClick = {
@@ -226,19 +154,9 @@ fun ProfileScreen(
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(
-                        modifier = Modifier
-                            .size(76.dp)
-                            .shadow(6.dp, CircleShape)
-                            .clip(CircleShape)
-                            .background(Color(0xFF030712))
-                            .border(2.dp, accent, CircleShape)
-                            .clickable {
-                                if (isEditMode) {
-                                    photoPicker.launch("image/*")
-                                } else {
-                                    showBigPicturePreview = true
-                                }
-                            },
+                        modifier = Modifier.size(76.dp).shadow(6.dp, CircleShape).clip(CircleShape).background(Color(0xFF030712)).border(2.dp, accent, CircleShape).clickable {
+                            if (isEditMode) photoPicker.launch("image/*") else showBigPicturePreview = true
+                        },
                         contentAlignment = Alignment.Center
                     ) {
                         if (currentDisplayAvatar != null) {
@@ -248,15 +166,7 @@ fun ProfileScreen(
                         }
 
                         if (isEditMode) {
-                            Box(
-                                modifier = Modifier
-                                    .align(Alignment.BottomEnd)
-                                    .size(26.dp)
-                                    .clip(CircleShape)
-                                    .background(accent)
-                                    .border(1.5.dp, Color.White, CircleShape),
-                                contentAlignment = Alignment.Center
-                            ) {
+                            Box(modifier = Modifier.align(Alignment.BottomEnd).size(26.dp).clip(CircleShape).background(accent).border(1.5.dp, Color.White, CircleShape), contentAlignment = Alignment.Center) {
                                 Text("📷", fontSize = 12.sp)
                             }
                         }
@@ -273,43 +183,22 @@ fun ProfileScreen(
                     } else {
                         Column {
                             Text(manager.profileName, color = textColor, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                            if (manager.profileEmail.isNotBlank()) {
-                                Text(manager.profileEmail, color = Color(0xFF64748B), fontSize = 13.sp)
-                            }
+                            if (manager.profileEmail.isNotBlank()) Text(manager.profileEmail, color = Color(0xFF64748B), fontSize = 13.sp)
                         }
                     }
                 }
             }
         }
 
-        // Most Played
         item {
             val mostPlayed = manager.getMostPlayedSongs()
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(24.dp))
-                    .background(cardBg)
-                    .border(1.dp, if (isDark) Color(0x22FFFFFF) else Color(0xFFE2E8F0), RoundedCornerShape(24.dp))
-                    .padding(20.dp)
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
+            Column(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(24.dp)).background(cardBg).border(1.dp, if (isDark) Color(0x22FFFFFF) else Color(0xFFE2E8F0), RoundedCornerShape(24.dp)).padding(20.dp)) {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                     Column {
                         Text("Most Played", color = textColor, fontSize = 18.sp, fontWeight = FontWeight.Bold)
                         Text("Your all-time favorite songs.", color = Color(0xFF64748B), fontSize = 12.sp)
                     }
-
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(if (isDark) Color(0x1AFFFFFF) else Color(0xFFF1F5F9))
-                            .clickable { viewingAllType = "most_played" }
-                            .padding(horizontal = 12.dp, vertical = 6.dp)
-                    ) {
+                    Box(modifier = Modifier.clip(RoundedCornerShape(12.dp)).background(if (isDark) Color(0x1AFFFFFF) else Color(0xFFF1F5F9)).clickable { viewingAllType = "most_played" }.padding(horizontal = 12.dp, vertical = 6.dp)) {
                         Text("View all ›", color = textColor, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                     }
                 }
@@ -323,48 +212,22 @@ fun ProfileScreen(
                 } else {
                     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         mostPlayed.take(5).forEach { song ->
-                            ProfileSongRow(
-                                song = song,
-                                manager = manager,
-                                isDark = isDark,
-                                accent = accent,
-                                showPlayCount = true,
-                                onClick = { manager.playSong(song, mostPlayed, "Most Played") }
-                            )
+                            ProfileSongRow(song = song, manager = manager, isDark = isDark, accent = accent, showPlayCount = true, onClick = { manager.playSong(song, mostPlayed, "Most Played") })
                         }
                     }
                 }
             }
         }
 
-        // History
         item {
             val history = manager.historySongs
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(24.dp))
-                    .background(cardBg)
-                    .border(1.dp, if (isDark) Color(0x22FFFFFF) else Color(0xFFE2E8F0), RoundedCornerShape(24.dp))
-                    .padding(20.dp)
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
+            Column(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(24.dp)).background(cardBg).border(1.dp, if (isDark) Color(0x22FFFFFF) else Color(0xFFE2E8F0), RoundedCornerShape(24.dp)).padding(20.dp)) {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                     Column {
                         Text("History", color = textColor, fontSize = 18.sp, fontWeight = FontWeight.Bold)
                         Text("Your recently played songs.", color = Color(0xFF64748B), fontSize = 12.sp)
                     }
-
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(if (isDark) Color(0x1AFFFFFF) else Color(0xFFF1F5F9))
-                            .clickable { viewingAllType = "history" }
-                            .padding(horizontal = 12.dp, vertical = 6.dp)
-                    ) {
+                    Box(modifier = Modifier.clip(RoundedCornerShape(12.dp)).background(if (isDark) Color(0x1AFFFFFF) else Color(0xFFF1F5F9)).clickable { viewingAllType = "history" }.padding(horizontal = 12.dp, vertical = 6.dp)) {
                         Text("View all ›", color = textColor, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                     }
                 }
@@ -378,14 +241,7 @@ fun ProfileScreen(
                 } else {
                     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         history.take(5).forEach { song ->
-                            ProfileSongRow(
-                                song = song,
-                                manager = manager,
-                                isDark = isDark,
-                                accent = accent,
-                                showPlayCount = false,
-                                onClick = { manager.playSong(song, history, "History") }
-                            )
+                            ProfileSongRow(song = song, manager = manager, isDark = isDark, accent = accent, showPlayCount = false, onClick = { manager.playSong(song, history, "History") })
                         }
                     }
                 }
@@ -394,17 +250,8 @@ fun ProfileScreen(
     }
 
     if (showBigPicturePreview) {
-        Box(
-            modifier = Modifier.fillMaxSize().background(Color(0xEE000000)).clickable { showBigPicturePreview = false },
-            contentAlignment = Alignment.Center
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(320.dp)
-                    .clip(RoundedCornerShape(28.dp))
-                    .background(Color(0xFF030712)),
-                contentAlignment = Alignment.Center
-            ) {
+        Box(modifier = Modifier.fillMaxSize().background(Color(0x33000000)).clickable { showBigPicturePreview = false }, contentAlignment = Alignment.Center) {
+            Box(modifier = Modifier.size(320.dp).clip(RoundedCornerShape(28.dp)).background(Color(0xFF030712)), contentAlignment = Alignment.Center) {
                 if (currentDisplayAvatar != null) {
                     Image(bitmap = currentDisplayAvatar.asImageBitmap(), contentDescription = "Big Avatar", modifier = Modifier.fillMaxSize())
                 } else {
@@ -416,24 +263,11 @@ fun ProfileScreen(
 }
 
 @Composable
-fun ProfileSongRow(
-    song: Song,
-    manager: MusicManager,
-    isDark: Boolean,
-    accent: Color,
-    showPlayCount: Boolean,
-    rank: Int? = null,
-    onClick: () -> Unit
-) {
+fun ProfileSongRow(song: Song, manager: MusicManager, isDark: Boolean, accent: Color, showPlayCount: Boolean, rank: Int? = null, onClick: () -> Unit) {
     val isPlayingThis = manager.currentSong?.id == song.id
-    val textColor = if (isPlayingThis) accent else if (isDark) Color.White else Color(0xFF0F172A)
+    val textColor = if (isPlayingThis) accent else if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A)
     var albumArtBitmap by remember(song.id) { mutableStateOf(manager.getCachedAlbumArt(song.id)) }
-
-    LaunchedEffect(song.id) {
-        if (albumArtBitmap == null) {
-            albumArtBitmap = manager.loadAlbumArtAsync(song)
-        }
-    }
+    LaunchedEffect(song.id) { if (albumArtBitmap == null) albumArtBitmap = manager.loadAlbumArtAsync(song) }
 
     Row(
         modifier = Modifier
@@ -446,22 +280,10 @@ fun ProfileSongRow(
         verticalAlignment = Alignment.CenterVertically
     ) {
         if (rank != null) {
-            Text(
-                text = "#$rank",
-                color = accent,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.ExtraBold,
-                modifier = Modifier.width(30.dp)
-            )
+            Text(text = "#$rank", color = accent, fontSize = 12.sp, fontWeight = FontWeight.ExtraBold, modifier = Modifier.width(30.dp))
         }
 
-        Box(
-            modifier = Modifier
-                .size(46.dp)
-                .clip(RoundedCornerShape(10.dp))
-                .background(Color(0xFF1E293B)),
-            contentAlignment = Alignment.Center
-        ) {
+        Box(modifier = Modifier.size(46.dp).clip(RoundedCornerShape(10.dp)).background(Color(0xFF1E293B)), contentAlignment = Alignment.Center) {
             if (albumArtBitmap != null) {
                 Image(bitmap = albumArtBitmap!!.asImageBitmap(), contentDescription = "Art", modifier = Modifier.fillMaxSize())
             } else {
@@ -472,21 +294,8 @@ fun ProfileSongRow(
         Spacer(modifier = Modifier.width(12.dp))
 
         Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = song.title,
-                color = textColor,
-                fontSize = 14.sp,
-                fontWeight = if (isPlayingThis) FontWeight.ExtraBold else FontWeight.SemiBold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            Text(
-                text = if (song.artist.isNotBlank()) song.artist else "Unknown Artist",
-                color = Color(0xFF64748B),
-                fontSize = 11.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
+            Text(text = song.title, color = textColor, fontSize = 14.sp, fontWeight = if (isPlayingThis) FontWeight.ExtraBold else FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(text = if (song.artist.isNotBlank()) song.artist else "Unknown Artist", color = Color(0xFF64748B), fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
 
         Spacer(modifier = Modifier.width(8.dp))
@@ -497,20 +306,10 @@ fun ProfileSongRow(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("🔥", fontSize = 12.sp)
                 Spacer(modifier = Modifier.width(4.dp))
-                Text(
-                    text = "${song.playCount}",
-                    color = Color(0xFFEF4444),
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.ExtraBold
-                )
+                Text(text = "${song.playCount}", color = Color(0xFFEF4444), fontSize = 13.sp, fontWeight = FontWeight.ExtraBold)
             }
         } else {
-            Text(
-                text = formatTime(song.duration),
-                color = Color(0xFF64748B),
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Medium
-            )
+            Text(text = formatTime(song.duration), color = Color(0xFF64748B), fontSize = 12.sp, fontWeight = FontWeight.Medium)
         }
     }
 }
