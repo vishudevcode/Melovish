@@ -51,7 +51,7 @@ enum class FolderSortOrder {
     MOST_SONGS
 }
 
-// Universal formatting utilities accessible across the entire project
+// Universal formatting utilities placed here so every file in the package accesses them without unresolved reference errors
 fun formatTime(ms: Long): String {
     val totalSeconds = (ms / 1000).coerceAtLeast(0)
     val minutes = totalSeconds / 60

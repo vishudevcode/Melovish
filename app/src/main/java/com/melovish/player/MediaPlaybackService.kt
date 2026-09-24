@@ -27,13 +27,10 @@ class MediaPlaybackService : Service() {
         instance = this
     }
 
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        return START_NOT_STICKY
-    }
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int = START_NOT_STICKY
 
     override fun onTaskRemoved(rootIntent: Intent?) {
         super.onTaskRemoved(rootIntent)
-        // Stops playback and releases resources when swiped away from Recents
         MusicManager.activeInstance?.let { manager ->
             try {
                 if (manager.player.isPlaying) {

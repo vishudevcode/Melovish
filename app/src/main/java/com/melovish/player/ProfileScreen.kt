@@ -10,6 +10,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -250,7 +251,16 @@ fun ProfileScreen(manager: MusicManager, onBackClick: () -> Unit) {
     }
 
     if (showBigPicturePreview) {
-        Box(modifier = Modifier.fillMaxSize().background(Color(0x33000000)).clickable { showBigPicturePreview = false }, contentAlignment = Alignment.Center) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Transparent)
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null
+                ) { showBigPicturePreview = false },
+            contentAlignment = Alignment.Center
+        ) {
             Box(modifier = Modifier.size(320.dp).clip(RoundedCornerShape(28.dp)).background(Color(0xFF030712)), contentAlignment = Alignment.Center) {
                 if (currentDisplayAvatar != null) {
                     Image(bitmap = currentDisplayAvatar.asImageBitmap(), contentDescription = "Big Avatar", modifier = Modifier.fillMaxSize())

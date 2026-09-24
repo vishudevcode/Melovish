@@ -22,6 +22,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -80,7 +81,6 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.media3.common.Player
@@ -170,7 +170,7 @@ fun GlassmorphicFolderIcon(folderColor: Color, modifier: Modifier = Modifier) {
             moveTo(w * 0.15f, h * 0.38f)
             quadraticBezierTo(w * 0.13f, h * 0.38f, w * 0.18f, h * 0.38f)
             lineTo(w * 0.87f, h * 0.38f)
-            quadraticBezierTo(w * 0.93f, h * 0.38f, w * 0.91f, h * 0.46f)
+            quadraticBezierTo(w * 0.93f, h * 0.46f, w * 0.91f, h * 0.46f)
             lineTo(w * 0.83f, h * 0.88f)
             quadraticBezierTo(w * 0.81f, h * 0.92f, w * 0.75f, h * 0.92f)
             lineTo(w * 0.15f, h * 0.92f)
@@ -182,7 +182,7 @@ fun GlassmorphicFolderIcon(folderColor: Color, modifier: Modifier = Modifier) {
     }
 }
 
-// 9 Preset Colors + 10th Rainbow Wheel Dialog (Clean Soft Scrim)
+// 9 Preset Colors + 10th Rainbow Wheel Dialog (Zero Darkening Scrim)
 @Composable
 fun FolderColorDialog(
     folderName: String,
@@ -200,8 +200,11 @@ fun FolderColorDialog(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0x33000000))
-            .clickable { onDismiss() },
+            .background(Color.Transparent)
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null
+            ) { onDismiss() },
         contentAlignment = Alignment.BottomCenter
     ) {
         Box(
@@ -359,7 +362,7 @@ fun extractMaterialYouPalette(bitmap: Bitmap?, isDarkMode: Boolean, fallbackAcce
     }
 }
 
-// Full Player Sheet: Exact 50/50 Screen Split, 3D Swipe Tilt, Slim Slider, Even Spacing
+// Full Player Sheet: 50/50 Split, 3D Swipe Tilt, Pierced Center Slider Ball, Edge-to-Edge Sheets
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
@@ -426,12 +429,12 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
     val animatedRotationY by animateFloatAsState((totalDragX / 28f).coerceIn(-18f, 18f), tween(150, easing = LinearEasing), label = "rotY")
     val animatedTranslationX by animateFloatAsState(totalDragX, tween(120, easing = LinearEasing), label = "transX")
 
+    // Root Box without horizontal padding so overlays are 100% full screen width
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(Brush.verticalGradient(listOf(animBgTop, animBgBottom)))
             .statusBarsPadding()
-            .padding(horizontal = 24.dp)
             .pointerInput(Unit) {
                 detectHorizontalDragGestures(
                     onDragStart = { totalDragX = 0f },
@@ -453,12 +456,14 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                 )
             }
     ) {
+        // Player UI container with 24dp horizontal margins
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .padding(horizontal = 24.dp)
                 .padding(top = 10.dp, bottom = 14.dp)
         ) {
-            // Upper Half: Big Album Art with 3D Tilt & Double-Tap 10s Seek
+            // Upper Half: Full Screen Upper Area Dedicated to Big Album Art with 3D Tilt
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -528,7 +533,7 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                 }
             }
 
-            // Lower Half: Song Name -> Slim Progress Bar -> Controls -> Utility Dock with Even Spacing
+            // Lower Half: Song Name -> Centered Slim Slider -> Controls -> Dock (Arrangement.SpaceEvenly)
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -560,7 +565,7 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                     )
                 }
 
-                // 2. Slim 3.5dp Progress Bar with 12dp Small Circular Thumb
+                // 2. Slim 3.5dp Progress Bar with Exactly Centered 12dp Circular Thumb Ball
                 Column(modifier = Modifier.fillMaxWidth()) {
                     Slider(
                         value = dragProgressMs.coerceIn(0f, manager.duration.toFloat().coerceAtLeast(1f)),
@@ -584,18 +589,28 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                             )
                         },
                         track = { sliderState ->
-                            val fraction = (sliderState.value - sliderState.valueRange.start) / (sliderState.valueRange.endInclusive - sliderState.valueRange.start)
+                            val fraction = (sliderState.value - sliderState.valueRange.start) /
+                                (sliderState.valueRange.endInclusive - sliderState.valueRange.start)
+                            // 12dp bounding box perfectly aligns midpoint with the 12dp thumb
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .height(3.5.dp)
-                                    .clip(RoundedCornerShape(2.dp))
-                                    .background(if (isDark) Color(0x33FFFFFF) else Color(0x22000000))
+                                    .height(12.dp),
+                                contentAlignment = Alignment.CenterStart
                             ) {
+                                // Background Track
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(3.5.dp)
+                                        .clip(RoundedCornerShape(2.dp))
+                                        .background(if (isDark) Color(0x33FFFFFF) else Color(0x22000000))
+                                )
+                                // Active Progress Track
                                 Box(
                                     modifier = Modifier
                                         .fillMaxWidth(fraction.coerceIn(0f, 1f))
-                                        .fillMaxHeight()
+                                        .height(3.5.dp)
                                         .clip(RoundedCornerShape(2.dp))
                                         .background(userAccent)
                                 )
@@ -704,13 +719,16 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
             }
         }
 
-        // Three Dots More Menu (Full Width Bottom Sheet Matching Image 1000153280)
+        // Full-Width Edge-to-Edge Three Dots More Menu (Zero Dimming on Outside Click)
         if (showMenuModal) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(Color(0x33000000))
-                    .clickable { showMenuModal = false },
+                    .background(Color.Transparent)
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null
+                    ) { showMenuModal = false },
                 contentAlignment = Alignment.BottomCenter
             ) {
                 Box(
@@ -776,14 +794,20 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
     }
 }
 
-// Pro Equalizer Sheet
+// Full-Width Pro Equalizer Sheet (Zero Dimming on Outside Click)
 @Composable
 fun EqualizerSheet(manager: MusicManager, onDismiss: () -> Unit) {
     val accent = manager.accentColor
     val isDark = manager.isDarkMode
 
     Box(
-        modifier = Modifier.fillMaxSize().background(Color(0x33000000)).clickable { onDismiss() },
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Transparent)
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null
+            ) { onDismiss() },
         contentAlignment = Alignment.BottomCenter
     ) {
         Box(
@@ -869,10 +893,10 @@ fun EqualizerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                     Text("Acoustics & Depth", color = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A), fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                     Spacer(modifier = Modifier.height(10.dp))
                     Column(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(if (isDark) Color(0x14FFFFFF) else Color(0xFFF8FAFC)).padding(16.dp)) {
-                        Text("Bass Boost: ${manager.bassBoostPercent}%", color = if (isDark) Color.White else Color(0xFF0F172A), fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                        Text("Bass Boost: ${manager.bassBoostPercent}%", color = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A), fontSize = 13.sp, fontWeight = FontWeight.Bold)
                         Slider(value = manager.bassBoostPercent.toFloat(), onValueChange = { manager.setBassBoost(it.toInt()) }, valueRange = 0f..100f, colors = SliderDefaults.colors(thumbColor = accent, activeTrackColor = accent))
                         Spacer(modifier = Modifier.height(10.dp))
-                        Text("3D Surround (Virtualizer): ${manager.virtualizerPercent}%", color = if (isDark) Color.White else Color(0xFF0F172A), fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                        Text("3D Surround (Virtualizer): ${manager.virtualizerPercent}%", color = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A), fontSize = 13.sp, fontWeight = FontWeight.Bold)
                         Slider(value = manager.virtualizerPercent.toFloat(), onValueChange = { manager.setVirtualizer(it.toInt()) }, valueRange = 0f..100f, colors = SliderDefaults.colors(thumbColor = accent, activeTrackColor = accent))
                     }
                 }
@@ -881,14 +905,14 @@ fun EqualizerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                     Column(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(if (isDark) Color(0x14FFFFFF) else Color(0xFFF8FAFC)).padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                             Column {
-                                Text("Stop Bass (Full Cut)", color = if (isDark) Color.White else Color(0xFF0F172A), fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                                Text("Stop Bass (Full Cut)", color = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A), fontSize = 14.sp, fontWeight = FontWeight.Bold)
                                 Text("Completely cuts sub-bass frequencies", color = Color(0xFF64748B), fontSize = 11.sp)
                             }
                             Switch(checked = manager.isStopBass, onCheckedChange = { manager.toggleStopBass(it) })
                         }
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                             Column {
-                                Text("Remove Vocals (Center Cut)", color = if (isDark) Color.White else Color(0xFF0F172A), fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                                Text("Remove Vocals (Center Cut)", color = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A), fontSize = 14.sp, fontWeight = FontWeight.Bold)
                                 Text("Attenuates vocal center frequency bands", color = Color(0xFF64748B), fontSize = 11.sp)
                             }
                             Switch(checked = manager.isRemoveVocals, onCheckedChange = { manager.toggleRemoveVocals(it) })
@@ -959,7 +983,7 @@ fun MiniPlayerDock(manager: MusicManager, onClick: () -> Unit) {
     }
 }
 
-// Sleep Timer Dialog (Bottom Sheet with Close Button)
+// Full-Width Edge-to-Edge Sleep Timer Dialog (Zero Dimming on Outside Click)
 @Composable
 fun SleepTimerDialog(manager: MusicManager, onDismiss: () -> Unit) {
     val isDark = manager.isDarkMode
@@ -969,7 +993,13 @@ fun SleepTimerDialog(manager: MusicManager, onDismiss: () -> Unit) {
     var customMinutes by remember { mutableIntStateOf(15) }
 
     Box(
-        modifier = Modifier.fillMaxSize().background(Color(0x33000000)).clickable { onDismiss() },
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Transparent)
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null
+            ) { onDismiss() },
         contentAlignment = Alignment.BottomCenter
     ) {
         Box(
@@ -1057,7 +1087,7 @@ fun SleepTimerDialog(manager: MusicManager, onDismiss: () -> Unit) {
     }
 }
 
-// Circular Rainbow Picker
+// Circular Rainbow Picker Dialog
 @Composable
 fun CircularColorPickerDialog(manager: MusicManager, onDismiss: () -> Unit) {
     val isDark = manager.isDarkMode
@@ -1066,7 +1096,16 @@ fun CircularColorPickerDialog(manager: MusicManager, onDismiss: () -> Unit) {
     var value by remember { mutableFloatStateOf(1f) }
     val currentColor = remember(hue, sat, value) { Color(android.graphics.Color.HSVToColor(floatArrayOf(hue, sat, value))) }
 
-    Box(modifier = Modifier.fillMaxSize().background(Color(0x33000000)).clickable { onDismiss() }, contentAlignment = Alignment.Center) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Transparent)
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null
+            ) { onDismiss() },
+        contentAlignment = Alignment.Center
+    ) {
         Box(modifier = Modifier.fillMaxWidth(0.92f).clip(RoundedCornerShape(28.dp)).background(if (isDark) Color(0xFF1E293B) else Color.White).clickable(enabled = false) {}.padding(20.dp)) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
@@ -1137,7 +1176,16 @@ fun TagEditorDialog(manager: MusicManager, song: Song, onDismiss: () -> Unit) {
     val photoPickerLauncher = rememberLauncherForActivityResult(contract = ActivityResultContracts.GetContent()) { uri -> if (uri != null) selectedCoverUri = uri }
     val isDark = manager.isDarkMode
 
-    Box(modifier = Modifier.fillMaxSize().background(Color(0x33000000)).clickable { onDismiss() }, contentAlignment = Alignment.Center) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Transparent)
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null
+            ) { onDismiss() },
+        contentAlignment = Alignment.Center
+    ) {
         Box(modifier = Modifier.fillMaxWidth(0.9f).clip(RoundedCornerShape(24.dp)).background(if (isDark) Color(0xFF1E293B) else Color.White).clickable(enabled = false) {}.padding(20.dp)) {
             Column(modifier = Modifier.fillMaxWidth()) {
                 Text("Edit Audio Tags", color = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A), fontSize = 18.sp, fontWeight = FontWeight.Bold)
@@ -1162,11 +1210,20 @@ fun TagEditorDialog(manager: MusicManager, song: Song, onDismiss: () -> Unit) {
     }
 }
 
-// Add to Playlist Dialog
+// Full-Width Add to Playlist Dialog (Zero Dimming on Outside Click)
 @Composable
 fun AddToPlaylistDialog(manager: MusicManager, song: Song, onDismiss: () -> Unit) {
     val isDark = manager.isDarkMode
-    Box(modifier = Modifier.fillMaxSize().background(Color(0x33000000)).clickable { onDismiss() }, contentAlignment = Alignment.BottomCenter) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Transparent)
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null
+            ) { onDismiss() },
+        contentAlignment = Alignment.BottomCenter
+    ) {
         Box(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)).background(if (isDark) Color(0xFF1E293B) else Color.White).clickable(enabled = false) {}.padding(22.dp)) {
             Column {
                 Text("Add to Playlist", color = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A), fontSize = 18.sp, fontWeight = FontWeight.Bold)
@@ -1189,14 +1246,23 @@ fun AddToPlaylistDialog(manager: MusicManager, song: Song, onDismiss: () -> Unit
     }
 }
 
-// Playback Speed Dialog
+// Full-Width Playback Speed Dialog (Zero Dimming on Outside Click)
 @Composable
 fun MagneticSpeedDialog(manager: MusicManager, onDismiss: () -> Unit) {
     val haptic = LocalHapticFeedback.current
     var speed by remember { mutableFloatStateOf(manager.playbackSpeed) }
     val isDark = manager.isDarkMode
 
-    Box(modifier = Modifier.fillMaxSize().background(Color(0x33000000)).clickable { onDismiss() }, contentAlignment = Alignment.BottomCenter) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Transparent)
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null
+            ) { onDismiss() },
+        contentAlignment = Alignment.BottomCenter
+    ) {
         Box(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)).background(if (isDark) Color(0xFF1E293B) else Color.White).padding(24.dp)) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Text("Playback Speed: ${String.format(Locale.US, "%.2fx", speed)}", color = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A), fontSize = 18.sp, fontWeight = FontWeight.Bold)
@@ -1220,82 +1286,107 @@ fun MagneticSpeedDialog(manager: MusicManager, onDismiss: () -> Unit) {
     }
 }
 
-// Playing Queue Sheet with Hold & Drag / Reorder Controls & Bottom Close
+// Full-Screen Playing Queue Sheet with Hold & Drag / Reorder Controls & Bottom Close
 @Composable
 fun QueueSheet(manager: MusicManager, onDismiss: () -> Unit) {
     val isDark = manager.isDarkMode
     val textColor = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A)
+    val bg = if (isDark) Color(0xFF0A0F1D) else Color(0xFFF8F9FA)
 
-    Box(modifier = Modifier.fillMaxSize().background(Color(0x33000000)).clickable { onDismiss() }, contentAlignment = Alignment.BottomCenter) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .fillMaxHeight(0.85f)
-                .clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
-                .background(if (isDark) Color(0xFF1E293B) else Color.White)
-                .clickable(enabled = false) {}
-                .padding(22.dp)
-        ) {
-            Column(modifier = Modifier.fillMaxSize()) {
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(bg)
+            .statusBarsPadding()
+            .padding(16.dp)
+    ) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 12.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    GlassBackButton(isDark = isDark, onClick = onDismiss)
+                    Spacer(modifier = Modifier.width(14.dp))
                     Column {
                         Text("Playing Queue (${manager.playbackQueue.size})", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = textColor)
                         Text("Hold or use arrows to reorder tracks", fontSize = 12.sp, color = Color(0xFF64748B))
                     }
-                    Text("✕", fontSize = 18.sp, color = Color(0xFF64748B), modifier = Modifier.clickable { onDismiss() })
                 }
-                Spacer(modifier = Modifier.height(14.dp))
-                LazyColumn(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    itemsIndexed(manager.playbackQueue, key = { _, song -> song.id }) { index, song ->
-                        val isCur = song.id == manager.currentSong?.id
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(if (isCur) manager.accentColor.copy(alpha = 0.12f) else if (isDark) Color(0x14FFFFFF) else Color(0xFFF8FAFC))
-                                .border(1.dp, if (isCur) manager.accentColor else Color.Transparent, RoundedCornerShape(12.dp))
-                                .clickable { manager.playSong(song, manager.playbackQueue, manager.currentSectionName) }
-                                .padding(10.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(if (isCur) "▶" else "•", color = manager.accentColor, fontSize = 14.sp)
-                            Spacer(modifier = Modifier.width(10.dp))
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(song.title, color = textColor, fontSize = 14.sp, fontWeight = if (isCur) FontWeight.Bold else FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                Text("${formatFileSize(song.size)} • ${song.artist}", color = Color(0xFF64748B), fontSize = 11.sp)
+
+                Button(
+                    onClick = { onDismiss() },
+                    shape = RoundedCornerShape(10.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = if (isDark) Color(0x22FFFFFF) else Color(0xFFF1F5F9))
+                ) {
+                    Text("Close", color = textColor, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+
+            LazyColumn(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                itemsIndexed(manager.playbackQueue, key = { _, song -> song.id }) { index, song ->
+                    val isCur = song.id == manager.currentSong?.id
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(if (isCur) manager.accentColor.copy(alpha = 0.12f) else if (isDark) Color(0xFF131B2E) else Color.White)
+                            .border(1.dp, if (isCur) manager.accentColor else Color(0x1AFFFFFF), RoundedCornerShape(14.dp))
+                            .clickable { manager.playSong(song, manager.playbackQueue, manager.currentSectionName) }
+                            .padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(if (isCur) "▶" else "•", color = manager.accentColor, fontSize = 14.sp)
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(song.title, color = textColor, fontSize = 14.sp, fontWeight = if (isCur) FontWeight.Bold else FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text("${formatFileSize(song.size)} • ${song.artist}", color = Color(0xFF64748B), fontSize = 11.sp)
+                        }
+                        // Reorder Arrow Buttons + Drag Icon
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            if (index > 0) {
+                                Text("↑", fontSize = 16.sp, color = Color(0xFF64748B), modifier = Modifier.clickable { manager.moveQueueItem(index, index - 1) }.padding(horizontal = 6.dp))
                             }
-                            // Reorder Arrows
-                            Row {
-                                if (index > 0) {
-                                    Text("↑", fontSize = 16.sp, color = Color(0xFF64748B), modifier = Modifier.clickable { manager.moveQueueItem(index, index - 1) }.padding(horizontal = 6.dp))
-                                }
-                                if (index < manager.playbackQueue.size - 1) {
-                                    Text("↓", fontSize = 16.sp, color = Color(0xFF64748B), modifier = Modifier.clickable { manager.moveQueueItem(index, index + 1) }.padding(horizontal = 6.dp))
-                                }
-                                Text("≡", fontSize = 18.sp, color = Color(0xFF64748B), modifier = Modifier.padding(start = 4.dp))
+                            if (index < manager.playbackQueue.size - 1) {
+                                Text("↓", fontSize = 16.sp, color = Color(0xFF64748B), modifier = Modifier.clickable { manager.moveQueueItem(index, index + 1) }.padding(horizontal = 6.dp))
                             }
+                            Text("≡", fontSize = 20.sp, color = Color(0xFF64748B), modifier = Modifier.padding(start = 6.dp))
                         }
                     }
                 }
-                Spacer(modifier = Modifier.height(14.dp))
-                Button(
-                    onClick = { onDismiss() },
-                    modifier = Modifier.fillMaxWidth().height(48.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = if (isDark) Color(0x22FFFFFF) else Color(0xFFF1F5F9)),
-                    shape = RoundedCornerShape(12.dp)
-                ) {
-                    Text("Close", color = textColor, fontWeight = FontWeight.Bold)
-                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+            Button(
+                onClick = { onDismiss() },
+                modifier = Modifier.fillMaxWidth().height(48.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = if (isDark) Color(0x22FFFFFF) else Color(0xFFF1F5F9)),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Text("Close", color = textColor, fontWeight = FontWeight.Bold)
             }
         }
     }
 }
 
-// Lyrics Dialog
+// Full-Width Edge-to-Edge Lyrics Dialog (Zero Dimming on Outside Click)
 @Composable
 fun LyricsDialog(song: Song, isDark: Boolean, onDismiss: () -> Unit) {
     val textColor = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A)
-    Box(modifier = Modifier.fillMaxSize().background(Color(0x33000000)).clickable { onDismiss() }, contentAlignment = Alignment.BottomCenter) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Transparent)
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null
+            ) { onDismiss() },
+        contentAlignment = Alignment.BottomCenter
+    ) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
