@@ -43,6 +43,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import java.io.File
@@ -60,7 +61,7 @@ fun SettingsScreen(
     val accent = manager.accentColor
 
     var showCircularPicker by remember { mutableStateOf(false) }
-    var activeSubScreen by remember { mutableStateOf<String?>(null) } // "hide_folders" or "hide_audio"
+    var activeSubScreen by remember { mutableStateOf<String?>(null) }
 
     BackHandler(enabled = activeSubScreen != null) {
         activeSubScreen = null
@@ -391,7 +392,7 @@ fun ManageHiddenFoldersFullScreen(manager: MusicManager, isDark: Boolean, onBack
                             .border(1.5.dp, Color(0x66EF4444), RoundedCornerShape(16.dp))
                             .clickable { manager.toggleHideFolder(folder) }
                             .padding(14.dp)
-                            .alpha(0.45f), // Dimmed when hidden
+                            .alpha(0.45f),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         GlassmorphicFolderIcon(folderColor = manager.getFolderColor(folder), modifier = Modifier.size(36.dp))
@@ -502,7 +503,7 @@ fun ManageHiddenAudioFullScreen(manager: MusicManager, isDark: Boolean, onBack: 
                             .border(1.2.dp, Color(0x66EF4444), RoundedCornerShape(14.dp))
                             .clickable { manager.toggleHideAudio(song.id) }
                             .padding(12.dp)
-                            .alpha(0.45f), // Dimmed when hidden
+                            .alpha(0.45f),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text("🚫", fontSize = 18.sp)
@@ -532,8 +533,8 @@ fun ManageHiddenAudioFullScreen(manager: MusicManager, isDark: Boolean, onBack: 
                         .clip(RoundedCornerShape(14.dp))
                         .background(cardBg)
                         .border(1.dp, if (isDark) Color(0x22FFFFFF) else Color(0xFFECEFF3), RoundedCornerShape(14.dp))
-                    .clickable { manager.toggleHideAudio(song.id) }
-                    .padding(12.dp),
+                        .clickable { manager.toggleHideAudio(song.id) }
+                        .padding(12.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text("🎵", fontSize = 18.sp)
