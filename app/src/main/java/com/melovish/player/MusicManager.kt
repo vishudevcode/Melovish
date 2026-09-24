@@ -98,7 +98,7 @@ class MusicManager(private val context: Context) {
     var currentFolderSortOrder by mutableStateOf(FolderSortOrder.A_TO_Z)
 
     // Hardware Memory-Bounded Bitmap Cache (Prevents OOM)
-    private val maxCacheSize = (Runtime.getRuntime().maxMemory() / 1024 / 8).toInt() // 1/8th heap
+    private val maxCacheSize = (Runtime.getRuntime().maxMemory() / 1024 / 8).toInt()
     private val memoryCache = object : LruCache<Long, Bitmap>(maxCacheSize) {
         override fun sizeOf(key: Long, bitmap: Bitmap): Int {
             return bitmap.byteCount / 1024
@@ -107,7 +107,7 @@ class MusicManager(private val context: Context) {
 
     // Dual Liquid Glass Theming & Color Presets
     var isDarkMode by mutableStateOf(prefs.getBoolean("dark_mode", false))
-    var accentColor by mutableStateOf(Color(prefs.getInt("accent_color", 0xFF00B4D8.toInt()))) // Teal Blue default
+    var accentColor by mutableStateOf(Color(prefs.getInt("accent_color", 0xFF00B4D8.toInt())))
     var isColorfulPlayer by mutableStateOf(prefs.getBoolean("colorful_player", true))
     val userSavedColorPresets = mutableStateListOf<Color>()
 
@@ -332,11 +332,11 @@ class MusicManager(private val context: Context) {
         } catch (_: Exception) {}
     }
 
-    // High Performance Asynchronous Bitmap Loader with Downsampling
     fun getCachedAlbumArt(songId: Long): Bitmap? {
         return memoryCache.get(songId)
     }
 
+    // High-Speed Coroutine Loader (Safely Handles Closures & Smart-Casts)
     suspend fun loadAlbumArtAsync(song: Song): Bitmap? = withContext(Dispatchers.IO) {
         val cached = memoryCache.get(song.id)
         if (cached != null) return@withContext cached
@@ -361,21 +361,26 @@ class MusicManager(private val context: Context) {
                     resultBitmap = BitmapFactory.decodeByteArray(artBytes, 0, artBytes.size, opts)
                 }
                 retriever.release()
-            } catch (_: Exception) {
-                try {
-                    val sArtworkUri = Uri.parse("content://media/external/audio/albumart")
-                    val uri = ContentUris.withAppendedId(sArtworkUri, song.albumId)
-                    context.contentResolver.openInputStream(uri)?.use { stream ->
-                        val opts = BitmapFactory.Options().apply { inSampleSize = 2 }
-                        resultBitmap = BitmapFactory.decodeStream(stream, null, opts)
-                    }
-                } catch (_: Exception) {}
-            }
+            } catch (_: Exception) {}
         }
 
-        if (resultBitmap != null) {
-            // Keep memory footprint lean with 256x256 max bounds
-            val scaled = Bitmap.createScaledBitmap(resultBitmap, 256, 256, true)
+        if (resultBitmap == null) {
+            try {
+                val sArtworkUri = Uri.parse("content://media/external/audio/albumart")
+                val uri = ContentUris.withAppendedId(sArtworkUri, song.albumId)
+                val streamBitmap = context.contentResolver.openInputStream(uri)?.use { stream ->
+                    val opts = BitmapFactory.Options().apply { inSampleSize = 2 }
+                    BitmapFactory.decodeStream(stream, null, opts)
+                }
+                if (streamBitmap != null) {
+                    resultBitmap = streamBitmap
+                }
+            } catch (_: Exception) {}
+        }
+
+        val finalBmp = resultBitmap
+        if (finalBmp != null) {
+            val scaled = Bitmap.createScaledBitmap(finalBmp, 256, 256, true)
             memoryCache.put(song.id, scaled)
             return@withContext scaled
         }
@@ -919,7 +924,6 @@ class MusicManager(private val context: Context) {
                 }
             } catch (_: Exception) {}
         }
-        // Fill initial presets if empty
         if (userSavedColorPresets.isEmpty()) {
             listOf(
                 Color(0xFF00B4D8), Color(0xFF2EC4B6), Color(0xFF39FF14), Color(0xFFFF2A85), Color(0xFFFF3B30),
