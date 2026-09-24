@@ -24,6 +24,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -66,7 +67,6 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.asImageBitmap
@@ -96,6 +96,18 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun MelovishRootApp(manager: MusicManager) {
     val context = LocalContext.current
+    val systemDark = isSystemInDarkTheme()
+
+    val isDark = when (manager.themeMode) {
+        "Light" -> false
+        "Dark" -> true
+        else -> systemDark
+    }
+
+    LaunchedEffect(isDark) {
+        manager.isDarkMode = isDark
+    }
+
     val permission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
         Manifest.permission.READ_MEDIA_AUDIO
     } else {
@@ -125,14 +137,16 @@ fun MelovishRootApp(manager: MusicManager) {
     var selectedArtist by remember { mutableStateOf<String?>(null) }
     var selectedAlbum by remember { mutableStateOf<String?>(null) }
     var isPlayerExpanded by remember { mutableStateOf(false) }
+    var isSettingsEqOpen by remember { mutableStateOf(false) }
 
     var activeSongForMenu by remember { mutableStateOf<Song?>(null) }
     var activeTagEditSong by remember { mutableStateOf<Song?>(null) }
     var activeSongInfo by remember { mutableStateOf<Song?>(null) }
     var activeAddToPlaylistSong by remember { mutableStateOf<Song?>(null) }
 
-    BackHandler(enabled = isPlayerExpanded || selectedArtist != null || selectedAlbum != null || selectedPlaylist != null || selectedFolder != null || activeScreen != "home") {
+    BackHandler(enabled = isSettingsEqOpen || isPlayerExpanded || selectedArtist != null || selectedAlbum != null || selectedPlaylist != null || selectedFolder != null || activeScreen != "home") {
         when {
+            isSettingsEqOpen -> isSettingsEqOpen = false
             isPlayerExpanded -> isPlayerExpanded = false
             selectedArtist != null -> selectedArtist = null
             selectedAlbum != null -> selectedAlbum = null
@@ -142,7 +156,6 @@ fun MelovishRootApp(manager: MusicManager) {
         }
     }
 
-    val isDark = manager.isDarkMode
     val bg = if (isDark) Color(0xFF030712) else Color(0xFFFAF8F5)
 
     Surface(modifier = Modifier.fillMaxSize(), color = bg) {
@@ -195,7 +208,7 @@ fun MelovishRootApp(manager: MusicManager) {
                             manager = manager,
                             onBackClick = { activeScreen = "home" },
                             onOpenProfile = { activeScreen = "profile" },
-                            onOpenEqualizer = { isPlayerExpanded = true }
+                            onOpenEqualizer = { isSettingsEqOpen = true }
                         )
                         activeScreen == "profile" -> ProfileScreen(
                             manager = manager,
@@ -237,6 +250,10 @@ fun MelovishRootApp(manager: MusicManager) {
                 exit = slideOutVertically(targetOffsetY = { it })
             ) {
                 FullPlayerSheet(manager = manager, onDismiss = { isPlayerExpanded = false })
+            }
+
+            if (isSettingsEqOpen) {
+                EqualizerSheet(manager = manager, onDismiss = { isSettingsEqOpen = false })
             }
 
             // Universal 9-Option Action Sheet
@@ -298,13 +315,13 @@ fun MelovishRootApp(manager: MusicManager) {
             }
 
             if (activeSongInfo != null) {
-                SongInfoDialog(song = activeSongInfo!!, isDark = isDark, onDismiss = { activeSongInfo = null })
+                val s = activeSongInfo!!
+                SongInfoDialog(song = s, isDark = isDark, onDismiss = { activeSongInfo = null })
             }
         }
     }
 }
 
-// Live Running 3D Mechanical Circular Gear Canvas
 @Composable
 fun LiveMechanicalGearIcon(
     isDark: Boolean,
@@ -336,7 +353,6 @@ fun LiveMechanicalGearIcon(
 
             val gearColor = if (isDark) Color(0xFFE2E8F0) else Color(0xFF334155)
 
-            // Outer Gear Teeth Path
             val path = Path()
             for (i in 0 until teethCount) {
                 val angleStep = (2.0 * Math.PI / teethCount).toFloat()
@@ -358,7 +374,6 @@ fun LiveMechanicalGearIcon(
             path.close()
             drawPath(path, gearColor)
 
-            // Inner Cavity
             val cavityRadius = innerRingRadius * 0.72f
             drawCircle(
                 color = if (isDark) Color(0xFF0F172A) else Color(0xFFE2E8F0),
@@ -366,11 +381,9 @@ fun LiveMechanicalGearIcon(
                 center = center
             )
 
-            // Center Rivet Hub
             val hubRadius = innerRingRadius * 0.32f
             drawCircle(color = gearColor, radius = hubRadius, center = center)
 
-            // 3-Spoke Tri-Blade
             val spokeStroke = Stroke(width = 2.5f.dp.toPx())
             for (s in 0 until 3) {
                 val spAngle = (s * 2.0 * Math.PI / 3.0).toFloat()
@@ -522,7 +535,6 @@ fun HomeScreen(
             contentPadding = PaddingValues(bottom = 80.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            // Recently Played
             item {
                 Text("Recently Played", color = textColor, fontSize = 18.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp))
                 Spacer(modifier = Modifier.height(10.dp))
@@ -564,7 +576,6 @@ fun HomeScreen(
                 }
             }
 
-            // Favourite Playlists
             item {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -613,7 +624,6 @@ fun HomeScreen(
                 }
             }
 
-            // All Songs Header with Sort
             item {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -687,12 +697,8 @@ fun HomeScreen(
     }
 }
 
-// Library Screen with Folder Sorting Engine
 @Composable
-fun LibraryScreen(
-    manager: MusicManager,
-    onFolderClick: (String) -> Unit
-) {
+fun LibraryScreen(manager: MusicManager, onFolderClick: (String) -> Unit) {
     val isDark = manager.isDarkMode
     val textColor = if (isDark) Color.White else Color(0xFF0F172A)
     val cardBg = if (isDark) Color(0xFF0F172A) else Color.White
@@ -707,18 +713,10 @@ fun LibraryScreen(
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         item {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Text("Folders & Storage", color = textColor, fontSize = 22.sp, fontWeight = FontWeight.Bold)
                 Box {
-                    Button(
-                        onClick = { showFolderSortMenu = true },
-                        colors = ButtonDefaults.buttonColors(containerColor = if (isDark) Color(0x22FFFFFF) else Color(0xFFF1F5F9)),
-                        shape = RoundedCornerShape(10.dp)
-                    ) {
+                    Button(onClick = { showFolderSortMenu = true }, colors = ButtonDefaults.buttonColors(containerColor = if (isDark) Color(0x22FFFFFF) else Color(0xFFF1F5F9)), shape = RoundedCornerShape(10.dp)) {
                         Text("⇅ Sort", color = textColor, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                     }
                     DropdownMenu(expanded = showFolderSortMenu, onDismissRequest = { showFolderSortMenu = false }) {
@@ -760,12 +758,8 @@ fun LibraryScreen(
     }
 }
 
-// Search Screen with Auto-Focus and Automatic Keyboard Open
 @Composable
-fun SearchScreen(
-    manager: MusicManager,
-    onSongMenuClick: (Song) -> Unit
-) {
+fun SearchScreen(manager: MusicManager, onSongMenuClick: (Song) -> Unit) {
     var query by remember { mutableStateOf("") }
     val focusRequester = remember { FocusRequester() }
     val keyboardController = LocalSoftwareKeyboardController.current
@@ -788,9 +782,7 @@ fun SearchScreen(
             value = query,
             onValueChange = { query = it },
             placeholder = { Text("Search songs, artists, or folders...", color = Color(0xFF64748B)) },
-            modifier = Modifier
-                .fillMaxWidth()
-                .focusRequester(focusRequester),
+            modifier = Modifier.fillMaxWidth().focusRequester(focusRequester),
             shape = RoundedCornerShape(16.dp)
         )
         Spacer(modifier = Modifier.height(14.dp))
@@ -808,7 +800,6 @@ fun SearchScreen(
     }
 }
 
-// Playlist Detail Screen with Interactive Search & Browse Modal
 @Composable
 fun PlaylistDetailScreen(
     playlist: Playlist,
@@ -893,7 +884,6 @@ fun PlaylistDetailScreen(
     }
 }
 
-// Search & Browse Modal for Playlists
 @Composable
 fun PlaylistAddSearchDialog(
     playlist: Playlist,
@@ -913,25 +903,10 @@ fun PlaylistAddSearchDialog(
 
     val folders = manager.allSongs.map { it.folderName }.distinct()
 
-    Box(
-        modifier = Modifier.fillMaxSize().background(Color(0xCC000000)).clickable { onDismiss() },
-        contentAlignment = Alignment.Center
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth(0.92f)
-                .height(600.dp)
-                .clip(RoundedCornerShape(24.dp))
-                .background(if (isDark) Color(0xFF0F172A) else Color.White)
-                .clickable(enabled = false) {}
-                .padding(20.dp)
-        ) {
+    Box(modifier = Modifier.fillMaxSize().background(Color(0xCC000000)).clickable { onDismiss() }, contentAlignment = Alignment.Center) {
+        Box(modifier = Modifier.fillMaxWidth(0.92f).height(600.dp).clip(RoundedCornerShape(24.dp)).background(if (isDark) Color(0xFF0F172A) else Color.White).padding(20.dp)) {
             Column {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                     Text("Add Songs to ${playlist.name}", fontSize = 17.sp, fontWeight = FontWeight.Bold, color = textColor)
                     Button(onClick = { onDismiss() }, shape = RoundedCornerShape(8.dp)) { Text("Done") }
                 }
@@ -954,26 +929,16 @@ fun PlaylistAddSearchDialog(
 
                 when (selectedTab) {
                     0 -> {
-                        OutlinedTextField(
-                            value = searchQuery,
-                            onValueChange = { searchQuery = it },
-                            placeholder = { Text("Search songs or artists...") },
-                            modifier = Modifier.fillMaxWidth()
-                        )
+                        OutlinedTextField(value = searchQuery, onValueChange = { searchQuery = it }, placeholder = { Text("Search songs or artists...") }, modifier = Modifier.fillMaxWidth())
                         Spacer(modifier = Modifier.height(10.dp))
                         LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             items(filteredSongs, key = { it.id }) { s ->
                                 val isAdded = s.id in playlist.songIds
                                 Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clip(RoundedCornerShape(10.dp))
-                                        .background(if (isDark) Color(0x1AFFFFFF) else Color(0xFFF1F5F9))
-                                        .clickable {
-                                            if (isAdded) manager.removeSongFromPlaylist(s.id, playlist)
-                                            else manager.addSongToPlaylist(s.id, playlist)
-                                        }
-                                        .padding(12.dp),
+                                    modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(if (isDark) Color(0x1AFFFFFF) else Color(0xFFF1F5F9)).clickable {
+                                        if (isAdded) manager.removeSongFromPlaylist(s.id, playlist)
+                                        else manager.addSongToPlaylist(s.id, playlist)
+                                    }.padding(12.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Column(modifier = Modifier.weight(1f)) {
@@ -989,26 +954,15 @@ fun PlaylistAddSearchDialog(
                         LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             items(folders, key = { it }) { folder ->
                                 val count = manager.allSongs.count { it.folderName == folder }
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clip(RoundedCornerShape(10.dp))
-                                        .background(if (isDark) Color(0x1AFFFFFF) else Color(0xFFF1F5F9))
-                                        .padding(12.dp),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
+                                Row(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(if (isDark) Color(0x1AFFFFFF) else Color(0xFFF1F5F9)).padding(12.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                                     Column(modifier = Modifier.clickable { onNavigateToFolder(folder) }) {
                                         Text("📁 $folder", color = textColor, fontSize = 14.sp, fontWeight = FontWeight.Bold)
                                         Text("$count songs • Tap to view", color = manager.accentColor, fontSize = 11.sp)
                                     }
-                                    Button(
-                                        onClick = {
-                                            val folderSongIds = manager.allSongs.filter { it.folderName == folder }.map { it.id }
-                                            folderSongIds.forEach { manager.addSongToPlaylist(it, playlist) }
-                                        },
-                                        shape = RoundedCornerShape(8.dp)
-                                    ) {
+                                    Button(onClick = {
+                                        val folderSongIds = manager.allSongs.filter { it.folderName == folder }.map { it.id }
+                                        folderSongIds.forEach { manager.addSongToPlaylist(it, playlist) }
+                                    }, shape = RoundedCornerShape(8.dp)) {
                                         Text("Add All", fontSize = 11.sp)
                                     }
                                 }
@@ -1018,22 +972,9 @@ fun PlaylistAddSearchDialog(
                     2 -> {
                         LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             items(manager.customPlaylists.filter { it.id != playlist.id }, key = { it.id }) { pl ->
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clip(RoundedCornerShape(10.dp))
-                                        .background(if (isDark) Color(0x1AFFFFFF) else Color(0xFFF1F5F9))
-                                        .padding(12.dp),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
+                                Row(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(if (isDark) Color(0x1AFFFFFF) else Color(0xFFF1F5F9)).padding(12.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                                     Text("📑 ${pl.name} (${pl.songIds.size} songs)", color = textColor, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                                    Button(
-                                        onClick = {
-                                            pl.songIds.forEach { manager.addSongToPlaylist(it, playlist) }
-                                        },
-                                        shape = RoundedCornerShape(8.dp)
-                                    ) {
+                                    Button(onClick = { pl.songIds.forEach { manager.addSongToPlaylist(it, playlist) } }, shape = RoundedCornerShape(8.dp)) {
                                         Text("Copy All", fontSize = 11.sp)
                                     }
                                 }
@@ -1047,13 +988,7 @@ fun PlaylistAddSearchDialog(
 }
 
 @Composable
-fun FilteredSongsScreen(
-    title: String,
-    songs: List<Song>,
-    manager: MusicManager,
-    onBack: () -> Unit,
-    onSongMenuClick: (Song) -> Unit
-) {
+fun FilteredSongsScreen(title: String, songs: List<Song>, manager: MusicManager, onBack: () -> Unit, onSongMenuClick: (Song) -> Unit) {
     val isDark = manager.isDarkMode
     val textColor = if (isDark) Color.White else Color(0xFF0F172A)
 
@@ -1071,25 +1006,14 @@ fun FilteredSongsScreen(
         Spacer(modifier = Modifier.height(14.dp))
         LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             items(songs, key = { it.id }) { song ->
-                UniversalSongRow(
-                    song = song,
-                    manager = manager,
-                    isDark = isDark,
-                    onPlay = { manager.playSong(song, songs, title) },
-                    onMenuClick = { onSongMenuClick(song) }
-                )
+                UniversalSongRow(song = song, manager = manager, isDark = isDark, onPlay = { manager.playSong(song, songs, title) }, onMenuClick = { onSongMenuClick(song) })
             }
         }
     }
 }
 
 @Composable
-fun FolderSongsScreen(
-    folderName: String,
-    manager: MusicManager,
-    onBack: () -> Unit,
-    onSongMenuClick: (Song) -> Unit
-) {
+fun FolderSongsScreen(folderName: String, manager: MusicManager, onBack: () -> Unit, onSongMenuClick: (Song) -> Unit) {
     val songs = manager.allSongs.filter { it.folderName == folderName }
     val isDark = manager.isDarkMode
     val textColor = if (isDark) Color.White else Color(0xFF0F172A)
@@ -1105,13 +1029,7 @@ fun FolderSongsScreen(
         Spacer(modifier = Modifier.height(14.dp))
         LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             items(songs, key = { it.id }) { song ->
-                UniversalSongRow(
-                    song = song,
-                    manager = manager,
-                    isDark = isDark,
-                    onPlay = { manager.playSong(song, songs, folderName) },
-                    onMenuClick = { onSongMenuClick(song) }
-                )
+                UniversalSongRow(song = song, manager = manager, isDark = isDark, onPlay = { manager.playSong(song, songs, folderName) }, onMenuClick = { onSongMenuClick(song) })
             }
         }
     }
@@ -1135,18 +1053,8 @@ fun SongItemActionModal(
     val cardBg = if (isDark) Color(0xFF0F172A) else Color.White
     val textColor = if (isDark) Color.White else Color(0xFF0F172A)
 
-    Box(
-        modifier = Modifier.fillMaxSize().background(Color(0x99000000)).clickable { onDismiss() },
-        contentAlignment = Alignment.BottomCenter
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
-                .background(cardBg)
-                .clickable(enabled = false) {}
-                .padding(20.dp)
-        ) {
+    Box(modifier = Modifier.fillMaxSize().background(Color(0x99000000)).clickable { onDismiss() }, contentAlignment = Alignment.BottomCenter) {
+        Box(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)).background(cardBg).padding(20.dp)) {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(song.title, fontSize = 17.sp, fontWeight = FontWeight.Bold, color = textColor, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Spacer(modifier = Modifier.height(4.dp))
@@ -1162,12 +1070,7 @@ fun SongItemActionModal(
                 ModalActionRow("🗑️", "Delete from device", Color(0xFFEF4444)) { onDelete() }
 
                 Spacer(modifier = Modifier.height(8.dp))
-                Button(
-                    onClick = { onDismiss() },
-                    modifier = Modifier.fillMaxWidth().height(46.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = if (isDark) Color(0x1FFFFFFF) else Color(0xFFF1F5F9)),
-                    shape = RoundedCornerShape(12.dp)
-                ) {
+                Button(onClick = { onDismiss() }, modifier = Modifier.fillMaxWidth().height(46.dp), colors = ButtonDefaults.buttonColors(containerColor = if (isDark) Color(0x1FFFFFFF) else Color(0xFFF1F5F9)), shape = RoundedCornerShape(12.dp)) {
                     Text("Cancel", color = textColor, fontWeight = FontWeight.Bold)
                 }
             }
@@ -1177,10 +1080,7 @@ fun SongItemActionModal(
 
 @Composable
 fun ModalActionRow(icon: String, title: String, color: Color, onClick: () -> Unit) {
-    Row(
-        modifier = Modifier.fillMaxWidth().clickable { onClick() }.padding(vertical = 8.dp, horizontal = 4.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
+    Row(modifier = Modifier.fillMaxWidth().clickable { onClick() }.padding(vertical = 8.dp, horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
         Text(icon, fontSize = 18.sp, color = color, modifier = Modifier.width(28.dp))
         Spacer(modifier = Modifier.width(12.dp))
         Text(title, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = color)
@@ -1260,13 +1160,8 @@ fun CreatePlaylistDialog(manager: MusicManager, onDismiss: () -> Unit) {
     }
 }
 
-// Bottom Navigation Reordered: Home (left), Library (middle), Search (right)
 @Composable
-fun BottomNavBar(
-    manager: MusicManager,
-    activeTab: String,
-    onTabSelected: (String) -> Unit
-) {
+fun BottomNavBar(manager: MusicManager, activeTab: String, onTabSelected: (String) -> Unit) {
     val isDark = manager.isDarkMode
     val navBg = if (isDark) Color(0xE60A0F1D) else Color(0xF2FFFFFF)
     val accent = manager.accentColor
@@ -1286,17 +1181,9 @@ fun BottomNavBar(
             Triple("search", "Search", "🔍")
         ).forEach { (key, label, icon) ->
             val isSel = activeTab == key
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.clickable { onTabSelected(key) }
-            ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.clickable { onTabSelected(key) }) {
                 Text(icon, fontSize = 20.sp)
-                Text(
-                    text = label,
-                    fontSize = 11.sp,
-                    color = if (isSel) accent else Color(0xFF64748B),
-                    fontWeight = if (isSel) FontWeight.Bold else FontWeight.Normal
-                )
+                Text(text = label, fontSize = 11.sp, color = if (isSel) accent else Color(0xFF64748B), fontWeight = if (isSel) FontWeight.Bold else FontWeight.Normal)
             }
         }
     }

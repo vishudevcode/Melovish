@@ -21,6 +21,7 @@ import android.media.RingtoneManager
 import android.media.audiofx.BassBoost
 import android.media.audiofx.Equalizer
 import android.media.audiofx.LoudnessEnhancer
+import android.media.audiofx.Virtualizer
 import android.media.session.MediaSession
 import android.media.session.PlaybackState
 import android.net.Uri
@@ -34,6 +35,7 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Color
@@ -55,7 +57,7 @@ import java.io.FileOutputStream
 import java.util.Locale
 
 class MusicManager(private val context: Context) {
-    private val prefs: SharedPreferences = context.getSharedPreferences("melovish_prefs_v4", Context.MODE_PRIVATE)
+    private val prefs: SharedPreferences = context.getSharedPreferences("melovish_prefs_v5", Context.MODE_PRIVATE)
     private val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
 
     val player: ExoPlayer = ExoPlayer.Builder(context).build().apply {
@@ -67,9 +69,10 @@ class MusicManager(private val context: Context) {
     private val NOTIF_CHANNEL_ID = "melovish_playback_channel"
     private val NOTIF_ID = 1001
 
-    // Audio Effects
+    // Audio Effects Hardware
     private var equalizer: Equalizer? = null
     private var bassBoost: BassBoost? = null
+    private var virtualizer: Virtualizer? = null
     private var loudnessEnhancer: LoudnessEnhancer? = null
 
     // Playback State
@@ -97,7 +100,7 @@ class MusicManager(private val context: Context) {
     var currentSortOrder by mutableStateOf(SongSortOrder.A_TO_Z)
     var currentFolderSortOrder by mutableStateOf(FolderSortOrder.A_TO_Z)
 
-    // Hardware Memory-Bounded Bitmap Cache (Prevents OOM)
+    // Memory-Bounded Bitmap Cache
     private val maxCacheSize = (Runtime.getRuntime().maxMemory() / 1024 / 8).toInt()
     private val memoryCache = object : LruCache<Long, Bitmap>(maxCacheSize) {
         override fun sizeOf(key: Long, bitmap: Bitmap): Int {
@@ -105,22 +108,39 @@ class MusicManager(private val context: Context) {
         }
     }
 
-    // Dual Liquid Glass Theming & Color Presets
+    // Appearance & Theming
+    var themeMode by mutableStateOf(prefs.getString("theme_mode", "Dark") ?: "Dark")
     var isDarkMode by mutableStateOf(prefs.getBoolean("dark_mode", false))
     var accentColor by mutableStateOf(Color(prefs.getInt("accent_color", 0xFF00B4D8.toInt())))
-    var isColorfulPlayer by mutableStateOf(prefs.getBoolean("colorful_player", true))
     val userSavedColorPresets = mutableStateListOf<Color>()
 
-    // Audio & Player Settings
+    // Player Settings
+    var isColorfulPlayer by mutableStateOf(prefs.getBoolean("colorful_player", true))
+    var isResumeFirstOnly by mutableStateOf(prefs.getBoolean("resume_first", false))
+    var isFadeOnStart by mutableStateOf(prefs.getBoolean("fade_start", false))
+    var isGaplessEnabled by mutableStateOf(prefs.getBoolean("gapless", true))
+    var isCrossfadeEnabled by mutableStateOf(prefs.getBoolean("crossfade_enabled", false))
+    var crossfadeDuration by mutableFloatStateOf(prefs.getFloat("crossfade_duration", 3.0f))
+
+    // Audio Engine Settings
     var isLosslessEnabled by mutableStateOf(prefs.getBoolean("lossless", true))
     var isVolumeNormalized by mutableStateOf(prefs.getBoolean("vol_norm", false))
     var volumeBoostLevel by mutableFloatStateOf(prefs.getFloat("vol_boost", 100f))
     var isMonoAudio by mutableStateOf(prefs.getBoolean("mono", false))
     var selectedAudioOutput by mutableStateOf(prefs.getString("audio_output", "Phone") ?: "Phone")
 
-    // Equalizer Options
-    var isEqEnabled by mutableStateOf(prefs.getBoolean("eq_enabled", false))
-    var bassBoostPercent by mutableIntStateOf(prefs.getInt("bass_boost", 100))
+    // Full Hardware Equalizer State
+    var isEqEnabled by mutableStateOf(prefs.getBoolean("eq_enabled", true))
+    var eqBandsCount by mutableIntStateOf(5)
+    val eqBandLevels = mutableStateMapOf<Int, Int>()
+    val eqCenterFreqs = mutableStateMapOf<Int, Int>()
+    var eqMinLevel by mutableIntStateOf(-1500)
+    var eqMaxLevel by mutableIntStateOf(1500)
+    val eqPresetNames = mutableStateListOf<String>()
+    var selectedEqPreset by mutableStateOf(prefs.getString("selected_eq_preset", "Original") ?: "Original")
+
+    var bassBoostPercent by mutableIntStateOf(prefs.getInt("bass_boost", 50))
+    var virtualizerPercent by mutableIntStateOf(prefs.getInt("virtualizer", 30))
     var isStopBass by mutableStateOf(prefs.getBoolean("stop_bass", false))
     var isRemoveVocals by mutableStateOf(prefs.getBoolean("remove_vocals", false))
 
@@ -336,7 +356,6 @@ class MusicManager(private val context: Context) {
         return memoryCache.get(songId)
     }
 
-    // High-Speed Coroutine Loader (Safely Handles Closures & Smart-Casts)
     suspend fun loadAlbumArtAsync(song: Song): Bitmap? = withContext(Dispatchers.IO) {
         val cached = memoryCache.get(song.id)
         if (cached != null) return@withContext cached
@@ -392,15 +411,47 @@ class MusicManager(private val context: Context) {
             val audioSessionId = player.audioSessionId
             if (audioSessionId != 0) {
                 if (equalizer == null) {
-                    equalizer = Equalizer(0, audioSessionId).apply { enabled = isEqEnabled }
+                    equalizer = Equalizer(0, audioSessionId).apply {
+                        enabled = isEqEnabled
+                    }
+                    eqBandsCount = (equalizer?.numberOfBands?.toInt() ?: 5).coerceAtLeast(1)
+                    val range = equalizer?.bandLevelRange
+                    if (range != null && range.size >= 2) {
+                        eqMinLevel = range[0].toInt()
+                        eqMaxLevel = range[1].toInt()
+                    }
+                    for (i in 0 until eqBandsCount) {
+                        val freq = (equalizer?.getCenterFreq(i.toShort()) ?: 0) / 1000
+                        eqCenterFreqs[i] = if (freq > 0) freq else (60 * (i + 1) * (i + 1))
+                        val level = equalizer?.getBandLevel(i.toShort())?.toInt() ?: 0
+                        eqBandLevels[i] = level
+                    }
+                    eqPresetNames.clear()
+                    val presetsCount = equalizer?.numberOfPresets?.toInt() ?: 0
+                    for (p in 0 until presetsCount) {
+                        val name = equalizer?.getPresetName(p.toShort()) ?: "Preset $p"
+                        eqPresetNames.add(name)
+                    }
+                    if (eqPresetNames.isEmpty()) {
+                        listOf("Flat", "Rock", "Pop", "Jazz", "Classical", "Hip Hop", "Dance").forEach {
+                            eqPresetNames.add(it)
+                        }
+                    }
+                } else {
+                    equalizer?.enabled = isEqEnabled
                 }
-                equalizer?.enabled = isEqEnabled
 
                 if (bassBoost == null) {
                     bassBoost = BassBoost(0, audioSessionId)
                 }
                 bassBoost?.enabled = !isStopBass && isEqEnabled
                 bassBoost?.setStrength((bassBoostPercent * 10).toShort().coerceIn(0, 1000))
+
+                if (virtualizer == null) {
+                    virtualizer = Virtualizer(0, audioSessionId)
+                }
+                virtualizer?.enabled = isEqEnabled
+                virtualizer?.setStrength((virtualizerPercent * 10).toShort().coerceIn(0, 1000))
 
                 if (loudnessEnhancer == null) {
                     loudnessEnhancer = LoudnessEnhancer(audioSessionId)
@@ -409,12 +460,84 @@ class MusicManager(private val context: Context) {
                 loudnessEnhancer?.setTargetGain(boostGainMb.coerceAtLeast(0))
                 loudnessEnhancer?.enabled = volumeBoostLevel > 100f
 
-                if (isStopBass && equalizer != null) {
-                    val numBands = equalizer!!.numberOfBands
-                    if (numBands > 0) {
-                        equalizer!!.setBandLevel(0, equalizer!!.bandLevelRange[0])
-                    }
+                if (isStopBass && equalizer != null && eqBandsCount > 0) {
+                    equalizer!!.setBandLevel(0, eqMinLevel.toShort())
+                    eqBandLevels[0] = eqMinLevel
                 }
+            }
+        } catch (_: Exception) {}
+    }
+
+    fun setEqBandLevel(band: Int, level: Int) {
+        eqBandLevels[band] = level
+        try {
+            equalizer?.setBandLevel(band.toShort(), level.toShort())
+            selectedEqPreset = "Custom"
+            prefs.edit().putString("selected_eq_preset", "Custom").apply()
+        } catch (_: Exception) {}
+    }
+
+    fun applyEqPreset(presetName: String) {
+        selectedEqPreset = presetName
+        prefs.edit().putString("selected_eq_preset", presetName).apply()
+        try {
+            val index = eqPresetNames.indexOf(presetName)
+            if (index >= 0 && index < (equalizer?.numberOfPresets ?: 0)) {
+                equalizer?.usePreset(index.toShort())
+                for (i in 0 until eqBandsCount) {
+                    val lvl = equalizer?.getBandLevel(i.toShort())?.toInt() ?: 0
+                    eqBandLevels[i] = lvl
+                }
+            }
+        } catch (_: Exception) {}
+    }
+
+    fun toggleEqualizer(enabled: Boolean) {
+        isEqEnabled = enabled
+        prefs.edit().putBoolean("eq_enabled", enabled).apply()
+        try {
+            equalizer?.enabled = enabled
+            bassBoost?.enabled = !isStopBass && enabled
+            virtualizer?.enabled = enabled
+        } catch (_: Exception) {}
+    }
+
+    fun setBassBoost(percent: Int) {
+        bassBoostPercent = percent
+        prefs.edit().putInt("bass_boost", percent).apply()
+        try {
+            bassBoost?.setStrength((percent * 10).toShort().coerceIn(0, 1000))
+        } catch (_: Exception) {}
+    }
+
+    fun setVirtualizer(percent: Int) {
+        virtualizerPercent = percent
+        prefs.edit().putInt("virtualizer", percent).apply()
+        try {
+            virtualizer?.setStrength((percent * 10).toShort().coerceIn(0, 1000))
+        } catch (_: Exception) {}
+    }
+
+    fun toggleStopBass(stop: Boolean) {
+        isStopBass = stop
+        prefs.edit().putBoolean("stop_bass", stop).apply()
+        try {
+            bassBoost?.enabled = !stop && isEqEnabled
+            if (stop && eqBandsCount > 0) {
+                equalizer?.setBandLevel(0.toShort(), eqMinLevel.toShort())
+                eqBandLevels[0] = eqMinLevel
+            }
+        } catch (_: Exception) {}
+    }
+
+    fun toggleRemoveVocals(remove: Boolean) {
+        isRemoveVocals = remove
+        prefs.edit().putBoolean("remove_vocals", remove).apply()
+        try {
+            if (remove && eqBandsCount >= 3) {
+                val mid = eqBandsCount / 2
+                equalizer?.setBandLevel(mid.toShort(), eqMinLevel.toShort())
+                eqBandLevels[mid] = eqMinLevel
             }
         } catch (_: Exception) {}
     }
@@ -867,6 +990,15 @@ class MusicManager(private val context: Context) {
         )
     }
 
+    fun clearHistory() {
+        historySongs.forEach { song ->
+            song.lastPlayed = 0L
+            prefs.edit().remove("last_played_${song.id}").apply()
+        }
+        historySongs.clear()
+        Toast.makeText(context, "Playback history cleared", Toast.LENGTH_SHORT).show()
+    }
+
     fun getMostPlayedSongs(): List<Song> {
         return allSongs.filter { it.playCount > 0 }
             .sortedByDescending { it.playCount }
@@ -932,9 +1064,25 @@ class MusicManager(private val context: Context) {
         }
     }
 
-    fun toggleDarkMode(dark: Boolean) {
-        isDarkMode = dark
-        prefs.edit().putBoolean("dark_mode", dark).apply()
+    fun setTheme(mode: String) {
+        themeMode = mode
+        prefs.edit().putString("theme_mode", mode).apply()
+        when (mode) {
+            "Light" -> isDarkMode = false
+            "Dark" -> isDarkMode = true
+        }
+    }
+
+    fun toggleHideFolder(folder: String) {
+        if (folder in hiddenFolders) hiddenFolders.remove(folder) else hiddenFolders.add(folder)
+        prefs.edit().putStringSet("hidden_folders", hiddenFolders.toSet()).apply()
+        scanStorage()
+    }
+
+    fun toggleHideAudio(songId: Long) {
+        if (songId in hiddenAudioIds) hiddenAudioIds.remove(songId) else hiddenAudioIds.add(songId)
+        prefs.edit().putStringSet("hidden_audio", hiddenAudioIds.map { it.toString() }.toSet()).apply()
+        scanStorage()
     }
 
     fun deleteSongFromDevice(song: Song): Boolean {
@@ -977,22 +1125,5 @@ class MusicManager(private val context: Context) {
                 }
             } catch (_: Exception) {}
         }
-    }
-}
-
-fun formatTime(ms: Long): String {
-    val totalSeconds = (ms / 1000).coerceAtLeast(0)
-    val minutes = totalSeconds / 60
-    val seconds = totalSeconds % 60
-    return String.format(Locale.getDefault(), "%02d:%02d", minutes, seconds)
-}
-
-fun formatFileSize(bytes: Long): String {
-    if (bytes <= 0) return "0 MB"
-    val mb = bytes / (1024.0 * 1024.0)
-    return if (mb >= 1024.0) {
-        String.format(Locale.getDefault(), "%.2f GB", mb / 1024.0)
-    } else {
-        String.format(Locale.getDefault(), "%.1f MB", mb)
     }
 }
