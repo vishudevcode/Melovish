@@ -67,7 +67,6 @@ fun SettingsScreen(
         BitmapFactory.decodeFile(avatarFile.absolutePath)
     } else null
 
-    // Exact height alignment with Home Screen's Recently Played section
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
@@ -75,7 +74,6 @@ fun SettingsScreen(
         contentPadding = PaddingValues(bottom = 80.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        // Top Header with Bold & Stylized Back Arrow Button
         item {
             Row(
                 modifier = Modifier
@@ -112,7 +110,7 @@ fun SettingsScreen(
             }
         }
 
-        // 1. Profile Section on Top (Matching Reference)
+        // Profile Section
         item {
             Column(
                 modifier = Modifier
@@ -140,14 +138,14 @@ fun SettingsScreen(
                             .size(54.dp)
                             .shadow(4.dp, CircleShape)
                             .clip(CircleShape)
-                            .background(Color(0xFF1E293B))
+                            .background(Color(0xFF030712))
                             .border(2.dp, accent, CircleShape),
                         contentAlignment = Alignment.Center
                     ) {
                         if (avatarBitmap != null) {
                             Image(bitmap = avatarBitmap.asImageBitmap(), contentDescription = "Avatar", modifier = Modifier.fillMaxSize())
                         } else {
-                            Text("👤", fontSize = 24.sp)
+                            DefaultProfileAvatar(modifier = Modifier.fillMaxSize())
                         }
                     }
 
@@ -161,7 +159,7 @@ fun SettingsScreen(
             }
         }
 
-        // 2. Appearance Section (Themes & Palette)
+        // Appearance
         item {
             Column(
                 modifier = Modifier
@@ -206,11 +204,11 @@ fun SettingsScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     val colors = listOf(
-                        Color(0xFF00B4D8), // 1. Teal Blue
-                        Color(0xFF2EC4B6), // 2. Mint Green
-                        Color(0xFF39FF14), // 3. Bright Neon Green
-                        Color(0xFFFF2A85), // 4. Pink
-                        Color(0xFFFF3B30)  // 5. Red
+                        Color(0xFF00B4D8),
+                        Color(0xFF2EC4B6),
+                        Color(0xFF39FF14),
+                        Color(0xFFFF2A85),
+                        Color(0xFFFF3B30)
                     )
 
                     colors.forEach { col ->
@@ -224,7 +222,6 @@ fun SettingsScreen(
                         )
                     }
 
-                    // 6th Slot: Circular Wheel Icon
                     Box(
                         modifier = Modifier
                             .size(38.dp)
@@ -247,7 +244,7 @@ fun SettingsScreen(
             }
         }
 
-        // 3. Player Settings Card
+        // Player Settings
         item {
             Column(
                 modifier = Modifier
@@ -294,7 +291,7 @@ fun SettingsScreen(
             }
         }
 
-        // 4. Audio Section
+        // Audio
         item {
             Column(
                 modifier = Modifier
@@ -385,7 +382,7 @@ fun SettingsScreen(
             }
         }
 
-        // 5. Content Management (Hide Folders & Audio)
+        // Content Management
         item {
             Column(
                 modifier = Modifier

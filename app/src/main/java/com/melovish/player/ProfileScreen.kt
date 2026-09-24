@@ -67,7 +67,6 @@ fun ProfileScreen(
     var pickedImagePreviewBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var showBigPicturePreview by remember { mutableStateOf(false) }
 
-    // "View All" Drilldown State (null, "most_played", or "history")
     var viewingAllType by remember { mutableStateOf<String?>(null) }
 
     BackHandler(enabled = viewingAllType != null) {
@@ -94,7 +93,6 @@ fun ProfileScreen(
 
     val currentDisplayAvatar = pickedImagePreviewBitmap ?: savedAvatarBitmap
 
-    // If Viewing All 500 Most Played or Last 500 History
     if (viewingAllType != null) {
         val isMostPlayedView = viewingAllType == "most_played"
         val fullList = if (isMostPlayedView) manager.getMostPlayedSongs() else manager.historySongs
@@ -176,7 +174,6 @@ fun ProfileScreen(
         return
     }
 
-    // Default Profile Screen with Height Matching Home Screen's Recently Played
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
@@ -184,7 +181,6 @@ fun ProfileScreen(
         contentPadding = PaddingValues(bottom = 80.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        // Top Header with Bold & Stylized Back Arrow Button
         item {
             Row(
                 modifier = Modifier
@@ -256,13 +252,12 @@ fun ProfileScreen(
                 Spacer(modifier = Modifier.height(18.dp))
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    // Profile Avatar with Immediate Photo Preview Before Save
                     Box(
                         modifier = Modifier
                             .size(76.dp)
                             .shadow(6.dp, CircleShape)
                             .clip(CircleShape)
-                            .background(Color(0xFF1E293B))
+                            .background(Color(0xFF030712))
                             .border(2.dp, accent, CircleShape)
                             .clickable {
                                 if (isEditMode) {
@@ -276,7 +271,7 @@ fun ProfileScreen(
                         if (currentDisplayAvatar != null) {
                             Image(bitmap = currentDisplayAvatar.asImageBitmap(), contentDescription = "Avatar", modifier = Modifier.fillMaxSize())
                         } else {
-                            Text("👤", fontSize = 36.sp)
+                            DefaultProfileAvatar(modifier = Modifier.fillMaxSize())
                         }
 
                         if (isEditMode) {
@@ -314,7 +309,7 @@ fun ProfileScreen(
             }
         }
 
-        // 1. Most Played (First on Top with Played Time / Count on the Right)
+        // Most Played
         item {
             val mostPlayed = manager.getMostPlayedSongs()
             Column(
@@ -369,7 +364,7 @@ fun ProfileScreen(
             }
         }
 
-        // 2. History (Below Most Played with Duration on the Right)
+        // History
         item {
             val history = manager.historySongs
             Column(
@@ -425,7 +420,6 @@ fun ProfileScreen(
         }
     }
 
-    // Tap Avatar Full-Screen Dialog
     if (showBigPicturePreview) {
         Box(
             modifier = Modifier.fillMaxSize().background(Color(0xEE000000)).clickable { showBigPicturePreview = false },
@@ -435,13 +429,13 @@ fun ProfileScreen(
                 modifier = Modifier
                     .size(320.dp)
                     .clip(RoundedCornerShape(28.dp))
-                    .background(Color(0xFF1E293B)),
+                    .background(Color(0xFF030712)),
                 contentAlignment = Alignment.Center
             ) {
                 if (currentDisplayAvatar != null) {
                     Image(bitmap = currentDisplayAvatar.asImageBitmap(), contentDescription = "Big Avatar", modifier = Modifier.fillMaxSize())
                 } else {
-                    Text("👤", fontSize = 130.sp)
+                    DefaultProfileAvatar(modifier = Modifier.size(240.dp))
                 }
             }
         }
