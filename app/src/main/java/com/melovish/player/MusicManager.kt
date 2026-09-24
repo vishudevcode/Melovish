@@ -981,12 +981,13 @@ class MusicManager(private val context: Context) {
         refreshHistory()
     }
 
+    // Supports up to top 500 recent songs
     private fun refreshHistory() {
         historySongs.clear()
         historySongs.addAll(
             allSongs.filter { it.lastPlayed > 0L }
                 .sortedByDescending { it.lastPlayed }
-                .take(100)
+                .take(500)
         )
     }
 
@@ -999,10 +1000,11 @@ class MusicManager(private val context: Context) {
         Toast.makeText(context, "Playback history cleared", Toast.LENGTH_SHORT).show()
     }
 
+    // Supports up to top 500 most played songs
     fun getMostPlayedSongs(): List<Song> {
         return allSongs.filter { it.playCount > 0 }
             .sortedByDescending { it.playCount }
-            .take(100)
+            .take(500)
     }
 
     fun savePermanentProfile(name: String, email: String, imageUri: Uri?) {
