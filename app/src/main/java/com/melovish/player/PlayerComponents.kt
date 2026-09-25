@@ -1,7 +1,11 @@
 package com.melovish.player
 
+import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.media.MediaMetadataRetriever
+import android.media.audiofx.Visualizer
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -52,10 +56,12 @@ import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -83,6 +89,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import androidx.media3.common.Player
 import kotlinx.coroutines.delay
 import java.util.Locale
@@ -182,7 +189,7 @@ fun GlassmorphicFolderIcon(folderColor: Color, modifier: Modifier = Modifier) {
     }
 }
 
-// 9 Preset Colors + 10th Rainbow Wheel Dialog (Zero Darkening Scrim)
+// 9 Preset Colors + 10th Rainbow Wheel Dialog
 @Composable
 fun FolderColorDialog(
     folderName: String,
@@ -362,7 +369,153 @@ fun extractMaterialYouPalette(bitmap: Bitmap?, isDarkMode: Boolean, fallbackAcce
     }
 }
 
-// Full Player Sheet: 50/50 Split, 3D Swipe Tilt, Pierced Center Slider Ball, Edge-to-Edge Sheets
+// Live Synchronized Audio Visualizer Component
+@Composable
+fun LiveAudioVisualizerView(
+    audioSessionId: Int,
+    isPlaying: Boolean,
+    mode: String,
+    accentColor: Color,
+    isDark: Boolean,
+    modifier: Modifier = Modifier
+) {
+    if (mode == "Off") return
+
+    val context = LocalContext.current
+    val numPoints = if (mode == "Waveform") 42 else 32
+    val rawMagnitudes = remember { mutableStateListOf<Float>().apply { repeat(numPoints) { add(0.08f) } } }
+
+    var hasRecordAudioPermission by remember {
+        mutableStateOf(
+            ContextCompat.checkSelfPermission(context, android.Manifest.permission.RECORD_AUDIO) ==
+                android.content.pm.PackageManager.PERMISSION_GRANTED
+        )
+    }
+
+    DisposableEffect(audioSessionId, hasRecordAudioPermission) {
+        var visualizer: Visualizer? = null
+        if (hasRecordAudioPermission && audioSessionId != 0) {
+            try {
+                visualizer = Visualizer(audioSessionId).apply {
+                    captureSize = Visualizer.getCaptureSizeRange()[0].coerceAtLeast(64)
+                    setDataCaptureListener(object : Visualizer.OnDataCaptureListener {
+                        override fun onWaveFormDataCapture(vis: Visualizer?, waveform: ByteArray?, samplingRate: Int) {
+                            if (waveform != null && isPlaying) {
+                                val step = (waveform.size / numPoints).coerceAtLeast(1)
+                                for (i in 0 until numPoints) {
+                                    val idx = (i * step).coerceIn(0, waveform.size - 1)
+                                    val raw = (waveform[idx].toInt() and 0xFF) - 128
+                                    val mag = (kotlin.math.abs(raw) / 128f).coerceIn(0.06f, 1f)
+                                    rawMagnitudes[i] = rawMagnitudes[i] * 0.45f + mag * 0.55f
+                                }
+                            }
+                        }
+
+                        override fun onFftDataCapture(vis: Visualizer?, fft: ByteArray?, samplingRate: Int) {
+                            if (fft != null && isPlaying) {
+                                val step = (fft.size / (numPoints * 2)).coerceAtLeast(1)
+                                for (i in 0 until numPoints) {
+                                    val r = fft[i * 2].toInt()
+                                    val im = fft[i * 2 + 1].toInt()
+                                    val mag = (sqrt((r * r + im * im).toDouble()).toFloat() / 128f).coerceIn(0.06f, 1f)
+                                    rawMagnitudes[i] = rawMagnitudes[i] * 0.5f + mag * 0.5f
+                                }
+                            }
+                        }
+                    }, Visualizer.getMaxCaptureRate() / 2, true, true)
+                    enabled = true
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                visualizer = null
+            }
+        }
+
+        onDispose {
+            try {
+                visualizer?.enabled = false
+                visualizer?.release()
+            } catch (_: Exception) {}
+        }
+    }
+
+    // Smooth animation loop: decays or simulates reactive motion if no mic permission granted
+    LaunchedEffect(isPlaying, mode) {
+        var phase = 0f
+        while (true) {
+            if (isPlaying) {
+                if (!hasRecordAudioPermission) {
+                    phase += 0.18f
+                    for (i in 0 until numPoints) {
+                        val base = (sin(phase + i * 0.38f) * 0.5f + 0.5f)
+                        val extra = (cos(phase * 1.5f + i * 0.6f) * 0.25f)
+                        val value = (base + extra).coerceIn(0.12f, 0.95f)
+                        rawMagnitudes[i] = rawMagnitudes[i] * 0.35f + value * 0.65f
+                    }
+                }
+            } else {
+                for (i in 0 until numPoints) {
+                    rawMagnitudes[i] = rawMagnitudes[i] * 0.85f
+                }
+            }
+            delay(35)
+        }
+    }
+
+    val visualizerColor = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A)
+
+    Canvas(modifier = modifier) {
+        val w = size.width
+        val h = size.height
+
+        if (mode == "Waveform") {
+            // Symmetrical Waveform: Center-anchored vertical bars
+            val centerY = h / 2f
+            val spacing = w / (numPoints.toFloat())
+            val barWidth = (spacing * 0.52f).coerceIn(2.5.dp.toPx(), 4.5.dp.toPx())
+
+            for (i in 0 until numPoints) {
+                val x = i * spacing + spacing / 2f
+                val mag = rawMagnitudes[i].coerceIn(0.06f, 1f)
+                val halfBarHeight = (mag * (h / 2f) * 0.92f).coerceAtLeast(2.dp.toPx())
+
+                drawLine(
+                    color = visualizerColor,
+                    start = Offset(x, centerY - halfBarHeight),
+                    end = Offset(x, centerY + halfBarHeight),
+                    strokeWidth = barWidth,
+                    cap = StrokeCap.Round
+                )
+            }
+        } else if (mode == "Dotted Equalizer") {
+            // Dotted LED Matrix Spectrum: Bottom-anchored columns of dots
+            val colCount = numPoints
+            val colWidth = w / colCount
+            val dotRadius = (colWidth * 0.35f).coerceIn(2.2.dp.toPx(), 4.dp.toPx())
+            val maxDotsInCol = 9
+            val verticalSpacing = h / maxDotsInCol
+
+            for (i in 0 until colCount) {
+                val x = i * colWidth + colWidth / 2f
+                val mag = rawMagnitudes[i].coerceIn(0.05f, 1f)
+                val activeDots = (mag * maxDotsInCol).roundToInt().coerceIn(1, maxDotsInCol)
+
+                for (dot in 0 until maxDotsInCol) {
+                    val y = h - (dot * verticalSpacing) - dotRadius
+                    val isActive = dot < activeDots
+                    val dotColor = if (isActive) visualizerColor else visualizerColor.copy(alpha = 0.12f)
+                    drawCircle(
+                        color = dotColor,
+                        radius = dotRadius,
+                        center = Offset(x, y)
+                    )
+                }
+            }
+        }
+    }
+}
+
+// Full Player Sheet: 50/50 Split with Live Visualizer and Exact Slim Seek Bar
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
@@ -429,7 +582,6 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
     val animatedRotationY by animateFloatAsState((totalDragX / 28f).coerceIn(-18f, 18f), tween(150, easing = LinearEasing), label = "rotY")
     val animatedTranslationX by animateFloatAsState(totalDragX, tween(120, easing = LinearEasing), label = "transX")
 
-    // Root Box without horizontal padding so overlays are 100% full screen width
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -456,14 +608,13 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                 )
             }
     ) {
-        // Player UI container with 24dp horizontal margins
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(horizontal = 24.dp)
                 .padding(top = 10.dp, bottom = 14.dp)
         ) {
-            // Upper Half: Full Screen Upper Area Dedicated to Big Album Art with 3D Tilt
+            // Upper Half: Album Art
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -533,31 +684,34 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                 }
             }
 
-            // Lower Half: Song Name -> Centered Slim Slider -> Controls -> Dock (Arrangement.SpaceEvenly)
+            // Lower Half: Song Name -> Visualizer -> Redesigned Seekbar -> Controls -> Utility Dock
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .weight(1f)
+                    .weight(1.05f)
                     .padding(horizontal = 4.dp),
-                verticalArrangement = Arrangement.SpaceEvenly,
+                verticalArrangement = Arrangement.SpaceBetween,
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                // 1. Song Title & Subtitle
-                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
+                // 1. Song Title & Subtitle (Shifted slightly upward)
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.fillMaxWidth().padding(top = 2.dp)
+                ) {
                     Text(
                         text = song.title,
                         color = animTextPrimary,
-                        fontSize = 22.sp,
+                        fontSize = 21.sp,
                         fontWeight = FontWeight.ExtraBold,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         textAlign = TextAlign.Center
                     )
-                    Spacer(modifier = Modifier.height(3.dp))
+                    Spacer(modifier = Modifier.height(2.dp))
                     Text(
                         text = "${formatFileSize(song.size)} • ${if (song.artist.isNotBlank()) song.artist else "Unknown Artist"}",
                         color = animTextSecondary,
-                        fontSize = 13.sp,
+                        fontSize = 12.sp,
                         fontWeight = FontWeight.Medium,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -565,8 +719,23 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                     )
                 }
 
-                // 2. Slim 3.5dp Progress Bar with Exactly Centered 12dp Circular Thumb Ball
-                Column(modifier = Modifier.fillMaxWidth()) {
+                // 2. Custom Live Audio Visualizer (Directly between Song Details & Seekbar)
+                if (manager.visualizerMode != "Off") {
+                    LiveAudioVisualizerView(
+                        audioSessionId = manager.player.audioSessionId,
+                        isPlaying = manager.isPlaying,
+                        mode = manager.visualizerMode,
+                        accentColor = userAccent,
+                        isDark = isDark,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(48.dp)
+                            .padding(horizontal = 8.dp)
+                    )
+                }
+
+                // 3. Redesigned Seekbar: 3.5dp Slim Track + 13dp Accent Circle Thumb
+                Column(modifier = Modifier.fillMaxWidth().padding(top = 4.dp)) {
                     Slider(
                         value = dragProgressMs.coerceIn(0f, manager.duration.toFloat().coerceAtLeast(1f)),
                         onValueChange = {
@@ -581,32 +750,30 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                         thumb = {
                             Box(
                                 modifier = Modifier
-                                    .size(12.dp)
-                                    .shadow(4.dp, CircleShape)
+                                    .size(13.dp)
+                                    .shadow(2.dp, CircleShape)
                                     .clip(CircleShape)
                                     .background(userAccent)
-                                    .border(1.5.dp, Color.White, CircleShape)
                             )
                         },
                         track = { sliderState ->
                             val fraction = (sliderState.value - sliderState.valueRange.start) /
                                 (sliderState.valueRange.endInclusive - sliderState.valueRange.start)
-                            // 12dp bounding box perfectly aligns midpoint with the 12dp thumb
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .height(12.dp),
+                                    .height(13.dp),
                                 contentAlignment = Alignment.CenterStart
                             ) {
-                                // Background Track
+                                // Remaining / Unplayed Track (Neutral Light Gray / Darker Slate)
                                 Box(
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .height(3.5.dp)
                                         .clip(RoundedCornerShape(2.dp))
-                                        .background(if (isDark) Color(0x33FFFFFF) else Color(0x22000000))
+                                        .background(if (isDark) Color(0x40FFFFFF) else Color(0xFFD1D5DB))
                                 )
-                                // Active Progress Track
+                                // Played Track (Solid Filled with Dynamic Accent Color)
                                 Box(
                                     modifier = Modifier
                                         .fillMaxWidth(fraction.coerceIn(0f, 1f))
@@ -628,7 +795,7 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                     }
                 }
 
-                // 3. Playback Controls Row: Repeat (Left) -> Prev -> Play/Pause -> Next -> Shuffle (Right)
+                // 4. Playback Controls Row
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -685,7 +852,7 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                     )
                 }
 
-                // 4. Bottom Utility Dock
+                // 5. Bottom Utility Dock
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -719,7 +886,7 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
             }
         }
 
-        // Full-Width Edge-to-Edge Three Dots More Menu (Zero Dimming on Outside Click)
+        // Three Dots Menu Sheet
         if (showMenuModal) {
             Box(
                 modifier = Modifier
@@ -738,7 +905,7 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                         .background(if (isDark) Color(0xFF1E293B) else Color.White)
                         .clickable(enabled = false) {}
                         .padding(22.dp)
-        ) {
+                ) {
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text(
                             text = "${song.title} - ${if (song.artist.isNotBlank()) song.artist else "Unknown"}",
@@ -794,7 +961,7 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
     }
 }
 
-// Full-Width Pro Equalizer Sheet (Zero Dimming on Outside Click)
+// Pro Equalizer Sheet
 @Composable
 fun EqualizerSheet(manager: MusicManager, onDismiss: () -> Unit) {
     val accent = manager.accentColor
@@ -983,7 +1150,7 @@ fun MiniPlayerDock(manager: MusicManager, onClick: () -> Unit) {
     }
 }
 
-// Full-Width Edge-to-Edge Sleep Timer Dialog (Zero Dimming on Outside Click)
+// Full-Width Edge-to-Edge Sleep Timer Dialog
 @Composable
 fun SleepTimerDialog(manager: MusicManager, onDismiss: () -> Unit) {
     val isDark = manager.isDarkMode
@@ -1234,7 +1401,7 @@ fun TagEditorDialog(manager: MusicManager, song: Song, onDismiss: () -> Unit) {
     }
 }
 
-// Full-Width Add to Playlist Dialog (Zero Dimming on Outside Click)
+// Full-Width Add to Playlist Dialog
 @Composable
 fun AddToPlaylistDialog(manager: MusicManager, song: Song, onDismiss: () -> Unit) {
     val isDark = manager.isDarkMode
@@ -1270,7 +1437,7 @@ fun AddToPlaylistDialog(manager: MusicManager, song: Song, onDismiss: () -> Unit
     }
 }
 
-// Full-Width Playback Speed Dialog (Zero Dimming on Outside Click)
+// Full-Width Playback Speed Dialog
 @Composable
 fun MagneticSpeedDialog(manager: MusicManager, onDismiss: () -> Unit) {
     val haptic = LocalHapticFeedback.current
@@ -1370,7 +1537,6 @@ fun QueueSheet(manager: MusicManager, onDismiss: () -> Unit) {
                             Text(song.title, color = textColor, fontSize = 14.sp, fontWeight = if (isCur) FontWeight.Bold else FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             Text("${formatFileSize(song.size)} • ${song.artist}", color = Color(0xFF64748B), fontSize = 11.sp)
                         }
-                        // Reorder Arrow Buttons + Drag Icon
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             if (index > 0) {
                                 Text("↑", fontSize = 16.sp, color = Color(0xFF64748B), modifier = Modifier.clickable { manager.moveQueueItem(index, index - 1) }.padding(horizontal = 6.dp))
@@ -1397,7 +1563,7 @@ fun QueueSheet(manager: MusicManager, onDismiss: () -> Unit) {
     }
 }
 
-// Full-Width Edge-to-Edge Lyrics Dialog (Zero Dimming on Outside Click)
+// Full-Width Edge-to-Edge Lyrics Dialog
 @Composable
 fun LyricsDialog(song: Song, isDark: Boolean, onDismiss: () -> Unit) {
     val textColor = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A)

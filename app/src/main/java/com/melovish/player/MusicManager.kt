@@ -51,9 +51,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -100,6 +97,8 @@ class MusicManager(private val context: Context) {
     var isShuffleOn by mutableStateOf(false)
     var currentSectionName by mutableStateOf("All Songs")
     var currentVolume by mutableFloatStateOf(0.7f)
+
+    var visualizerMode by mutableStateOf(prefs.getString("visualizer_mode", "Waveform") ?: "Waveform")
 
     var sleepTimerRemainingSeconds by mutableIntStateOf(0)
     private var sleepTimerJob: Job? = null
@@ -151,7 +150,6 @@ class MusicManager(private val context: Context) {
     )
     var playlistInnerIsCardView by mutableStateOf(prefs.getBoolean("playlist_inner_card_view", false))
 
-    // High performance memory cache: 1/8th of available runtime memory
     private val maxCacheSize = (Runtime.getRuntime().maxMemory() / 1024 / 8).toInt().coerceAtLeast(1024 * 16)
     private val memoryCache = object : LruCache<Long, Bitmap>(maxCacheSize) {
         override fun sizeOf(key: Long, bitmap: Bitmap): Int = bitmap.byteCount / 1024
@@ -198,6 +196,13 @@ class MusicManager(private val context: Context) {
         setupPlayerListener()
         startPositionTracker()
         syncDeviceVolume()
+    }
+
+    fun setVisualizerPreference(mode: String) {
+        visualizerMode = mode
+        managerScope.launch(Dispatchers.IO) {
+            prefs.edit().putString("visualizer_mode", mode).apply()
+        }
     }
 
     fun setPersistentSongSort(order: SongSortOrder) {
@@ -332,7 +337,6 @@ class MusicManager(private val context: Context) {
 
             override fun onPlayerError(error: PlaybackException) {
                 error.printStackTrace()
-                // Graceful fallback to next track without crashing
                 managerScope.launch(Dispatchers.Main.immediate) {
                     Toast.makeText(context, "Track unplayable, skipping...", Toast.LENGTH_SHORT).show()
                     playNext()
@@ -458,14 +462,12 @@ class MusicManager(private val context: Context) {
 
     fun getCachedAlbumArt(songId: Long): Bitmap? = memoryCache.get(songId)
 
-    // Ultra-optimized downsampled async artwork pipeline with sub-sampling
     suspend fun loadAlbumArtAsync(song: Song): Bitmap? = withContext(Dispatchers.IO) {
         val cached = memoryCache.get(song.id)
         if (cached != null) return@withContext cached
 
         var resultBitmap: Bitmap? = null
 
-        // 1. Custom file path
         if (song.customCoverPath != null) {
             val file = File(song.customCoverPath!!)
             if (file.exists()) {
@@ -474,13 +476,12 @@ class MusicManager(private val context: Context) {
                     BitmapFactory.decodeFile(file.absolutePath, this)
                     inSampleSize = calculateInSampleSize(this, 180, 180)
                     inJustDecodeBounds = false
-                    inPreferredConfig = Bitmap.Config.RGB_565 // Half memory footprint
+                    inPreferredConfig = Bitmap.Config.RGB_565
                 }
                 resultBitmap = BitmapFactory.decodeFile(file.absolutePath, opts)
             }
         }
 
-        // 2. Embedded ID3 Picture
         if (resultBitmap == null) {
             try {
                 val retriever = MediaMetadataRetriever()
@@ -500,7 +501,6 @@ class MusicManager(private val context: Context) {
             } catch (_: Exception) {}
         }
 
-        // 3. MediaStore Content Artwork Provider
         if (resultBitmap == null) {
             try {
                 val sArtworkUri = Uri.parse("content://media/external/audio/albumart")
@@ -536,7 +536,6 @@ class MusicManager(private val context: Context) {
         return inSampleSize
     }
 
-    // Fully safe audio effects offloaded to Default dispatcher
     fun attachAudioEffects() {
         try {
             val audioSessionId = player.audioSessionId
@@ -816,8 +815,6 @@ class MusicManager(private val context: Context) {
             }
 
             val visibleSongs = songList.filter { it.folderName !in hiddenFolders && it.id !in hiddenAudioIds }
-            
-            // Execute heavy artist grouping off-thread
             val parsed = ArtistParsingEngine.parseAndGroupArtists(visibleSongs)
 
             withContext(Dispatchers.Main.immediate) {
