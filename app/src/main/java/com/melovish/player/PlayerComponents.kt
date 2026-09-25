@@ -1,21 +1,3 @@
-Conflicting overloads: fun formatTime(ms: Long): String
-Conflicting overloads: fun formatFileSize(bytes: Long): String
-Overload resolution ambiguity between candidates
-```[span_0](start_span)[span_0](end_span)[span_1](start_span)[span_1](end_span)
-
-### Why this failed:
-In Kotlin, top-level helper functions in the same package cannot be declared with the exact same name across different files[span_2](start_span)[span_2](end_span)[span_3](start_span)[span_3](end_span).
-You already have `formatTime` and `formatFileSize` declared in **`Song.kt`** (or `SettingsScreen.kt`)[span_4](start_span)[span_4](end_span), so adding them as top-level functions in `PlayerComponents.kt` caused duplicate definitions across the project[span_5](start_span)[span_5](end_span)[span_6](start_span)[span_6](end_span). Additionally, lines 709/710 in `PlayerComponents.kt` had ambiguous `Text()` calls without explicit string conversions[span_7](start_span)[span_7](end_span)[span_8](start_span)[span_8](end_span).
-
-Removing those two duplicate definitions from `PlayerComponents.kt` and qualifying the `Text()` parameters fixes the build immediately[span_9](start_span)[span_9](end_span)[span_10](start_span)[span_10](end_span).
-
----
-
-### Step 1: Replace `app/src/main/java/com/melovish/player/PlayerComponents.kt`
-
-Open **`PlayerComponents.kt`**, select everything (`Ctrl+A` or `Cmd+A`), and paste this complete, fixed code:
-
-```kotlin
 package com.melovish.player
 
 import android.content.Context
@@ -24,6 +6,8 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.media.MediaMetadataRetriever
 import android.net.Uri
+import android.os.Build
+import android.provider.Settings
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -1433,13 +1417,37 @@ fun TagEditorDialog(manager: MusicManager, song: Song, onDismiss: () -> Unit) {
                 }
 
                 Spacer(modifier = Modifier.height(10.dp))
-                OutlinedTextField(value = editTitle, onValueChange = { editTitle = it }, label = { Text("Title") }, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(
+                    value = editTitle,
+                    onValueChange = { editTitle = it },
+                    label = { Text("Title") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true
+                )
                 Spacer(modifier = Modifier.height(8.dp))
-                OutlinedTextField(value = editArtist, onValueChange = { editArtist = it }, label = { Text("Artist") }, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(
+                    value = editArtist,
+                    onValueChange = { editArtist = it },
+                    label = { Text("Artist") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true
+                )
                 Spacer(modifier = Modifier.height(8.dp))
-                OutlinedTextField(value = editAlbum, onValueChange = { editAlbum = it }, label = { Text("Album") }, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(
+                    value = editAlbum,
+                    onValueChange = { editAlbum = it },
+                    label = { Text("Album") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true
+                )
                 Spacer(modifier = Modifier.height(8.dp))
-                OutlinedTextField(value = editDate, onValueChange = { editDate = it }, label = { Text("Year / Date Added") }, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(
+                    value = editDate,
+                    onValueChange = { editDate = it },
+                    label = { Text("Year / Date Added") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true
+                )
                 Spacer(modifier = Modifier.height(14.dp))
 
                 Button(
