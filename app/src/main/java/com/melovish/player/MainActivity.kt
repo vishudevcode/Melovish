@@ -138,10 +138,10 @@ fun MelovishRootApp(manager: MusicManager) {
         if (hasPermission) manager.scanStorage() else launcher.launch(permission)
     }
 
-    var activeScreen by remember { mutableStateOf("home") }
+    var activeScreen by remember { mutableStateOf("home") } // "home", "library", "artists", "search", "settings", "profile"
     var selectedFolder by remember { mutableStateOf<String?>(null) }
     var selectedPlaylist by remember { mutableStateOf<Playlist?>(null) }
-    var selectedArtist by remember { mutableStateOf<String?>(null) }
+    var selectedArtist by remember { mutableStateOf<ArtistItem?>(null) }
     var selectedAlbum by remember { mutableStateOf<String?>(null) }
     var isPlayerExpanded by remember { mutableStateOf(false) }
     var isSettingsEqOpen by remember { mutableStateOf(false) }
@@ -153,6 +153,7 @@ fun MelovishRootApp(manager: MusicManager) {
 
     val homeListState = rememberLazyListState()
     val libraryListState = rememberLazyListState()
+    val artistsListState = rememberLazyListState()
     val searchListState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
 
@@ -182,9 +183,8 @@ fun MelovishRootApp(manager: MusicManager) {
                 Box(modifier = Modifier.weight(1f)) {
                     when {
                         selectedArtist != null -> {
-                            FilteredSongsScreen(
-                                title = "Artist: ${selectedArtist!!}",
-                                songs = manager.allSongs.filter { it.artist.equals(selectedArtist, ignoreCase = true) },
+                            ArtistDetailScreen(
+                                artistItem = selectedArtist!!,
                                 manager = manager,
                                 isDark = isDark,
                                 onBack = { selectedArtist = null },
@@ -230,6 +230,13 @@ fun MelovishRootApp(manager: MusicManager) {
                             manager = manager,
                             onBackClick = { activeScreen = "home" }
                         )
+                        activeScreen == "artists" -> ArtistsScreen(
+                            artistsList = manager.parsedArtistsList,
+                            accentColor = manager.accentColor,
+                            isDark = isDark,
+                            listState = artistsListState,
+                            onArtistClick = { artist -> selectedArtist = artist }
+                        )
                         activeScreen == "search" -> SearchScreen(
                             manager = manager,
                             listState = searchListState,
@@ -254,7 +261,8 @@ fun MelovishRootApp(manager: MusicManager) {
                     MiniPlayerDock(manager = manager, onClick = { isPlayerExpanded = true })
                 }
 
-                if (activeScreen in listOf("home", "search", "library") && selectedFolder == null && selectedPlaylist == null && selectedArtist == null && selectedAlbum == null) {
+                // 4-Tab Navigation: Home, Library, Artists, Search
+                if (activeScreen in listOf("home", "library", "artists", "search") && selectedFolder == null && selectedPlaylist == null && selectedArtist == null && selectedAlbum == null) {
                     BottomNavBar(
                         manager = manager,
                         activeTab = activeScreen,
@@ -264,6 +272,7 @@ fun MelovishRootApp(manager: MusicManager) {
                                     when (tab) {
                                         "home" -> homeListState.animateScrollToItem(0)
                                         "library" -> libraryListState.animateScrollToItem(0)
+                                        "artists" -> artistsListState.animateScrollToItem(0)
                                         "search" -> searchListState.animateScrollToItem(0)
                                     }
                                 }
@@ -287,7 +296,7 @@ fun MelovishRootApp(manager: MusicManager) {
                 EqualizerSheet(manager = manager, onDismiss = { isSettingsEqOpen = false })
             }
 
-            // Universal 9-Option Action Sheet with Zero Dimming on Outside Click
+            // Universal 9-Option Action Sheet
             if (activeSongForMenu != null) {
                 val s = activeSongForMenu!!
                 SongItemActionModal(
@@ -307,7 +316,9 @@ fun MelovishRootApp(manager: MusicManager) {
                         activeSongForMenu = null
                     },
                     onGoToArtist = {
-                        selectedArtist = s.artist
+                        val matchingArtist = manager.parsedArtistsList.find { it.name.equals(s.artist, ignoreCase = true) }
+                            ?: ArtistItem(name = s.artist, songs = listOf(s))
+                        selectedArtist = matchingArtist
                         activeSongForMenu = null
                     },
                     onShare = {
@@ -603,7 +614,6 @@ fun HomeScreen(
                 } else {
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         items(manager.customPlaylists, key = { it.id }) { pl ->
-                            // Uniform 116dp x 116dp Square Playlist Cards
                             Box(
                                 modifier = Modifier
                                     .size(116.dp)
@@ -691,7 +701,7 @@ fun HomeScreen(
     if (showRainbowWheelForPl) CircularColorPickerDialog(manager = manager, onDismiss = { showRainbowWheelForPl = false })
 }
 
-// Library Screen: Click opens folder, Long-press opens color picker
+// Library Screen
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun LibraryScreen(manager: MusicManager, listState: LazyListState, onFolderClick: (String) -> Unit) {
@@ -807,7 +817,7 @@ fun SearchScreen(manager: MusicManager, listState: LazyListState, onSongMenuClic
     }
 }
 
-// Symmetrical Top Alignment: No duplicate statusBarsPadding
+// Symmetrical Top Alignment
 @Composable
 fun PlaylistDetailScreen(
     playlist: Playlist,
@@ -966,7 +976,7 @@ fun PlaylistAddSearchDialog(playlist: Playlist, manager: MusicManager, onDismiss
     }
 }
 
-// Symmetrical Top Alignment: No duplicate statusBarsPadding
+// Symmetrical Top Alignment
 @Composable
 fun FilteredSongsScreen(title: String, songs: List<Song>, manager: MusicManager, isDark: Boolean, onBack: () -> Unit, onSongMenuClick: (Song) -> Unit) {
     val textColor = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A)
@@ -988,7 +998,7 @@ fun FilteredSongsScreen(title: String, songs: List<Song>, manager: MusicManager,
     }
 }
 
-// Symmetrical Top Alignment: No duplicate statusBarsPadding
+// Symmetrical Top Alignment
 @Composable
 fun FolderSongsScreen(folderName: String, manager: MusicManager, isDark: Boolean, onBack: () -> Unit, onSongMenuClick: (Song) -> Unit) {
     val songs = manager.allSongs.filter { it.folderName == folderName }
@@ -1008,7 +1018,7 @@ fun FolderSongsScreen(folderName: String, manager: MusicManager, isDark: Boolean
     }
 }
 
-// Full-Width Edge-to-Edge Action Sheet (Zero Dimming on Outside Click)
+// Full-Width Action Sheet (Zero Dimming on Outside Click)
 @Composable
 fun SongItemActionModal(
     song: Song,
@@ -1197,7 +1207,7 @@ fun CreatePlaylistDialog(manager: MusicManager, onDismiss: () -> Unit) {
     }
 }
 
-// Bottom Navigation Bar
+// 4-Tab Bottom Navigation Bar: Home, Library, Artists, Search
 @Composable
 fun BottomNavBar(manager: MusicManager, activeTab: String, onTabSelected: (String) -> Unit) {
     val isDark = manager.isDarkMode
@@ -1209,13 +1219,14 @@ fun BottomNavBar(manager: MusicManager, activeTab: String, onTabSelected: (Strin
             .fillMaxWidth()
             .background(navBg)
             .border(1.dp, if (isDark) Color(0x1AFFFFFF) else Color(0xFFE2E8F0), RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp))
-            .padding(vertical = 12.dp),
+            .padding(vertical = 10.dp),
         horizontalArrangement = Arrangement.SpaceAround,
         verticalAlignment = Alignment.CenterVertically
     ) {
         listOf(
             Triple("home", "Home", "🏠"),
             Triple("library", "Library", "📚"),
+            Triple("artists", "Artists", "🎙️"),
             Triple("search", "Search", "🔍")
         ).forEach { (key, label, icon) ->
             val isSel = activeTab == key
@@ -1224,7 +1235,7 @@ fun BottomNavBar(manager: MusicManager, activeTab: String, onTabSelected: (Strin
                 modifier = Modifier
                     .clip(RoundedCornerShape(8.dp))
                     .clickable { onTabSelected(key) }
-                    .padding(horizontal = 14.dp, vertical = 4.dp)
+                    .padding(horizontal = 10.dp, vertical = 4.dp)
             ) {
                 Text(icon, fontSize = 20.sp)
                 Text(

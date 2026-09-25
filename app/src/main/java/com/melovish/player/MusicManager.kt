@@ -54,6 +54,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream
+import java.util.Locale
 
 class MusicManager(private val context: Context) {
 
@@ -99,13 +100,14 @@ class MusicManager(private val context: Context) {
     val hiddenAudioIds = mutableStateListOf<Long>()
     val folderColors = mutableStateMapOf<String, Long>()
 
-    // Default System Theme
+    // Parsed Artists List populated via ArtistParsingEngine
+    val parsedArtistsList = mutableStateListOf<ArtistItem>()
+
     var themeMode by mutableStateOf(prefs.getString("theme_mode", "System") ?: "System")
     var isDarkMode by mutableStateOf(false)
     var accentColor by mutableStateOf(Color(prefs.getInt("accent_color", 0xFF00B4D8.toInt())))
     val userSavedColorPresets = mutableStateListOf<Color>()
 
-    // Persistent Sorting
     var currentSortOrder by mutableStateOf(
         try {
             SongSortOrder.valueOf(prefs.getString("saved_song_sort", SongSortOrder.A_TO_Z.name) ?: SongSortOrder.A_TO_Z.name)
@@ -687,17 +689,26 @@ class MusicManager(private val context: Context) {
                 val visibleSongs = songList.filter { it.folderName !in hiddenFolders && it.id !in hiddenAudioIds }
                 allSongs.addAll(visibleSongs)
                 refreshHistory()
+
+                // Execute artist parsing on a background thread using ArtistParsingEngine
+                scope.launch(Dispatchers.Default) {
+                    val parsed = ArtistParsingEngine.parseAndGroupArtists(visibleSongs)
+                    withContext(Dispatchers.Main) {
+                        parsedArtistsList.clear()
+                        parsedArtistsList.addAll(parsed)
+                    }
+                }
             }
         }
     }
 
     fun getSortedSongs(): List<Song> {
         return when (currentSortOrder) {
-            SongSortOrder.A_TO_Z -> allSongs.sortedBy { it.title.lowercase(java.util.Locale.getDefault()) }
-            SongSortOrder.Z_TO_A -> allSongs.sortedByDescending { it.title.lowercase(java.util.Locale.getDefault()) }
+            SongSortOrder.A_TO_Z -> allSongs.sortedBy { it.title.lowercase(Locale.getDefault()) }
+            SongSortOrder.Z_TO_A -> allSongs.sortedByDescending { it.title.lowercase(Locale.getDefault()) }
             SongSortOrder.NEWEST -> allSongs.sortedByDescending { it.id }
             SongSortOrder.OLDEST -> allSongs.sortedBy { it.id }
-            SongSortOrder.ARTIST -> allSongs.sortedBy { it.artist.lowercase(java.util.Locale.getDefault()) }
+            SongSortOrder.ARTIST -> allSongs.sortedBy { it.artist.lowercase(Locale.getDefault()) }
             SongSortOrder.DURATION -> allSongs.sortedByDescending { it.duration }
             SongSortOrder.FILE_SIZE -> allSongs.sortedByDescending { it.size }
         }
@@ -706,8 +717,8 @@ class MusicManager(private val context: Context) {
     fun getSortedFolders(): List<String> {
         val grouped = allSongs.groupBy { it.folderName }
         return when (currentFolderSortOrder) {
-            FolderSortOrder.A_TO_Z -> grouped.keys.sortedBy { it.lowercase(java.util.Locale.getDefault()) }
-            FolderSortOrder.Z_TO_A -> grouped.keys.sortedByDescending { it.lowercase(java.util.Locale.getDefault()) }
+            FolderSortOrder.A_TO_Z -> grouped.keys.sortedBy { it.lowercase(Locale.getDefault()) }
+            FolderSortOrder.Z_TO_A -> grouped.keys.sortedByDescending { it.lowercase(Locale.getDefault()) }
             FolderSortOrder.LATEST -> grouped.keys.sortedByDescending { folder -> grouped[folder]?.maxOfOrNull { it.id } ?: 0L }
             FolderSortOrder.OLDEST -> grouped.keys.sortedBy { folder -> grouped[folder]?.minOfOrNull { it.id } ?: 0L }
             FolderSortOrder.MOST_PLAYED -> grouped.keys.sortedByDescending { folder -> grouped[folder]?.sumOf { it.playCount } ?: 0 }
@@ -995,6 +1006,14 @@ class MusicManager(private val context: Context) {
         }
         updateMediaSessionMetadata()
         updateNotification()
+
+        scope.launch(Dispatchers.Default) {
+            val parsed = ArtistParsingEngine.parseAndGroupArtists(allSongs)
+            withContext(Dispatchers.Main) {
+                parsedArtistsList.clear()
+                parsedArtistsList.addAll(parsed)
+            }
+        }
     }
 
     private fun recordSongPlayed(song: Song) {
@@ -1111,6 +1130,14 @@ class MusicManager(private val context: Context) {
             allSongs.remove(song)
             playbackQueue.remove(song)
             historySongs.remove(song)
+
+            scope.launch(Dispatchers.Default) {
+                val parsed = ArtistParsingEngine.parseAndGroupArtists(allSongs)
+                withContext(Dispatchers.Main) {
+                    parsedArtistsList.clear()
+                    parsedArtistsList.addAll(parsed)
+                }
+            }
             true
         } catch (_: Exception) {
             false
