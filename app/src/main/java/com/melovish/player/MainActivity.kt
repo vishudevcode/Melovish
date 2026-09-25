@@ -231,9 +231,7 @@ fun MelovishRootApp(manager: MusicManager) {
                             onBackClick = { activeScreen = "home" }
                         )
                         activeScreen == "artists" -> ArtistsScreen(
-                            artistsList = manager.parsedArtistsList,
-                            accentColor = manager.accentColor,
-                            isDark = isDark,
+                            manager = manager,
                             listState = artistsListState,
                             onArtistClick = { artist -> selectedArtist = artist }
                         )
@@ -316,7 +314,8 @@ fun MelovishRootApp(manager: MusicManager) {
                         activeSongForMenu = null
                     },
                     onGoToArtist = {
-                        val matchingArtist = manager.parsedArtistsList.find { it.name.equals(s.artist, ignoreCase = true) }
+                        val matchingArtist = ArtistParsingEngine.parseAndGroupArtists(manager.allSongs)
+                            .find { it.name.equals(s.artist, ignoreCase = true) }
                             ?: ArtistItem(name = s.artist, songs = mutableListOf(s))
                         selectedArtist = matchingArtist
                         activeSongForMenu = null

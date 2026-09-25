@@ -2,6 +2,7 @@ package com.melovish.player
 
 import android.content.Context
 import android.content.SharedPreferences
+import android.widget.Toast
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -36,6 +37,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
@@ -46,6 +48,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -57,10 +60,10 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.util.Locale
 
-// Data Models
 data class ArtistItem(
     val name: String,
-    val songs: MutableList<Song> = mutableListOf()
+    val songs: MutableList<Song> = mutableListOf(),
+    var isPinned: Boolean = false
 )
 
 enum class ArtistSortOrder {
@@ -77,16 +80,20 @@ enum class ArtistSongSortOrder {
     NEWEST
 }
 
-// Artist Customization & Persistence Controller
+// Artist Customization, Persistence & Live State Engine
 object ArtistDataManager {
     private const val PREFS_NAME = "melovish_artists_prefs"
     private var prefs: SharedPreferences? = null
 
     val hiddenArtists = mutableStateListOf<String>()
+    val pinnedArtists = mutableStateListOf<String>()
     val artistAliases = mutableStateMapOf<String, String>() // sourceArtist -> targetArtist
-    val manuallyCreatedArtists = mutableStateListOf<ArtistItem>()
-    val removedSongMap = mutableStateMapOf<String, MutableList<Long>>() // artistName -> list of removed song IDs
-    val movedSongMap = mutableStateMapOf<String, MutableList<Long>>() // artistName -> list of added song IDs
+    val manuallyCreatedArtists = mutableStateListOf<String>() // Set of manual artist names
+    val removedSongMap = mutableStateMapOf<String, MutableList<Long>>() // artistName -> removed song IDs
+    val movedSongMap = mutableStateMapOf<String, MutableList<Long>>() // artistName -> added song IDs
+
+    // Trigger state to notify screens of live updates
+    var refreshTrigger by mutableIntStateOf(0)
 
     fun init(context: Context) {
         if (prefs != null) return
@@ -99,6 +106,9 @@ object ArtistDataManager {
         hiddenArtists.clear()
         hiddenArtists.addAll(p.getStringSet("hidden_artists", emptySet()) ?: emptySet())
 
+        pinnedArtists.clear()
+        pinnedArtists.addAll(p.getStringSet("pinned_artists", emptySet()) ?: emptySet())
+
         artistAliases.clear()
         val aliasJson = p.getString("artist_aliases", null)
         if (aliasJson != null) {
@@ -108,15 +118,41 @@ object ArtistDataManager {
             } catch (_: Exception) {}
         }
 
-        val customJson = p.getString("custom_artists", null)
         manuallyCreatedArtists.clear()
+        val customJson = p.getString("custom_artists", null)
         if (customJson != null) {
             try {
                 val arr = JSONArray(customJson)
                 for (i in 0 until arr.length()) {
-                    val obj = arr.getJSONObject(i)
-                    val name = obj.getString("name")
-                    manuallyCreatedArtists.add(ArtistItem(name, mutableListOf()))
+                    manuallyCreatedArtists.add(arr.getString(i))
+                }
+            } catch (_: Exception) {}
+        }
+
+        removedSongMap.clear()
+        val remJson = p.getString("removed_songs_map", null)
+        if (remJson != null) {
+            try {
+                val obj = JSONObject(remJson)
+                obj.keys().forEach { key ->
+                    val arr = obj.getJSONArray(key)
+                    val list = mutableListOf<Long>()
+                    for (i in 0 until arr.length()) list.add(arr.getLong(i))
+                    removedSongMap[key] = list
+                }
+            } catch (_: Exception) {}
+        }
+
+        movedSongMap.clear()
+        val movJson = p.getString("moved_songs_map", null)
+        if (movJson != null) {
+            try {
+                val obj = JSONObject(movJson)
+                obj.keys().forEach { key ->
+                    val arr = obj.getJSONArray(key)
+                    val list = mutableListOf<Long>()
+                    for (i in 0 until arr.length()) list.add(arr.getLong(i))
+                    movedSongMap[key] = list
                 }
             } catch (_: Exception) {}
         }
@@ -128,15 +164,59 @@ object ArtistDataManager {
         artistAliases.forEach { (k, v) -> aliasObj.put(k, v) }
 
         val customArr = JSONArray()
-        manuallyCreatedArtists.forEach {
-            customArr.put(JSONObject().put("name", it.name))
+        manuallyCreatedArtists.forEach { customArr.put(it) }
+
+        val remObj = JSONObject()
+        removedSongMap.forEach { (k, v) ->
+            val arr = JSONArray()
+            v.forEach { arr.put(it) }
+            remObj.put(k, arr)
+        }
+
+        val movObj = JSONObject()
+        movedSongMap.forEach { (k, v) ->
+            val arr = JSONArray()
+            v.forEach { arr.put(it) }
+            movObj.put(k, arr)
         }
 
         p.edit()
             .putStringSet("hidden_artists", hiddenArtists.toSet())
+            .putStringSet("pinned_artists", pinnedArtists.toSet())
             .putString("artist_aliases", aliasObj.toString())
             .putString("custom_artists", customArr.toString())
+            .putString("removed_songs_map", remObj.toString())
+            .putString("moved_songs_map", movObj.toString())
             .apply()
+
+        refreshTrigger++
+    }
+
+    fun isCardView(): Boolean = prefs?.getBoolean("is_card_view", false) ?: false
+    fun setCardView(isCard: Boolean) {
+        prefs?.edit()?.putBoolean("is_card_view", isCard)?.apply()
+    }
+
+    fun getSortOrder(): ArtistSortOrder {
+        val saved = prefs?.getString("artist_sort_order", ArtistSortOrder.NAME_A_TO_Z.name)
+        return try {
+            ArtistSortOrder.valueOf(saved ?: ArtistSortOrder.NAME_A_TO_Z.name)
+        } catch (_: Exception) {
+            ArtistSortOrder.NAME_A_TO_Z
+        }
+    }
+
+    fun setSortOrder(order: ArtistSortOrder) {
+        prefs?.edit()?.putString("artist_sort_order", order.name)?.apply()
+    }
+
+    fun togglePinArtist(name: String) {
+        if (pinnedArtists.contains(name)) {
+            pinnedArtists.remove(name)
+        } else {
+            pinnedArtists.add(name)
+        }
+        saveData()
     }
 
     fun hideArtist(name: String) {
@@ -144,11 +224,6 @@ object ArtistDataManager {
             hiddenArtists.add(name)
             saveData()
         }
-    }
-
-    fun unhideArtist(name: String) {
-        hiddenArtists.remove(name)
-        saveData()
     }
 
     fun mergeArtists(sourceName: String, targetName: String) {
@@ -159,32 +234,37 @@ object ArtistDataManager {
 
     fun createNewArtist(name: String, initialSongs: List<Song> = emptyList()) {
         val trimmed = name.trim()
-        if (trimmed.isNotBlank() && manuallyCreatedArtists.none { it.name.equals(trimmed, ignoreCase = true) }) {
-            val item = ArtistItem(trimmed, initialSongs.toMutableList())
-            manuallyCreatedArtists.add(item)
-            val list = movedSongMap.getOrPut(trimmed) { mutableListOf() }
-            initialSongs.forEach { list.add(it.id) }
+        if (trimmed.isNotBlank() && !manuallyCreatedArtists.any { it.equals(trimmed, ignoreCase = true) }) {
+            manuallyCreatedArtists.add(trimmed)
+            if (initialSongs.isNotEmpty()) {
+                val list = movedSongMap.getOrPut(trimmed) { mutableListOf() }
+                initialSongs.forEach { list.add(it.id) }
+            }
             saveData()
         }
     }
 
     fun removeSongFromArtist(artistName: String, songId: Long) {
         val list = removedSongMap.getOrPut(artistName) { mutableListOf() }
-        if (!list.contains(songId)) list.add(songId)
+        if (!list.contains(songId)) {
+            list.add(songId)
+            saveData()
+        }
     }
 
     fun moveSongToArtist(song: Song, fromArtist: String, toArtist: String) {
         removeSongFromArtist(fromArtist, song.id)
         val list = movedSongMap.getOrPut(toArtist) { mutableListOf() }
-        if (!list.contains(song.id)) list.add(song.id)
+        if (!list.contains(song.id)) {
+            list.add(song.id)
+        }
+        saveData()
     }
 }
 
 // Standalone Multi-Artist Parser, Cleaner, and Grouping Engine
 object ArtistParsingEngine {
     private val splitRegex = Regex("""\s*(?:,|/|&|\bfeat\.|\bft\.|\bfeaturing\b)\s*""", RegexOption.IGNORE_CASE)
-
-    // Regex patterns to strip web promotions, junk domains, and HTML entities
     private val promoWebsitesRegex = Regex(
         """(?i)\s*[\(\[\-–]\s*(?:pagalworld|ghantalele|djmaza|songsmp3|mp3mad|mirchifun|hungama|wynk|jiosaavn|gaana|pendujatt|mr-jatt|naasongs)[\w\.\-]*\s*[\)\]]?"""
     )
@@ -199,8 +279,6 @@ object ArtistParsingEngine {
         clean = domainExtensionsRegex.replace(clean, "")
         clean = clean.replace(Regex("""[\(\[\{\}\]\)]"""), "")
         clean = clean.trim()
-
-        // Strip leading dots, numbers, or dashes (e.g. ". Leo" -> "Leo")
         clean = clean.replace(Regex("""^[0-9\.\-\#\s]+"""), "").trim()
         return clean
     }
@@ -219,7 +297,6 @@ object ArtistParsingEngine {
 
                 for (part in splitNames) {
                     val clean = sanitizeArtistName(part)
-                    // Discard purely numbers, symbols, or empty results (e.g. "#", "0", ". ")
                     if (clean.isNotBlank() && !clean.matches(invalidCharPunctuation)) {
                         intermediateMap.getOrPut(clean) { mutableListOf() }.add(song)
                         matched = true
@@ -243,7 +320,6 @@ object ArtistParsingEngine {
         val canonicalMap = mutableMapOf<String, MutableList<Song>>()
 
         for ((_, group) in groupedPrefixMap) {
-            // Sort by count descending so the name holding the most tracks becomes the primary entity
             val bestName = group.maxByOrNull { it.second.size }?.first ?: group.first().first
             val mergedSongs = canonicalMap.getOrPut(bestName) { mutableListOf() }
             group.forEach { (_, songs) ->
@@ -256,37 +332,39 @@ object ArtistParsingEngine {
         // 3. Apply User Manual Merges (Aliases)
         val userMergedMap = mutableMapOf<String, MutableList<Song>>()
         canonicalMap.forEach { (name, songs) ->
-            val target = ArtistDataManager.artistAliases[name] ?: name
+            var target = name
+            while (ArtistDataManager.artistAliases.containsKey(target)) {
+                target = ArtistDataManager.artistAliases[target] ?: target
+            }
             userMergedMap.getOrPut(target) { mutableListOf() }.addAll(songs)
         }
 
         // 4. Inject Manually Created Artists
-        ArtistDataManager.manuallyCreatedArtists.forEach { custom ->
-            if (!userMergedMap.containsKey(custom.name)) {
-                userMergedMap[custom.name] = mutableListOf()
+        ArtistDataManager.manuallyCreatedArtists.forEach { customName ->
+            if (!userMergedMap.containsKey(customName)) {
+                userMergedMap[customName] = mutableListOf()
             }
         }
 
-        // 5. Apply Song Moves & Removals
+        // 5. Apply Song Moves & Removals & Check Pinned
         val finalResult = mutableListOf<ArtistItem>()
 
         userMergedMap.forEach { (name, songs) ->
             if (!ArtistDataManager.hiddenArtists.contains(name)) {
                 val distinctSongs = songs.distinctBy { it.id }.toMutableList()
 
-                // Apply removals
                 ArtistDataManager.removedSongMap[name]?.let { removedIds ->
                     distinctSongs.removeAll { removedIds.contains(it.id) }
                 }
 
-                // Apply additions / moves
                 ArtistDataManager.movedSongMap[name]?.let { movedIds ->
                     val added = allSongs.filter { movedIds.contains(it.id) && distinctSongs.none { d -> d.id == it.id } }
                     distinctSongs.addAll(added)
                 }
 
-                if (distinctSongs.isNotEmpty() || ArtistDataManager.manuallyCreatedArtists.any { it.name.equals(name, ignoreCase = true) }) {
-                    finalResult.add(ArtistItem(name = name, songs = distinctSongs))
+                if (distinctSongs.isNotEmpty() || ArtistDataManager.manuallyCreatedArtists.any { it.equals(name, ignoreCase = true) }) {
+                    val isPinned = ArtistDataManager.pinnedArtists.contains(name)
+                    finalResult.add(ArtistItem(name = name, songs = distinctSongs, isPinned = isPinned))
                 }
             }
         }
@@ -295,51 +373,60 @@ object ArtistParsingEngine {
     }
 }
 
-// Main Artists Screen with Cards/Lines Switcher & Group Management
+// Main Artists Screen
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun ArtistsScreen(
-    artistsList: List<ArtistItem>,
-    accentColor: Color,
-    isDark: Boolean,
+    manager: MusicManager,
     listState: LazyListState,
     onArtistClick: (ArtistItem) -> Unit
 ) {
     val context = LocalContext.current
     ArtistDataManager.init(context)
 
-    val textColor = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A)
-    val cardBg = if (isDark) Color(0xFF131B2E) else Color.White
+    val textColor = if (manager.isDarkMode) Color(0xFFF8FAFC) else Color(0xFF0F172A)
+    val cardBg = if (manager.isDarkMode) Color(0xFF131B2E) else Color.White
+    val accentColor = manager.accentColor
     val coroutineScope = rememberCoroutineScope()
 
     var query by remember { mutableStateOf("") }
-    var isCardView by remember { mutableStateOf(false) } // Lines view vs Card view
-    var sortOrder by remember { mutableStateOf(ArtistSortOrder.NAME_A_TO_Z) }
+    var isCardView by remember { mutableStateOf(ArtistDataManager.isCardView()) }
+    var sortOrder by remember { mutableStateOf(ArtistDataManager.getSortOrder()) }
 
     var showSortMenu by remember { mutableStateOf(false) }
     var showCreateArtistDialog by remember { mutableStateOf(false) }
     var selectedArtistForActions by remember { mutableStateOf<ArtistItem?>(null) }
     var artistToMergeSource by remember { mutableStateOf<ArtistItem?>(null) }
 
-    // Filter and Sort
-    val sortedArtists = remember(artistsList, query, sortOrder, ArtistDataManager.hiddenArtists.size, ArtistDataManager.artistAliases.size) {
-        var list = if (query.isBlank()) artistsList
+    // Re-parse automatically whenever songs, manager lists, or custom actions update
+    val artistsList = remember(manager.allSongs.size, ArtistDataManager.refreshTrigger) {
+        ArtistParsingEngine.parseAndGroupArtists(manager.allSongs)
+    }
+
+    // Filter and Sort, keeping pinned artists at the very top
+    val sortedArtists = remember(artistsList, query, sortOrder) {
+        val filtered = if (query.isBlank()) artistsList
         else artistsList.filter { it.name.contains(query, ignoreCase = true) }
 
-        when (sortOrder) {
-            ArtistSortOrder.NAME_A_TO_Z -> list.sortedWith { a, b ->
+        val comparator = when (sortOrder) {
+            ArtistSortOrder.NAME_A_TO_Z -> Comparator<ArtistItem> { a, b ->
                 if (a.name.equals("Unknown Artist", true)) 1
                 else if (b.name.equals("Unknown Artist", true)) -1
                 else a.name.compareTo(b.name, true)
             }
-            ArtistSortOrder.NAME_Z_TO_A -> list.sortedWith { a, b ->
+            ArtistSortOrder.NAME_Z_TO_A -> Comparator<ArtistItem> { a, b ->
                 if (a.name.equals("Unknown Artist", true)) 1
                 else if (b.name.equals("Unknown Artist", true)) -1
                 else b.name.compareTo(a.name, true)
             }
-            ArtistSortOrder.MOST_TRACKS -> list.sortedByDescending { it.songs.size }
-            ArtistSortOrder.FEWEST_TRACKS -> list.sortedBy { it.songs.size }
+            ArtistSortOrder.MOST_TRACKS -> compareByDescending<ArtistItem> { it.songs.size }
+            ArtistSortOrder.FEWEST_TRACKS -> compareBy<ArtistItem> { it.songs.size }
         }
+
+        // Pinned artists stay at the top, then sorted within their respective groups
+        val pinned = filtered.filter { it.isPinned }.sortedWith(comparator)
+        val unpinned = filtered.filter { !it.isPinned }.sortedWith(comparator)
+        pinned + unpinned
     }
 
     val alphabet = remember { listOf('#') + ('A'..'Z').toList() }
@@ -362,8 +449,12 @@ fun ArtistsScreen(
                     modifier = Modifier
                         .size(38.dp)
                         .clip(CircleShape)
-                        .background(if (isDark) Color(0x22FFFFFF) else Color(0xFFF1F5F9))
-                        .clickable { isCardView = !isCardView },
+                        .background(if (manager.isDarkMode) Color(0x22FFFFFF) else Color(0xFFF1F5F9))
+                        .clickable {
+                            val newMode = !isCardView
+                            isCardView = newMode
+                            ArtistDataManager.setCardView(newMode)
+                        },
                     contentAlignment = Alignment.Center
                 ) {
                     Text(if (isCardView) "☰" else "⊞", fontSize = 18.sp, color = textColor, fontWeight = FontWeight.Bold)
@@ -377,7 +468,7 @@ fun ArtistsScreen(
                         modifier = Modifier
                             .size(38.dp)
                             .clip(CircleShape)
-                            .background(if (isDark) Color(0x22FFFFFF) else Color(0xFFF1F5F9))
+                            .background(if (manager.isDarkMode) Color(0x22FFFFFF) else Color(0xFFF1F5F9))
                             .clickable { showSortMenu = true },
                         contentAlignment = Alignment.Center
                     ) {
@@ -385,10 +476,26 @@ fun ArtistsScreen(
                     }
 
                     DropdownMenu(expanded = showSortMenu, onDismissRequest = { showSortMenu = false }) {
-                        DropdownMenuItem(text = { Text("Name (A to Z)") }, onClick = { sortOrder = ArtistSortOrder.NAME_A_TO_Z; showSortMenu = false })
-                        DropdownMenuItem(text = { Text("Name (Z to A)") }, onClick = { sortOrder = ArtistSortOrder.NAME_Z_TO_A; showSortMenu = false })
-                        DropdownMenuItem(text = { Text("Most Tracks") }, onClick = { sortOrder = ArtistSortOrder.MOST_TRACKS; showSortMenu = false })
-                        DropdownMenuItem(text = { Text("Fewest Tracks") }, onClick = { sortOrder = ArtistSortOrder.FEWEST_TRACKS; showSortMenu = false })
+                        DropdownMenuItem(text = { Text("Name (A to Z)") }, onClick = {
+                            sortOrder = ArtistSortOrder.NAME_A_TO_Z
+                            ArtistDataManager.setSortOrder(sortOrder)
+                            showSortMenu = false
+                        })
+                        DropdownMenuItem(text = { Text("Name (Z to A)") }, onClick = {
+                            sortOrder = ArtistSortOrder.NAME_Z_TO_A
+                            ArtistDataManager.setSortOrder(sortOrder)
+                            showSortMenu = false
+                        })
+                        DropdownMenuItem(text = { Text("Most Tracks") }, onClick = {
+                            sortOrder = ArtistSortOrder.MOST_TRACKS
+                            ArtistDataManager.setSortOrder(sortOrder)
+                            showSortMenu = false
+                        })
+                        DropdownMenuItem(text = { Text("Fewest Tracks") }, onClick = {
+                            sortOrder = ArtistSortOrder.FEWEST_TRACKS
+                            ArtistDataManager.setSortOrder(sortOrder)
+                            showSortMenu = false
+                        })
                     }
                 }
 
@@ -440,7 +547,11 @@ fun ArtistsScreen(
                                     .fillMaxWidth()
                                     .clip(RoundedCornerShape(20.dp))
                                     .background(cardBg)
-                                    .border(1.dp, if (isDark) Color(0x22FFFFFF) else Color(0xFFECEFF3), RoundedCornerShape(20.dp))
+                                    .border(
+                                        1.2.dp,
+                                        if (artist.isPinned) accentColor else if (manager.isDarkMode) Color(0x22FFFFFF) else Color(0xFFECEFF3),
+                                        RoundedCornerShape(20.dp)
+                                    )
                                     .combinedClickable(
                                         onClick = { onArtistClick(artist) },
                                         onLongClick = { selectedArtistForActions = artist }
@@ -448,6 +559,9 @@ fun ArtistsScreen(
                                     .padding(16.dp),
                                 contentAlignment = Alignment.Center
                             ) {
+                                if (artist.isPinned) {
+                                    Text("📌", fontSize = 12.sp, modifier = Modifier.align(Alignment.TopEnd))
+                                }
                                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                     Box(
                                         modifier = Modifier
@@ -494,7 +608,11 @@ fun ArtistsScreen(
                                     .fillMaxWidth()
                                     .clip(RoundedCornerShape(18.dp))
                                     .background(cardBg)
-                                    .border(1.dp, if (isDark) Color(0x22FFFFFF) else Color(0xFFECEFF3), RoundedCornerShape(18.dp))
+                                    .border(
+                                        1.2.dp,
+                                        if (artist.isPinned) accentColor else if (manager.isDarkMode) Color(0x22FFFFFF) else Color(0xFFECEFF3),
+                                        RoundedCornerShape(18.dp)
+                                    )
                                     .combinedClickable(
                                         onClick = { onArtistClick(artist) },
                                         onLongClick = { selectedArtistForActions = artist }
@@ -514,7 +632,13 @@ fun ArtistsScreen(
                                 }
                                 Spacer(modifier = Modifier.width(14.dp))
                                 Column(modifier = Modifier.weight(1f)) {
-                                    Text(artist.name, color = textColor, fontSize = 15.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(artist.name, color = textColor, fontSize = 15.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                        if (artist.isPinned) {
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text("📌", fontSize = 11.sp)
+                                        }
+                                    }
                                     Text("${artist.songs.size} ${if (artist.songs.size == 1) "track" else "tracks"}", color = Color(0xFF64748B), fontSize = 12.sp)
                                 }
                                 Text("⋮", fontSize = 20.sp, color = textColor, modifier = Modifier.clickable { selectedArtistForActions = artist }.padding(4.dp))
@@ -559,7 +683,7 @@ fun ArtistsScreen(
         }
     }
 
-    // Artist Actions Sheet (Hide Artist / Merge Artist)
+    // Artist Actions Sheet (Pin, Add to Favourite Playlists, Merge, Hide)
     if (selectedArtistForActions != null) {
         val target = selectedArtistForActions!!
         Box(
@@ -575,14 +699,49 @@ fun ArtistsScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
-                    .background(if (isDark) Color(0xFF1E293B) else Color.White)
+                    .background(if (manager.isDarkMode) Color(0xFF1E293B) else Color.White)
                     .clickable(enabled = false) {}
                     .padding(22.dp)
             ) {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text(target.name, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = textColor)
                     Spacer(modifier = Modifier.height(4.dp))
 
+                    // 1. Pin / Unpin
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .clickable {
+                                ArtistDataManager.togglePinArtist(target.name)
+                                selectedArtistForActions = null
+                            }
+                            .padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(if (target.isPinned) "📍" else "📌", fontSize = 18.sp)
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text(if (target.isPinned) "Unpin from top" else "Pin to top", fontSize = 15.sp, color = textColor, fontWeight = FontWeight.SemiBold)
+                    }
+
+                    // 2. Add to Favourite Playlists
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .clickable {
+                                addArtistToFavouritePlaylists(context, manager, target)
+                                selectedArtistForActions = null
+                            }
+                            .padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("⭐", fontSize = 18.sp)
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text("Add to Favourite Playlists (Home)", fontSize = 15.sp, color = textColor, fontWeight = FontWeight.SemiBold)
+                    }
+
+                    // 3. Merge
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -599,6 +758,7 @@ fun ArtistsScreen(
                         Text("Merge into another artist...", fontSize = 15.sp, color = textColor, fontWeight = FontWeight.SemiBold)
                     }
 
+                    // 4. Hide
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -619,7 +779,7 @@ fun ArtistsScreen(
                     Button(
                         onClick = { selectedArtistForActions = null },
                         modifier = Modifier.fillMaxWidth().height(48.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = if (isDark) Color(0x22FFFFFF) else Color(0xFFF1F5F9)),
+                        colors = ButtonDefaults.buttonColors(containerColor = if (manager.isDarkMode) Color(0x22FFFFFF) else Color(0xFFF1F5F9)),
                         shape = RoundedCornerShape(12.dp)
                     ) {
                         Text("Cancel", color = textColor, fontWeight = FontWeight.Bold)
@@ -629,7 +789,7 @@ fun ArtistsScreen(
         }
     }
 
-    // Merge Picker Dialog
+    // Merge Target Picker Dialog
     if (artistToMergeSource != null) {
         val src = artistToMergeSource!!
         var mergeSearchQuery by remember { mutableStateOf("") }
@@ -649,7 +809,7 @@ fun ArtistsScreen(
                     .fillMaxWidth()
                     .height(550.dp)
                     .clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
-                    .background(if (isDark) Color(0xFF1E293B) else Color.White)
+                    .background(if (manager.isDarkMode) Color(0xFF1E293B) else Color.White)
                     .clickable(enabled = false) {}
                     .padding(20.dp)
             ) {
@@ -670,9 +830,10 @@ fun ArtistsScreen(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .clip(RoundedCornerShape(12.dp))
-                                    .background(if (isDark) Color(0x1AFFFFFF) else Color(0xFFF1F5F9))
+                                    .background(if (manager.isDarkMode) Color(0x1AFFFFFF) else Color(0xFFF1F5F9))
                                     .clickable {
                                         ArtistDataManager.mergeArtists(src.name, targetArtist.name)
+                                        Toast.makeText(context, "Merged into ${targetArtist.name}", Toast.LENGTH_SHORT).show()
                                         artistToMergeSource = null
                                     }
                                     .padding(12.dp),
@@ -689,7 +850,7 @@ fun ArtistsScreen(
                     Button(
                         onClick = { artistToMergeSource = null },
                         modifier = Modifier.fillMaxWidth().height(48.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = if (isDark) Color(0x22FFFFFF) else Color(0xFFF1F5F9)),
+                        colors = ButtonDefaults.buttonColors(containerColor = if (manager.isDarkMode) Color(0x22FFFFFF) else Color(0xFFF1F5F9)),
                         shape = RoundedCornerShape(12.dp)
                     ) {
                         Text("Cancel", color = textColor, fontWeight = FontWeight.Bold)
@@ -702,8 +863,7 @@ fun ArtistsScreen(
     // Create New Artist Dialog
     if (showCreateArtistDialog) {
         CreateArtistDialog(
-            isDark = isDark,
-            accentColor = accentColor,
+            manager = manager,
             onDismiss = { showCreateArtistDialog = false }
         )
     }
@@ -718,6 +878,7 @@ fun ArtistDetailScreen(
     onBack: () -> Unit,
     onSongMenuClick: (Song) -> Unit
 ) {
+    val context = LocalContext.current
     val textColor = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A)
     val accent = manager.accentColor
 
@@ -727,13 +888,16 @@ fun ArtistDetailScreen(
     var showMoveTargetDialog by remember { mutableStateOf(false) }
     var showAddSongsDialog by remember { mutableStateOf(false) }
 
-    val sortedSongs = remember(artistItem.songs, sortOrder, ArtistDataManager.removedSongMap[artistItem.name]?.size, ArtistDataManager.movedSongMap[artistItem.name]?.size) {
-        val currentList = artistItem.songs.toMutableList()
+    // Re-resolve the live songs for this artist when refreshTrigger updates
+    val sortedSongs = remember(sortOrder, ArtistDataManager.refreshTrigger) {
+        val allCurrent = ArtistParsingEngine.parseAndGroupArtists(manager.allSongs)
+            .find { it.name.equals(artistItem.name, ignoreCase = true) }?.songs ?: artistItem.songs
+
         when (sortOrder) {
-            ArtistSongSortOrder.TITLE_A_TO_Z -> currentList.sortedBy { it.title.lowercase(Locale.getDefault()) }
-            ArtistSongSortOrder.DURATION -> currentList.sortedByDescending { it.duration }
-            ArtistSongSortOrder.FILE_SIZE -> currentList.sortedByDescending { it.size }
-            ArtistSongSortOrder.NEWEST -> currentList.sortedByDescending { it.id }
+            ArtistSongSortOrder.TITLE_A_TO_Z -> allCurrent.sortedBy { it.title.lowercase(Locale.getDefault()) }
+            ArtistSongSortOrder.DURATION -> allCurrent.sortedByDescending { it.duration }
+            ArtistSongSortOrder.FILE_SIZE -> allCurrent.sortedByDescending { it.size }
+            ArtistSongSortOrder.NEWEST -> allCurrent.sortedByDescending { it.id }
         }
     }
 
@@ -754,6 +918,20 @@ fun ArtistDetailScreen(
             }
 
             Row(verticalAlignment = Alignment.CenterVertically) {
+                // Add to Favourite Playlists
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clip(CircleShape)
+                        .background(if (isDark) Color(0x22FFFFFF) else Color(0xFFF1F5F9))
+                        .clickable { addArtistToFavouritePlaylists(context, manager, artistItem) },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("⭐", fontSize = 16.sp)
+                }
+
+                Spacer(modifier = Modifier.width(6.dp))
+
                 // Sort Tracks
                 Box {
                     Box(
@@ -913,11 +1091,12 @@ fun ArtistDetailScreen(
         }
     }
 
-    // Move to Artist Picker Dialog
+    // Move Song to Another Artist Picker Dialog
     if (showMoveTargetDialog && selectedSongForAction != null) {
         val songToMove = selectedSongForAction!!
         var destSearch by remember { mutableStateOf("") }
-        val destCandidates = manager.parsedArtistsList.filter { it.name != artistItem.name && it.name.contains(destSearch, ignoreCase = true) }
+        val allArtists = ArtistParsingEngine.parseAndGroupArtists(manager.allSongs)
+        val destCandidates = allArtists.filter { it.name != artistItem.name && it.name.contains(destSearch, ignoreCase = true) }
 
         Box(
             modifier = Modifier
@@ -958,8 +1137,7 @@ fun ArtistDetailScreen(
                                     .background(if (isDark) Color(0x1AFFFFFF) else Color(0xFFF1F5F9))
                                     .clickable {
                                         ArtistDataManager.moveSongToArtist(songToMove, artistItem.name, target.name)
-                                        artistItem.songs.removeAll { it.id == songToMove.id }
-                                        target.songs.add(songToMove)
+                                        Toast.makeText(context, "Moved to ${target.name}", Toast.LENGTH_SHORT).show()
                                         showMoveTargetDialog = false
                                         selectedSongForAction = null
                                     }
@@ -994,7 +1172,7 @@ fun ArtistDetailScreen(
     if (showAddSongsDialog) {
         var addSongSearch by remember { mutableStateOf("") }
         val candidates = manager.allSongs.filter {
-            artistItem.songs.none { existing -> existing.id == it.id } &&
+            sortedSongs.none { existing -> existing.id == it.id } &&
             (it.title.contains(addSongSearch, ignoreCase = true) || it.artist.contains(addSongSearch, ignoreCase = true))
         }
 
@@ -1040,7 +1218,9 @@ fun ArtistDetailScreen(
                                     .clickable {
                                         val list = ArtistDataManager.movedSongMap.getOrPut(artistItem.name) { mutableListOf() }
                                         if (!list.contains(song.id)) list.add(song.id)
-                                        artistItem.songs.add(song)
+                                        ArtistDataManager.removedSongMap[artistItem.name]?.remove(song.id)
+                                        ArtistDataManager.refreshTrigger++
+                                        Toast.makeText(context, "Added ${song.title}", Toast.LENGTH_SHORT).show()
                                     }
                                     .padding(12.dp),
                                 verticalAlignment = Alignment.CenterVertically
@@ -1059,15 +1239,24 @@ fun ArtistDetailScreen(
     }
 }
 
-// Dialog: Create New Artist
+// Dialog: Create New Artist with Search & Click to Add
 @Composable
 fun CreateArtistDialog(
-    isDark: Boolean,
-    accentColor: Color,
+    manager: MusicManager,
     onDismiss: () -> Unit
 ) {
+    val context = LocalContext.current
+    val isDark = manager.isDarkMode
     val textColor = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A)
+    val accentColor = manager.accentColor
+
     var artistName by remember { mutableStateOf("") }
+    var searchSongQuery by remember { mutableStateOf("") }
+    val selectedSongs = remember { mutableStateListOf<Song>() }
+
+    val filteredSongs = manager.allSongs.filter {
+        it.title.contains(searchSongQuery, ignoreCase = true) || it.artist.contains(searchSongQuery, ignoreCase = true)
+    }
 
     Box(
         modifier = Modifier
@@ -1081,35 +1270,99 @@ fun CreateArtistDialog(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
+                .height(650.dp)
                 .clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
                 .background(if (isDark) Color(0xFF1E293B) else Color.White)
                 .clickable(enabled = false) {}
-                .padding(24.dp)
+                .padding(22.dp)
         ) {
-            Column {
+            Column(modifier = Modifier.fillMaxSize()) {
                 Text("Create New Artist", color = textColor, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                Spacer(modifier = Modifier.height(14.dp))
+                Spacer(modifier = Modifier.height(10.dp))
                 OutlinedTextField(
                     value = artistName,
                     onValueChange = { artistName = it },
                     label = { Text("Artist Name") },
                     modifier = Modifier.fillMaxWidth()
                 )
-                Spacer(modifier = Modifier.height(20.dp))
+
+                Spacer(modifier = Modifier.height(12.dp))
+                Text("Add Songs (${selectedSongs.size} selected):", color = Color(0xFF64748B), fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                Spacer(modifier = Modifier.height(6.dp))
+
+                OutlinedTextField(
+                    value = searchSongQuery,
+                    onValueChange = { searchSongQuery = it },
+                    placeholder = { Text("Search songs to add...") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                LazyColumn(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(filteredSongs, key = { it.id }) { song ->
+                        val isPicked = selectedSongs.any { it.id == song.id }
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(if (isPicked) accentColor.copy(alpha = 0.15f) else if (isDark) Color(0x1AFFFFFF) else Color(0xFFF1F5F9))
+                                .clickable {
+                                    if (isPicked) selectedSongs.removeAll { it.id == song.id }
+                                    else selectedSongs.add(song)
+                                }
+                                .padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(song.title, color = textColor, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                                Text("${formatFileSize(song.size)} • ${song.artist}", color = Color(0xFF64748B), fontSize = 11.sp)
+                            }
+                            Text(if (isPicked) "✓ Added" else "+ Add", color = if (isPicked) accentColor else Color(0xFF64748B), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
                 Button(
                     onClick = {
-                        if (artistName.isNotBlank()) {
-                            ArtistDataManager.createNewArtist(artistName.trim())
+                        val name = artistName.trim()
+                        if (name.isNotBlank()) {
+                            ArtistDataManager.createNewArtist(name, selectedSongs)
+                            Toast.makeText(context, "Artist created!", Toast.LENGTH_SHORT).show()
+                            onDismiss()
+                        } else {
+                            Toast.makeText(context, "Please enter an artist name", Toast.LENGTH_SHORT).show()
                         }
-                        onDismiss()
                     },
                     modifier = Modifier.fillMaxWidth().height(48.dp),
                     shape = RoundedCornerShape(12.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = accentColor)
                 ) {
-                    Text("Create Artist", color = Color.White, fontWeight = FontWeight.Bold)
+                    Text("Save Artist", color = Color.White, fontWeight = FontWeight.Bold)
                 }
             }
         }
+    }
+}
+
+// Universal Helper: Adds any Artist directly to Home Screen "Favourite Playlists"
+fun addArtistToFavouritePlaylists(context: Context, manager: MusicManager, artist: ArtistItem) {
+    val existing = manager.customPlaylists.find { it.name.equals(artist.name, ignoreCase = true) }
+    if (existing != null) {
+        artist.songs.forEach { s ->
+            if (!existing.songIds.contains(s.id)) existing.songIds.add(s.id)
+        }
+        Toast.makeText(context, "'${artist.name}' playlist updated!", Toast.LENGTH_SHORT).show()
+    } else {
+        val newPl = Playlist(
+            id = "artist_${System.currentTimeMillis()}",
+            name = artist.name,
+            songIds = artist.songs.map { it.id }.toMutableList(),
+            icon = "🎙️",
+            iconColorHex = manager.accentColor.toArgb().toLong()
+        )
+        manager.customPlaylists.add(newPl)
+        Toast.makeText(context, "Added '${artist.name}' to Favourite Playlists!", Toast.LENGTH_SHORT).show()
     }
 }
