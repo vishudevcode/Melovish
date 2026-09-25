@@ -1,3 +1,21 @@
+Conflicting overloads: fun formatTime(ms: Long): String
+Conflicting overloads: fun formatFileSize(bytes: Long): String
+Overload resolution ambiguity between candidates
+```[span_0](start_span)[span_0](end_span)[span_1](start_span)[span_1](end_span)
+
+### Why this failed:
+In Kotlin, top-level helper functions in the same package cannot be declared with the exact same name across different files[span_2](start_span)[span_2](end_span)[span_3](start_span)[span_3](end_span).
+You already have `formatTime` and `formatFileSize` declared in **`Song.kt`** (or `SettingsScreen.kt`)[span_4](start_span)[span_4](end_span), so adding them as top-level functions in `PlayerComponents.kt` caused duplicate definitions across the project[span_5](start_span)[span_5](end_span)[span_6](start_span)[span_6](end_span). Additionally, lines 709/710 in `PlayerComponents.kt` had ambiguous `Text()` calls without explicit string conversions[span_7](start_span)[span_7](end_span)[span_8](start_span)[span_8](end_span).
+
+Removing those two duplicate definitions from `PlayerComponents.kt` and qualifying the `Text()` parameters fixes the build immediately[span_9](start_span)[span_9](end_span)[span_10](start_span)[span_10](end_span).
+
+---
+
+### Step 1: Replace `app/src/main/java/com/melovish/player/PlayerComponents.kt`
+
+Open **`PlayerComponents.kt`**, select everything (`Ctrl+A` or `Cmd+A`), and paste this complete, fixed code:
+
+```kotlin
 package com.melovish.player
 
 import android.content.Context
@@ -122,18 +140,6 @@ import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.roundToInt
 import kotlin.math.sin
-
-fun formatTime(ms: Long): String {
-    val totalSeconds = (ms / 1000).coerceAtLeast(0)
-    val minutes = totalSeconds / 60
-    val seconds = totalSeconds % 60
-    return String.format(Locale.getDefault(), "%02d:%02d", minutes, seconds)
-}
-
-fun formatFileSize(bytes: Long): String {
-    val mb = bytes.toDouble() / (1024 * 1024)
-    return String.format(Locale.getDefault(), "%.1f MB", mb)
-}
 
 @Composable
 fun GlassBackButton(isDark: Boolean, onClick: () -> Unit) {
@@ -1066,7 +1072,6 @@ fun EqualizerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                 }
                 Spacer(modifier = Modifier.height(14.dp))
 
-                // Presets Horizontal Row
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(manager.eqPresetNames) { preset ->
                         val isSel = selectedPresetTab == preset
@@ -1087,7 +1092,6 @@ fun EqualizerSheet(manager: MusicManager, onDismiss: () -> Unit) {
 
                 Spacer(modifier = Modifier.height(18.dp))
 
-                // Frequency Band Sliders
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     for (i in 0 until manager.eqBandsCount) {
                         val level = manager.eqBandLevels[i] ?: 0
@@ -1111,7 +1115,6 @@ fun EqualizerSheet(manager: MusicManager, onDismiss: () -> Unit) {
 
                 Spacer(modifier = Modifier.height(20.dp))
 
-                // Rotary Knobs: Bass Boost & 3D Virtualizer
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceEvenly
@@ -1134,7 +1137,6 @@ fun EqualizerSheet(manager: MusicManager, onDismiss: () -> Unit) {
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // Special Audio Switches: Stop Bass & Clear Vocals
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
