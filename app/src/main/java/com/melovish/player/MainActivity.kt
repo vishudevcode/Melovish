@@ -552,7 +552,6 @@ fun UniversalSongRow(song: Song, manager: MusicManager, isDark: Boolean, onPlay:
     }
 }
 
-// Compact Song Card with Centered Alignment Everywhere
 @Composable
 fun UniversalSongCard(song: Song, manager: MusicManager, isDark: Boolean, onPlay: () -> Unit, onMenuClick: () -> Unit) {
     val isPlayingThis = manager.currentSong?.id == song.id
@@ -603,7 +602,6 @@ fun UniversalSongCard(song: Song, manager: MusicManager, isDark: Boolean, onPlay
     }
 }
 
-// Home Screen: Exactly 4 Square Cards in a Row with Large Centered Folders & Touch-Hold Rearrange
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun HomeScreen(
@@ -621,7 +619,9 @@ fun HomeScreen(
     var customizingPlaylist by remember { mutableStateOf<Playlist?>(null) }
     var showRainbowWheelForPl by remember { mutableStateOf(false) }
 
-    val sortedSongs = manager.getSortedSongs()
+    val sortedSongs = remember(manager.allSongs.size, manager.currentSortOrder) {
+        manager.getSortedSongs()
+    }
     val recents = manager.historySongs.take(30)
 
     val configuration = LocalConfiguration.current
@@ -669,9 +669,8 @@ fun HomeScreen(
                         Text("No playlists yet. Tap '+ New' to create one.", color = Color(0xFF64748B), fontSize = 13.sp)
                     }
                 } else {
-                    // Exactly 4 in a row, fully square, centered icons, and direct touch-hold drag-and-drop to reorder
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        itemsIndexed(manager.customPlaylists, key = { _, pl -> pl.id }) { index, pl ->
+                        itemsIndexed(manager.customPlaylists, key = { _, pl -> pl.id }) { _, pl ->
                             Box(
                                 modifier = Modifier
                                     .size(cardWidth)
@@ -783,7 +782,6 @@ fun HomeScreen(
     if (showRainbowWheelForPl) CircularColorPickerDialog(manager = manager, onDismiss = { showRainbowWheelForPl = false })
 }
 
-// Library Screen: Integrated Cards/Lines View Switcher
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun LibraryScreen(manager: MusicManager, listState: LazyListState, onFolderClick: (String) -> Unit) {
@@ -805,7 +803,6 @@ fun LibraryScreen(manager: MusicManager, listState: LazyListState, onFolderClick
         ) {
             Text("Folders & Storage", color = textColor, fontSize = 22.sp, fontWeight = FontWeight.Bold)
             Row(verticalAlignment = Alignment.CenterVertically) {
-                // Main Library View Switcher (Cards vs Lines)
                 Box(
                     modifier = Modifier
                         .size(36.dp)
@@ -953,7 +950,8 @@ fun SearchScreen(manager: MusicManager, listState: LazyListState, onSongMenuClic
             onValueChange = { query = it },
             placeholder = { Text("Search songs, artists, or folders...", color = Color(0xFF64748B)) },
             modifier = Modifier.fillMaxWidth().focusRequester(focusRequester),
-            shape = RoundedCornerShape(16.dp)
+            shape = RoundedCornerShape(16.dp),
+            singleLine = true
         )
         Spacer(modifier = Modifier.height(14.dp))
         LazyColumn(state = listState, verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -964,7 +962,6 @@ fun SearchScreen(manager: MusicManager, listState: LazyListState, onSongMenuClic
     }
 }
 
-// Symmetrical Top Alignment + Inside Sort & View Switcher (Cards vs Lines) for Playlists
 @Composable
 fun PlaylistDetailScreen(
     playlist: Playlist,
@@ -1132,7 +1129,7 @@ fun PlaylistAddSearchDialog(playlist: Playlist, manager: MusicManager, onDismiss
 
                 when (selectedTab) {
                     0 -> {
-                        OutlinedTextField(value = searchQuery, onValueChange = { searchQuery = it }, placeholder = { Text("Search songs or artists...") }, modifier = Modifier.fillMaxWidth())
+                        OutlinedTextField(value = searchQuery, onValueChange = { searchQuery = it }, placeholder = { Text("Search songs or artists...") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
                         Spacer(modifier = Modifier.height(10.dp))
                         LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             items(filteredSongs, key = { it.id }) { s ->
@@ -1189,7 +1186,6 @@ fun PlaylistAddSearchDialog(playlist: Playlist, manager: MusicManager, onDismiss
     }
 }
 
-// Symmetrical Top Alignment
 @Composable
 fun FilteredSongsScreen(title: String, songs: List<Song>, manager: MusicManager, isDark: Boolean, onBack: () -> Unit, onSongMenuClick: (Song) -> Unit) {
     val textColor = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A)
@@ -1211,7 +1207,6 @@ fun FilteredSongsScreen(title: String, songs: List<Song>, manager: MusicManager,
     }
 }
 
-// Symmetrical Top Alignment + Inside Sort & View Switcher (Cards vs Lines) for Library Folders
 @Composable
 fun FolderSongsScreen(folderName: String, manager: MusicManager, isDark: Boolean, onBack: () -> Unit, onSongMenuClick: (Song) -> Unit) {
     val rawSongs = manager.allSongs.filter { it.folderName == folderName }
@@ -1247,7 +1242,6 @@ fun FolderSongsScreen(folderName: String, manager: MusicManager, isDark: Boolean
             }
 
             Row(verticalAlignment = Alignment.CenterVertically) {
-                // View Mode Switcher (Cards vs Lines)
                 Box(
                     modifier = Modifier
                         .size(36.dp)
@@ -1327,7 +1321,6 @@ fun FolderSongsScreen(folderName: String, manager: MusicManager, isDark: Boolean
     }
 }
 
-// Full-Width Action Sheet (Zero Dimming on Outside Click)
 @Composable
 fun SongItemActionModal(
     song: Song,
@@ -1469,7 +1462,7 @@ fun CreatePlaylistDialog(manager: MusicManager, onDismiss: () -> Unit) {
             Column {
                 Text("Create New Playlist", color = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A), fontSize = 18.sp, fontWeight = FontWeight.Bold)
                 Spacer(modifier = Modifier.height(14.dp))
-                OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Playlist Name") }, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Playlist Name") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
                 Spacer(modifier = Modifier.height(14.dp))
                 Text("Or Pin an Entire Device Folder:", color = Color(0xFF64748B), fontSize = 12.sp)
                 Spacer(modifier = Modifier.height(8.dp))
@@ -1516,7 +1509,6 @@ fun CreatePlaylistDialog(manager: MusicManager, onDismiss: () -> Unit) {
     }
 }
 
-// 4-Tab Bottom Navigation Bar: Home, Library, Artists, Search
 @Composable
 fun BottomNavBar(manager: MusicManager, activeTab: String, onTabSelected: (String) -> Unit) {
     val isDark = manager.isDarkMode

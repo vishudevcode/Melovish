@@ -41,13 +41,19 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.media3.common.MediaItem
+import androidx.media3.common.PlaybackException
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -61,6 +67,12 @@ class MusicManager(private val context: Context) {
     companion object {
         var activeInstance: MusicManager? = null
     }
+
+    private val exceptionHandler = CoroutineExceptionHandler { _, throwable ->
+        throwable.printStackTrace()
+    }
+
+    val managerScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate + exceptionHandler)
 
     val prefs: SharedPreferences = context.getSharedPreferences("melovish_prefs_v11", Context.MODE_PRIVATE)
     private val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
@@ -99,17 +111,13 @@ class MusicManager(private val context: Context) {
     val hiddenFolders = mutableStateListOf<String>()
     val hiddenAudioIds = mutableStateListOf<Long>()
     val folderColors = mutableStateMapOf<String, Long>()
-
-    // Parsed Artists List
     val parsedArtistsList = mutableStateListOf<ArtistItem>()
 
-    // Theme Mode & Accent Color
     var themeMode by mutableStateOf(prefs.getString("theme_mode", "System") ?: "System")
     var isDarkMode by mutableStateOf(false)
     var accentColor by mutableStateOf(Color(prefs.getInt("accent_color", 0xFF00B4D8.toInt())))
     val userSavedColorPresets = mutableStateListOf<Color>()
 
-    // Persistent Main Sorting
     var currentSortOrder by mutableStateOf(
         try {
             SongSortOrder.valueOf(prefs.getString("saved_song_sort", SongSortOrder.A_TO_Z.name) ?: SongSortOrder.A_TO_Z.name)
@@ -125,7 +133,6 @@ class MusicManager(private val context: Context) {
         }
     )
 
-    // Inner Folder & Playlist Sort / View Preferences
     var folderInnerSortOrder by mutableStateOf(
         try {
             SongSortOrder.valueOf(prefs.getString("folder_inner_sort", SongSortOrder.A_TO_Z.name) ?: SongSortOrder.A_TO_Z.name)
@@ -144,7 +151,8 @@ class MusicManager(private val context: Context) {
     )
     var playlistInnerIsCardView by mutableStateOf(prefs.getBoolean("playlist_inner_card_view", false))
 
-    private val maxCacheSize = (Runtime.getRuntime().maxMemory() / 1024 / 8).toInt()
+    // High performance memory cache: 1/8th of available runtime memory
+    private val maxCacheSize = (Runtime.getRuntime().maxMemory() / 1024 / 8).toInt().coerceAtLeast(1024 * 16)
     private val memoryCache = object : LruCache<Long, Bitmap>(maxCacheSize) {
         override fun sizeOf(key: Long, bitmap: Bitmap): Int = bitmap.byteCount / 1024
     }
@@ -180,8 +188,6 @@ class MusicManager(private val context: Context) {
     var profileEmail by mutableStateOf(prefs.getString("prof_email", "") ?: "")
     var profileImagePath by mutableStateOf(prefs.getString("prof_image_path", null))
 
-    private val scope = CoroutineScope(Dispatchers.Main)
-
     init {
         activeInstance = this
         initMediaSession()
@@ -196,32 +202,44 @@ class MusicManager(private val context: Context) {
 
     fun setPersistentSongSort(order: SongSortOrder) {
         currentSortOrder = order
-        prefs.edit().putString("saved_song_sort", order.name).apply()
+        managerScope.launch(Dispatchers.IO) {
+            prefs.edit().putString("saved_song_sort", order.name).apply()
+        }
     }
 
     fun setPersistentFolderSort(order: FolderSortOrder) {
         currentFolderSortOrder = order
-        prefs.edit().putString("saved_folder_sort", order.name).apply()
+        managerScope.launch(Dispatchers.IO) {
+            prefs.edit().putString("saved_folder_sort", order.name).apply()
+        }
     }
 
     fun setPersistentFolderInnerSort(order: SongSortOrder) {
         folderInnerSortOrder = order
-        prefs.edit().putString("folder_inner_sort", order.name).apply()
+        managerScope.launch(Dispatchers.IO) {
+            prefs.edit().putString("folder_inner_sort", order.name).apply()
+        }
     }
 
     fun setPersistentFolderInnerCardView(isCard: Boolean) {
         folderInnerIsCardView = isCard
-        prefs.edit().putBoolean("folder_inner_card_view", isCard).apply()
+        managerScope.launch(Dispatchers.IO) {
+            prefs.edit().putBoolean("folder_inner_card_view", isCard).apply()
+        }
     }
 
     fun setPersistentPlaylistInnerSort(order: SongSortOrder) {
         playlistInnerSortOrder = order
-        prefs.edit().putString("playlist_inner_sort", order.name).apply()
+        managerScope.launch(Dispatchers.IO) {
+            prefs.edit().putString("playlist_inner_sort", order.name).apply()
+        }
     }
 
     fun setPersistentPlaylistInnerCardView(isCard: Boolean) {
         playlistInnerIsCardView = isCard
-        prefs.edit().putBoolean("playlist_inner_card_view", isCard).apply()
+        managerScope.launch(Dispatchers.IO) {
+            prefs.edit().putBoolean("playlist_inner_card_view", isCard).apply()
+        }
     }
 
     fun movePlaylistItem(fromIndex: Int, toIndex: Int) {
@@ -244,7 +262,9 @@ class MusicManager(private val context: Context) {
                     override fun onSeekTo(pos: Long) { seekTo(pos) }
                 })
             }
-        } catch (_: Exception) {}
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
     }
 
     private fun createNotificationChannel() {
@@ -283,7 +303,9 @@ class MusicManager(private val context: Context) {
             } else {
                 context.registerReceiver(receiver, filter)
             }
-        } catch (_: Exception) {}
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
     }
 
     private fun setupPlayerListener() {
@@ -297,11 +319,22 @@ class MusicManager(private val context: Context) {
             override fun onPlaybackStateChanged(state: Int) {
                 if (state == Player.STATE_READY) {
                     duration = player.duration.coerceAtLeast(0L)
-                    attachAudioEffects()
+                    managerScope.launch(Dispatchers.Default) {
+                        attachAudioEffects()
+                    }
                     updateMediaSessionMetadata()
                     updateMediaSessionState()
                     updateNotification()
                 } else if (state == Player.STATE_ENDED) {
+                    playNext()
+                }
+            }
+
+            override fun onPlayerError(error: PlaybackException) {
+                error.printStackTrace()
+                // Graceful fallback to next track without crashing
+                managerScope.launch(Dispatchers.Main.immediate) {
+                    Toast.makeText(context, "Track unplayable, skipping...", Toast.LENGTH_SHORT).show()
                     playNext()
                 }
             }
@@ -418,61 +451,92 @@ class MusicManager(private val context: Context) {
             val notification = builder.build()
             notificationManager.notify(NOTIF_ID, notification)
             MediaPlaybackService.attachNotification(notification)
-        } catch (_: Exception) {}
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
     }
 
     fun getCachedAlbumArt(songId: Long): Bitmap? = memoryCache.get(songId)
 
+    // Ultra-optimized downsampled async artwork pipeline with sub-sampling
     suspend fun loadAlbumArtAsync(song: Song): Bitmap? = withContext(Dispatchers.IO) {
         val cached = memoryCache.get(song.id)
         if (cached != null) return@withContext cached
 
         var resultBitmap: Bitmap? = null
 
+        // 1. Custom file path
         if (song.customCoverPath != null) {
             val file = File(song.customCoverPath!!)
             if (file.exists()) {
-                val opts = BitmapFactory.Options().apply { inSampleSize = 2 }
+                val opts = BitmapFactory.Options().apply {
+                    inJustDecodeBounds = true
+                    BitmapFactory.decodeFile(file.absolutePath, this)
+                    inSampleSize = calculateInSampleSize(this, 180, 180)
+                    inJustDecodeBounds = false
+                    inPreferredConfig = Bitmap.Config.RGB_565 // Half memory footprint
+                }
                 resultBitmap = BitmapFactory.decodeFile(file.absolutePath, opts)
             }
         }
 
+        // 2. Embedded ID3 Picture
         if (resultBitmap == null) {
             try {
                 val retriever = MediaMetadataRetriever()
                 retriever.setDataSource(context, song.uri)
                 val artBytes = retriever.embeddedPicture
                 if (artBytes != null) {
-                    val opts = BitmapFactory.Options().apply { inSampleSize = 2 }
+                    val opts = BitmapFactory.Options().apply {
+                        inJustDecodeBounds = true
+                        BitmapFactory.decodeByteArray(artBytes, 0, artBytes.size, this)
+                        inSampleSize = calculateInSampleSize(this, 180, 180)
+                        inJustDecodeBounds = false
+                        inPreferredConfig = Bitmap.Config.RGB_565
+                    }
                     resultBitmap = BitmapFactory.decodeByteArray(artBytes, 0, artBytes.size, opts)
                 }
                 retriever.release()
             } catch (_: Exception) {}
         }
 
+        // 3. MediaStore Content Artwork Provider
         if (resultBitmap == null) {
             try {
                 val sArtworkUri = Uri.parse("content://media/external/audio/albumart")
                 val uri = ContentUris.withAppendedId(sArtworkUri, song.albumId)
-                val streamBitmap = context.contentResolver.openInputStream(uri)?.use { stream ->
-                    val opts = BitmapFactory.Options().apply { inSampleSize = 2 }
-                    BitmapFactory.decodeStream(stream, null, opts)
-                }
-                if (streamBitmap != null) {
-                    resultBitmap = streamBitmap
+                context.contentResolver.openInputStream(uri)?.use { stream ->
+                    val opts = BitmapFactory.Options().apply {
+                        inSampleSize = 2
+                        inPreferredConfig = Bitmap.Config.RGB_565
+                    }
+                    resultBitmap = BitmapFactory.decodeStream(stream, null, opts)
                 }
             } catch (_: Exception) {}
         }
 
         val finalBmp = resultBitmap
         if (finalBmp != null) {
-            val scaled = Bitmap.createScaledBitmap(finalBmp, 256, 256, true)
-            memoryCache.put(song.id, scaled)
-            return@withContext scaled
+            memoryCache.put(song.id, finalBmp)
+            return@withContext finalBmp
         }
         null
     }
 
+    private fun calculateInSampleSize(options: BitmapFactory.Options, reqWidth: Int, reqHeight: Int): Int {
+        val (height: Int, width: Int) = options.outHeight to options.outWidth
+        var inSampleSize = 1
+        if (height > reqHeight || width > reqWidth) {
+            val halfHeight: Int = height / 2
+            val halfWidth: Int = width / 2
+            while (halfHeight / inSampleSize >= reqHeight && halfWidth / inSampleSize >= reqWidth) {
+                inSampleSize *= 2
+            }
+        }
+        return inSampleSize
+    }
+
+    // Fully safe audio effects offloaded to Default dispatcher
     fun attachAudioEffects() {
         try {
             val audioSessionId = player.audioSessionId
@@ -520,7 +584,9 @@ class MusicManager(private val context: Context) {
                     eqBandLevels[0] = eqMinLevel
                 }
             }
-        } catch (_: Exception) {}
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
     }
 
     fun setEqBandLevel(band: Int, level: Int) {
@@ -528,13 +594,17 @@ class MusicManager(private val context: Context) {
         try {
             equalizer?.setBandLevel(band.toShort(), level.toShort())
             selectedEqPreset = "Custom"
-            prefs.edit().putString("selected_eq_preset", "Custom").apply()
+            managerScope.launch(Dispatchers.IO) {
+                prefs.edit().putString("selected_eq_preset", "Custom").apply()
+            }
         } catch (_: Exception) {}
     }
 
     fun applyEqPreset(presetName: String) {
         selectedEqPreset = presetName
-        prefs.edit().putString("selected_eq_preset", presetName).apply()
+        managerScope.launch(Dispatchers.IO) {
+            prefs.edit().putString("selected_eq_preset", presetName).apply()
+        }
         try {
             val index = eqPresetNames.indexOf(presetName)
             if (index >= 0 && index < (equalizer?.numberOfPresets ?: 0)) {
@@ -548,7 +618,9 @@ class MusicManager(private val context: Context) {
 
     fun toggleEqualizer(enabled: Boolean) {
         isEqEnabled = enabled
-        prefs.edit().putBoolean("eq_enabled", enabled).apply()
+        managerScope.launch(Dispatchers.IO) {
+            prefs.edit().putBoolean("eq_enabled", enabled).apply()
+        }
         try {
             equalizer?.enabled = enabled
             bassBoost?.enabled = !isStopBass && enabled
@@ -558,19 +630,25 @@ class MusicManager(private val context: Context) {
 
     fun setBassBoost(percent: Int) {
         bassBoostPercent = percent
-        prefs.edit().putInt("bass_boost", percent).apply()
+        managerScope.launch(Dispatchers.IO) {
+            prefs.edit().putInt("bass_boost", percent).apply()
+        }
         try { bassBoost?.setStrength((percent * 10).toShort().coerceIn(0, 1000)) } catch (_: Exception) {}
     }
 
     fun setVirtualizer(percent: Int) {
         virtualizerPercent = percent
-        prefs.edit().putInt("virtualizer", percent).apply()
+        managerScope.launch(Dispatchers.IO) {
+            prefs.edit().putInt("virtualizer", percent).apply()
+        }
         try { virtualizer?.setStrength((percent * 10).toShort().coerceIn(0, 1000)) } catch (_: Exception) {}
     }
 
     fun toggleStopBass(stop: Boolean) {
         isStopBass = stop
-        prefs.edit().putBoolean("stop_bass", stop).apply()
+        managerScope.launch(Dispatchers.IO) {
+            prefs.edit().putBoolean("stop_bass", stop).apply()
+        }
         try {
             bassBoost?.enabled = !stop && isEqEnabled
             if (stop && eqBandsCount > 0) {
@@ -582,7 +660,9 @@ class MusicManager(private val context: Context) {
 
     fun toggleRemoveVocals(remove: Boolean) {
         isRemoveVocals = remove
-        prefs.edit().putBoolean("remove_vocals", remove).apply()
+        managerScope.launch(Dispatchers.IO) {
+            prefs.edit().putBoolean("remove_vocals", remove).apply()
+        }
         try {
             if (remove && eqBandsCount >= 3) {
                 val mid = eqBandsCount / 2
@@ -594,7 +674,9 @@ class MusicManager(private val context: Context) {
 
     fun setAudioOutputRouting(output: String) {
         selectedAudioOutput = output
-        prefs.edit().putString("audio_output", output).apply()
+        managerScope.launch(Dispatchers.IO) {
+            prefs.edit().putString("audio_output", output).apply()
+        }
         try {
             when (output) {
                 "Phone" -> audioManager.isSpeakerphoneOn = false
@@ -616,12 +698,12 @@ class MusicManager(private val context: Context) {
     }
 
     private fun startPositionTracker() {
-        scope.launch {
+        managerScope.launch {
             while (true) {
                 if (isPlaying) {
                     currentPosition = player.currentPosition.coerceAtLeast(0L)
                 }
-                delay(250)
+                delay(300)
             }
         }
     }
@@ -645,7 +727,7 @@ class MusicManager(private val context: Context) {
     }
 
     fun scanStorage() {
-        scope.launch(Dispatchers.IO) {
+        managerScope.launch(Dispatchers.IO) {
             val songList = mutableListOf<Song>()
             val collection = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 MediaStore.Audio.Media.getContentUri(MediaStore.VOLUME_EXTERNAL)
@@ -733,19 +815,17 @@ class MusicManager(private val context: Context) {
                 e.printStackTrace()
             }
 
-            withContext(Dispatchers.Main) {
+            val visibleSongs = songList.filter { it.folderName !in hiddenFolders && it.id !in hiddenAudioIds }
+            
+            // Execute heavy artist grouping off-thread
+            val parsed = ArtistParsingEngine.parseAndGroupArtists(visibleSongs)
+
+            withContext(Dispatchers.Main.immediate) {
                 allSongs.clear()
-                val visibleSongs = songList.filter { it.folderName !in hiddenFolders && it.id !in hiddenAudioIds }
                 allSongs.addAll(visibleSongs)
                 refreshHistory()
-
-                scope.launch(Dispatchers.Default) {
-                    val parsed = ArtistParsingEngine.parseAndGroupArtists(visibleSongs)
-                    withContext(Dispatchers.Main) {
-                        parsedArtistsList.clear()
-                        parsedArtistsList.addAll(parsed)
-                    }
-                }
+                parsedArtistsList.clear()
+                parsedArtistsList.addAll(parsed)
             }
         }
     }
@@ -781,13 +861,18 @@ class MusicManager(private val context: Context) {
         playbackQueue.clear()
         playbackQueue.addAll(queue)
 
-        val mediaItems = queue.map { MediaItem.fromUri(it.uri) }
-        player.setMediaItems(mediaItems)
-        val index = queue.indexOfFirst { it.id == song.id }.coerceAtLeast(0)
-        player.seekTo(index, 0L)
-        player.prepare()
-        player.play()
-        recordSongPlayed(song)
+        managerScope.launch(Dispatchers.Default) {
+            val mediaItems = queue.map { MediaItem.fromUri(it.uri) }
+            val index = queue.indexOfFirst { it.id == song.id }.coerceAtLeast(0)
+            
+            withContext(Dispatchers.Main.immediate) {
+                player.setMediaItems(mediaItems)
+                player.seekTo(index, 0L)
+                player.prepare()
+                player.play()
+                recordSongPlayed(song)
+            }
+        }
     }
 
     fun moveQueueItem(fromIndex: Int, toIndex: Int) {
@@ -875,7 +960,9 @@ class MusicManager(private val context: Context) {
 
     fun toggleFavorite(song: Song) {
         song.isFavorite = !song.isFavorite
-        prefs.edit().putBoolean("fav_${song.id}", song.isFavorite).apply()
+        managerScope.launch(Dispatchers.IO) {
+            prefs.edit().putBoolean("fav_${song.id}", song.isFavorite).apply()
+        }
 
         var favList = customPlaylists.find { it.name == "Favorites" }
         if (favList == null) {
@@ -913,7 +1000,7 @@ class MusicManager(private val context: Context) {
             return
         }
         sleepTimerRemainingSeconds = minutes * 60
-        sleepTimerJob = scope.launch {
+        sleepTimerJob = managerScope.launch {
             while (sleepTimerRemainingSeconds > 0) {
                 delay(1000)
                 sleepTimerRemainingSeconds--
@@ -933,7 +1020,7 @@ class MusicManager(private val context: Context) {
         val remainingSecs = (remainingMs / 1000).toInt()
         sleepTimerJob?.cancel()
         sleepTimerRemainingSeconds = remainingSecs
-        sleepTimerJob = scope.launch {
+        sleepTimerJob = managerScope.launch {
             while (sleepTimerRemainingSeconds > 0) {
                 delay(1000)
                 sleepTimerRemainingSeconds--
@@ -992,7 +1079,9 @@ class MusicManager(private val context: Context) {
 
     fun updateFolderColorOnly(folderName: String, colorHex: Long) {
         folderColors[folderName] = colorHex
-        prefs.edit().putLong("folder_color_$folderName", colorHex).apply()
+        managerScope.launch(Dispatchers.IO) {
+            prefs.edit().putLong("folder_color_$folderName", colorHex).apply()
+        }
     }
 
     fun updatePlaylistColorOnly(playlist: Playlist, colorHex: Long) {
@@ -1007,22 +1096,24 @@ class MusicManager(private val context: Context) {
     }
 
     fun savePlaylists() {
-        val arr = JSONArray()
-        for (pl in customPlaylists) {
-            val obj = JSONObject().apply {
-                put("id", pl.id)
-                put("name", pl.name)
-                put("isFolder", pl.isFolderPinned)
-                put("folderName", pl.folderName ?: "")
-                put("icon", pl.icon)
-                put("iconColorHex", pl.iconColorHex)
-                val idsArr = JSONArray()
-                pl.songIds.forEach { idsArr.put(it) }
-                put("songIds", idsArr)
+        managerScope.launch(Dispatchers.IO) {
+            val arr = JSONArray()
+            for (pl in customPlaylists) {
+                val obj = JSONObject().apply {
+                    put("id", pl.id)
+                    put("name", pl.name)
+                    put("isFolder", pl.isFolderPinned)
+                    put("folderName", pl.folderName ?: "")
+                    put("icon", pl.icon)
+                    put("iconColorHex", pl.iconColorHex)
+                    val idsArr = JSONArray()
+                    pl.songIds.forEach { idsArr.put(it) }
+                    put("songIds", idsArr)
+                }
+                arr.put(obj)
             }
-            arr.put(obj)
+            prefs.edit().putString("custom_playlists", arr.toString()).apply()
         }
-        prefs.edit().putString("custom_playlists", arr.toString()).apply()
     }
 
     fun updateSongMetadata(song: Song, newTitle: String, newArtist: String, newAlbum: String, newDate: String, customCoverUri: Uri?) {
@@ -1031,33 +1122,33 @@ class MusicManager(private val context: Context) {
         song.album = newAlbum
         song.releaseDate = newDate
 
-        prefs.edit()
-            .putString("custom_title_${song.id}", newTitle)
-            .putString("custom_artist_${song.id}", newArtist)
-            .putString("custom_album_${song.id}", newAlbum)
-            .putString("custom_date_${song.id}", newDate)
-            .apply()
+        managerScope.launch(Dispatchers.IO) {
+            prefs.edit()
+                .putString("custom_title_${song.id}", newTitle)
+                .putString("custom_artist_${song.id}", newArtist)
+                .putString("custom_album_${song.id}", newAlbum)
+                .putString("custom_date_${song.id}", newDate)
+                .apply()
 
-        if (customCoverUri != null) {
-            try {
-                val inputStream = context.contentResolver.openInputStream(customCoverUri)
-                val targetFile = File(context.filesDir, "cover_${song.id}.jpg")
-                val outputStream = FileOutputStream(targetFile)
-                inputStream?.copyTo(outputStream)
-                inputStream?.close()
-                outputStream.close()
-                song.customCoverPath = targetFile.absolutePath
-                val bmp = BitmapFactory.decodeFile(targetFile.absolutePath)
-                if (bmp != null) memoryCache.put(song.id, bmp)
-                prefs.edit().putString("custom_cover_${song.id}", targetFile.absolutePath).apply()
-            } catch (_: Exception) {}
-        }
-        updateMediaSessionMetadata()
-        updateNotification()
+            if (customCoverUri != null) {
+                try {
+                    val inputStream = context.contentResolver.openInputStream(customCoverUri)
+                    val targetFile = File(context.filesDir, "cover_${song.id}.jpg")
+                    val outputStream = FileOutputStream(targetFile)
+                    inputStream?.copyTo(outputStream)
+                    inputStream?.close()
+                    outputStream.close()
+                    song.customCoverPath = targetFile.absolutePath
+                    val bmp = BitmapFactory.decodeFile(targetFile.absolutePath)
+                    if (bmp != null) memoryCache.put(song.id, bmp)
+                    prefs.edit().putString("custom_cover_${song.id}", targetFile.absolutePath).apply()
+                } catch (_: Exception) {}
+            }
 
-        scope.launch(Dispatchers.Default) {
             val parsed = ArtistParsingEngine.parseAndGroupArtists(allSongs)
-            withContext(Dispatchers.Main) {
+            withContext(Dispatchers.Main.immediate) {
+                updateMediaSessionMetadata()
+                updateNotification()
                 parsedArtistsList.clear()
                 parsedArtistsList.addAll(parsed)
             }
@@ -1067,10 +1158,12 @@ class MusicManager(private val context: Context) {
     private fun recordSongPlayed(song: Song) {
         song.playCount += 1
         song.lastPlayed = System.currentTimeMillis()
-        prefs.edit()
-            .putInt("play_count_${song.id}", song.playCount)
-            .putLong("last_played_${song.id}", song.lastPlayed)
-            .apply()
+        managerScope.launch(Dispatchers.IO) {
+            prefs.edit()
+                .putInt("play_count_${song.id}", song.playCount)
+                .putLong("last_played_${song.id}", song.lastPlayed)
+                .apply()
+        }
         refreshHistory()
     }
 
@@ -1086,7 +1179,9 @@ class MusicManager(private val context: Context) {
     fun clearHistory() {
         historySongs.forEach { song ->
             song.lastPlayed = 0L
-            prefs.edit().remove("last_played_${song.id}").apply()
+            managerScope.launch(Dispatchers.IO) {
+                prefs.edit().remove("last_played_${song.id}").apply()
+            }
         }
         historySongs.clear()
         Toast.makeText(context, "Playback history cleared", Toast.LENGTH_SHORT).show()
@@ -1101,25 +1196,29 @@ class MusicManager(private val context: Context) {
     fun savePermanentProfile(name: String, email: String, imageUri: Uri?) {
         profileName = name
         profileEmail = email
-        prefs.edit().putString("prof_name", name).putString("prof_email", email).apply()
+        managerScope.launch(Dispatchers.IO) {
+            prefs.edit().putString("prof_name", name).putString("prof_email", email).apply()
 
-        if (imageUri != null) {
-            try {
-                val inputStream = context.contentResolver.openInputStream(imageUri)
-                val targetFile = File(context.filesDir, "user_avatar.jpg")
-                val outputStream = FileOutputStream(targetFile)
-                inputStream?.copyTo(outputStream)
-                inputStream?.close()
-                outputStream.close()
-                profileImagePath = targetFile.absolutePath
-                prefs.edit().putString("prof_image_path", targetFile.absolutePath).apply()
-            } catch (_: Exception) {}
+            if (imageUri != null) {
+                try {
+                    val inputStream = context.contentResolver.openInputStream(imageUri)
+                    val targetFile = File(context.filesDir, "user_avatar.jpg")
+                    val outputStream = FileOutputStream(targetFile)
+                    inputStream?.copyTo(outputStream)
+                    inputStream?.close()
+                    outputStream.close()
+                    profileImagePath = targetFile.absolutePath
+                    prefs.edit().putString("prof_image_path", targetFile.absolutePath).apply()
+                } catch (_: Exception) {}
+            }
         }
     }
 
     fun updateAccent(color: Color) {
         accentColor = color
-        prefs.edit().putInt("accent_color", color.toArgb()).apply()
+        managerScope.launch(Dispatchers.IO) {
+            prefs.edit().putInt("accent_color", color.toArgb()).apply()
+        }
     }
 
     fun addColorPreset(color: Color) {
@@ -1131,9 +1230,11 @@ class MusicManager(private val context: Context) {
     }
 
     private fun saveColorPresets() {
-        val arr = JSONArray()
-        userSavedColorPresets.forEach { arr.put(it.toArgb()) }
-        prefs.edit().putString("user_color_presets", arr.toString()).apply()
+        managerScope.launch(Dispatchers.IO) {
+            val arr = JSONArray()
+            userSavedColorPresets.forEach { arr.put(it.toArgb()) }
+            prefs.edit().putString("user_color_presets", arr.toString()).apply()
+        }
     }
 
     private fun loadColorPresets() {
@@ -1155,19 +1256,25 @@ class MusicManager(private val context: Context) {
 
     fun setTheme(mode: String) {
         themeMode = mode
-        prefs.edit().putString("theme_mode", mode).apply()
+        managerScope.launch(Dispatchers.IO) {
+            prefs.edit().putString("theme_mode", mode).apply()
+        }
     }
 
     fun toggleHideFolder(folder: String) {
         if (folder in hiddenFolders) hiddenFolders.remove(folder) else hiddenFolders.add(folder)
-        prefs.edit().putStringSet("hidden_folders", hiddenFolders.toSet()).apply()
-        scanStorage()
+        managerScope.launch(Dispatchers.IO) {
+            prefs.edit().putStringSet("hidden_folders", hiddenFolders.toSet()).apply()
+            scanStorage()
+        }
     }
 
     fun toggleHideAudio(songId: Long) {
         if (songId in hiddenAudioIds) hiddenAudioIds.remove(songId) else hiddenAudioIds.add(songId)
-        prefs.edit().putStringSet("hidden_audio", hiddenAudioIds.map { it.toString() }.toSet()).apply()
-        scanStorage()
+        managerScope.launch(Dispatchers.IO) {
+            prefs.edit().putStringSet("hidden_audio", hiddenAudioIds.map { it.toString() }.toSet()).apply()
+            scanStorage()
+        }
     }
 
     fun deleteSongFromDevice(song: Song): Boolean {
@@ -1179,9 +1286,9 @@ class MusicManager(private val context: Context) {
             playbackQueue.remove(song)
             historySongs.remove(song)
 
-            scope.launch(Dispatchers.Default) {
+            managerScope.launch(Dispatchers.Default) {
                 val parsed = ArtistParsingEngine.parseAndGroupArtists(allSongs)
-                withContext(Dispatchers.Main) {
+                withContext(Dispatchers.Main.immediate) {
                     parsedArtistsList.clear()
                     parsedArtistsList.addAll(parsed)
                 }
