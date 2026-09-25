@@ -1,11 +1,7 @@
 package com.melovish.player
 
-import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
-import android.media.MediaMetadataRetriever
-import android.media.audiofx.Visualizer
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -56,12 +52,10 @@ import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -89,14 +83,11 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.core.content.ContextCompat
 import androidx.media3.common.Player
 import kotlinx.coroutines.delay
 import java.util.Locale
 import kotlin.math.atan2
 import kotlin.math.cos
-import kotlin.math.hypot
-import kotlin.math.roundToInt
 import kotlin.math.sin
 import kotlin.math.sqrt
 
@@ -191,7 +182,7 @@ fun GlassmorphicFolderIcon(folderColor: Color, modifier: Modifier = Modifier) {
     }
 }
 
-// 9 Preset Colors + 10th Rainbow Wheel Dialog
+// 9 Preset Colors + 10th Rainbow Wheel Dialog (Zero Darkening Scrim)
 @Composable
 fun FolderColorDialog(
     folderName: String,
@@ -371,161 +362,7 @@ fun extractMaterialYouPalette(bitmap: Bitmap?, isDarkMode: Boolean, fallbackAcce
     }
 }
 
-// Live Synchronized Left-to-Right Scrolling Audio Visualizer
-@Composable
-fun LiveAudioVisualizerView(
-    audioSessionId: Int,
-    isPlaying: Boolean,
-    mode: String,
-    accentColor: Color,
-    isDark: Boolean,
-    modifier: Modifier = Modifier
-) {
-    if (mode == "Off") return
-
-    val context = LocalContext.current
-    val numPoints = if (mode == "Waveform") 84 else 56
-    val audioRingBuffer = remember { mutableStateListOf<Float>().apply { repeat(numPoints) { add(0.04f) } } }
-
-    var hasRecordAudioPermission by remember {
-        mutableStateOf(
-            ContextCompat.checkSelfPermission(context, android.Manifest.permission.RECORD_AUDIO) ==
-                android.content.pm.PackageManager.PERMISSION_GRANTED
-        )
-    }
-
-    DisposableEffect(audioSessionId, hasRecordAudioPermission) {
-        var visualizer: Visualizer? = null
-        if (hasRecordAudioPermission && audioSessionId != 0) {
-            try {
-                visualizer = Visualizer(audioSessionId).apply {
-                    captureSize = Visualizer.getCaptureSizeRange()[1].coerceAtMost(512)
-                    setDataCaptureListener(object : Visualizer.OnDataCaptureListener {
-                        override fun onWaveFormDataCapture(vis: Visualizer?, waveform: ByteArray?, samplingRate: Int) {
-                            if (waveform != null && isPlaying && mode == "Waveform") {
-                                // Extract average amplitude of the newest sound window
-                                var sum = 0.0
-                                for (b in waveform) {
-                                    val centered = (b.toInt() and 0xFF) - 128
-                                    sum += (centered * centered)
-                                }
-                                val rms = (sqrt(sum / waveform.size) / 128.0).toFloat().coerceIn(0.06f, 1f)
-                                // Shift buffer from left to right: drop oldest from left, insert latest on right
-                                if (audioRingBuffer.size >= numPoints) {
-                                    audioRingBuffer.removeAt(0)
-                                }
-                                audioRingBuffer.add(rms)
-                            }
-                        }
-
-                        override fun onFftDataCapture(vis: Visualizer?, fft: ByteArray?, samplingRate: Int) {
-                            if (fft != null && isPlaying && mode == "Dotted Equalizer") {
-                                // Map frequency bands across columns
-                                val n = fft.size / 2
-                                val step = (n / numPoints).coerceAtLeast(1)
-                                for (i in 0 until numPoints) {
-                                    val idx = (i * step).coerceIn(0, n - 1)
-                                    val r = fft[idx * 2].toFloat()
-                                    val im = fft[idx * 2 + 1].toFloat()
-                                    val mag = (hypot(r.toDouble(), im.toDouble()).toFloat() / 110f).coerceIn(0.05f, 1f)
-                                    val smoothed = audioRingBuffer[i] * 0.35f + mag * 0.65f
-                                    audioRingBuffer[i] = smoothed
-                                }
-                            }
-                        }
-                    }, Visualizer.getMaxCaptureRate(), true, true)
-                    enabled = true
-                }
-            } catch (e: Exception) {
-                e.printStackTrace()
-                visualizer = null
-            }
-        }
-
-        onDispose {
-            try {
-                visualizer?.enabled = false
-                visualizer?.release()
-            } catch (_: Exception) {}
-        }
-    }
-
-    // Decay & Simulation when stopped or microphone permission is absent
-    LaunchedEffect(isPlaying, mode, hasRecordAudioPermission) {
-        var phase = 0f
-        while (true) {
-            if (isPlaying) {
-                if (!hasRecordAudioPermission) {
-                    phase += 0.22f
-                    val newestSample = (sin(phase) * 0.5f + 0.5f) * 0.85f + 0.08f
-                    if (audioRingBuffer.size >= numPoints) {
-                        audioRingBuffer.removeAt(0)
-                    }
-                    audioRingBuffer.add(newestSample.coerceIn(0.08f, 1f))
-                }
-            } else {
-                for (i in 0 until audioRingBuffer.size) {
-                    audioRingBuffer[i] = (audioRingBuffer[i] * 0.85f).coerceAtLeast(0.03f)
-                }
-            }
-            delay(25)
-        }
-    }
-
-    val visualizerColor = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A)
-
-    Canvas(modifier = modifier) {
-        val w = size.width
-        val h = size.height
-
-        if (mode == "Waveform") {
-            // High-resolution symmetrical center line waveform shifting left-to-right
-            val centerY = h / 2f
-            val spacing = w / (numPoints.toFloat())
-            val strokeWidthPx = (spacing * 0.58f).coerceIn(1.5.dp.toPx(), 3.5.dp.toPx())
-
-            for (i in 0 until audioRingBuffer.size.coerceAtMost(numPoints)) {
-                val x = i * spacing + spacing / 2f
-                val mag = audioRingBuffer[i].coerceIn(0.04f, 1f)
-                val halfBarHeight = (mag * (h / 2f) * 0.94f).coerceAtLeast(1.5.dp.toPx())
-
-                drawLine(
-                    color = visualizerColor,
-                    start = Offset(x, centerY - halfBarHeight),
-                    end = Offset(x, centerY + halfBarHeight),
-                    strokeWidth = strokeWidthPx,
-                    cap = StrokeCap.Round
-                )
-            }
-        } else if (mode == "Dotted Equalizer") {
-            // Highly detailed bottom-anchored LED matrix spectrum with smaller dots
-            val colCount = numPoints
-            val colWidth = w / colCount
-            val dotRadius = (colWidth * 0.38f).coerceIn(1.2.dp.toPx(), 2.8.dp.toPx())
-            val maxDotsInCol = 14
-            val verticalSpacing = h / maxDotsInCol
-
-            for (i in 0 until audioRingBuffer.size.coerceAtMost(colCount)) {
-                val x = i * colWidth + colWidth / 2f
-                val mag = audioRingBuffer[i].coerceIn(0.03f, 1f)
-                val activeDots = (mag * maxDotsInCol).roundToInt().coerceIn(1, maxDotsInCol)
-
-                for (dot in 0 until maxDotsInCol) {
-                    val y = h - (dot * verticalSpacing) - dotRadius
-                    val isActive = dot < activeDots
-                    val dotColor = if (isActive) visualizerColor else visualizerColor.copy(alpha = 0.12f)
-                    drawCircle(
-                        color = dotColor,
-                        radius = dotRadius,
-                        center = Offset(x, y)
-                    )
-                }
-            }
-        }
-    }
-}
-
-// Full Player Sheet: 50/50 Split with Live Visualizer and Exact Slim Seek Bar
+// Full Player Sheet: 50/50 Split, 3D Swipe Tilt, Pierced Center Slider Ball, Edge-to-Edge Sheets
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
@@ -592,6 +429,7 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
     val animatedRotationY by animateFloatAsState((totalDragX / 28f).coerceIn(-18f, 18f), tween(150, easing = LinearEasing), label = "rotY")
     val animatedTranslationX by animateFloatAsState(totalDragX, tween(120, easing = LinearEasing), label = "transX")
 
+    // Root Box without horizontal padding so overlays are 100% full screen width
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -618,13 +456,14 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                 )
             }
     ) {
+        // Player UI container with 24dp horizontal margins
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(horizontal = 24.dp)
                 .padding(top = 10.dp, bottom = 14.dp)
         ) {
-            // Upper Half: Album Art
+            // Upper Half: Full Screen Upper Area Dedicated to Big Album Art with 3D Tilt
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -694,34 +533,31 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                 }
             }
 
-            // Lower Half: Song Name -> Visualizer -> Seekbar -> Controls -> Utility Dock
+            // Lower Half: Song Name -> Centered Slim Slider -> Controls -> Dock (Arrangement.SpaceEvenly)
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .weight(1.05f)
+                    .weight(1f)
                     .padding(horizontal = 4.dp),
-                verticalArrangement = Arrangement.SpaceBetween,
+                verticalArrangement = Arrangement.SpaceEvenly,
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 // 1. Song Title & Subtitle
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier.fillMaxWidth().padding(top = 2.dp)
-                ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
                     Text(
                         text = song.title,
                         color = animTextPrimary,
-                        fontSize = 21.sp,
+                        fontSize = 22.sp,
                         fontWeight = FontWeight.ExtraBold,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         textAlign = TextAlign.Center
                     )
-                    Spacer(modifier = Modifier.height(2.dp))
+                    Spacer(modifier = Modifier.height(3.dp))
                     Text(
                         text = "${formatFileSize(song.size)} • ${if (song.artist.isNotBlank()) song.artist else "Unknown Artist"}",
                         color = animTextSecondary,
-                        fontSize = 12.sp,
+                        fontSize = 13.sp,
                         fontWeight = FontWeight.Medium,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -729,23 +565,8 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                     )
                 }
 
-                // 2. Custom Live Audio Visualizer
-                if (manager.visualizerMode != "Off") {
-                    LiveAudioVisualizerView(
-                        audioSessionId = manager.player.audioSessionId,
-                        isPlaying = manager.isPlaying,
-                        mode = manager.visualizerMode,
-                        accentColor = userAccent,
-                        isDark = isDark,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(48.dp)
-                            .padding(horizontal = 8.dp)
-                    )
-                }
-
-                // 3. Redesigned Seekbar: 3.5dp Slim Track + 13dp Accent Circle Thumb
-                Column(modifier = Modifier.fillMaxWidth().padding(top = 4.dp)) {
+                // 2. Slim 3.5dp Progress Bar with Exactly Centered 12dp Circular Thumb Ball
+                Column(modifier = Modifier.fillMaxWidth()) {
                     Slider(
                         value = dragProgressMs.coerceIn(0f, manager.duration.toFloat().coerceAtLeast(1f)),
                         onValueChange = {
@@ -760,28 +581,32 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                         thumb = {
                             Box(
                                 modifier = Modifier
-                                    .size(13.dp)
-                                    .shadow(2.dp, CircleShape)
+                                    .size(12.dp)
+                                    .shadow(4.dp, CircleShape)
                                     .clip(CircleShape)
                                     .background(userAccent)
+                                    .border(1.5.dp, Color.White, CircleShape)
                             )
                         },
                         track = { sliderState ->
                             val fraction = (sliderState.value - sliderState.valueRange.start) /
                                 (sliderState.valueRange.endInclusive - sliderState.valueRange.start)
+                            // 12dp bounding box perfectly aligns midpoint with the 12dp thumb
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .height(13.dp),
+                                    .height(12.dp),
                                 contentAlignment = Alignment.CenterStart
                             ) {
+                                // Background Track
                                 Box(
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .height(3.5.dp)
                                         .clip(RoundedCornerShape(2.dp))
-                                        .background(if (isDark) Color(0x40FFFFFF) else Color(0xFFD1D5DB))
+                                        .background(if (isDark) Color(0x33FFFFFF) else Color(0x22000000))
                                 )
+                                // Active Progress Track
                                 Box(
                                     modifier = Modifier
                                         .fillMaxWidth(fraction.coerceIn(0f, 1f))
@@ -803,7 +628,7 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                     }
                 }
 
-                // 4. Playback Controls Row
+                // 3. Playback Controls Row: Repeat (Left) -> Prev -> Play/Pause -> Next -> Shuffle (Right)
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -860,7 +685,7 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                     )
                 }
 
-                // 5. Bottom Utility Dock
+                // 4. Bottom Utility Dock
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -894,7 +719,7 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
             }
         }
 
-        // Three Dots Menu Sheet
+        // Full-Width Edge-to-Edge Three Dots More Menu (Zero Dimming on Outside Click)
         if (showMenuModal) {
             Box(
                 modifier = Modifier
@@ -913,7 +738,7 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                         .background(if (isDark) Color(0xFF1E293B) else Color.White)
                         .clickable(enabled = false) {}
                         .padding(22.dp)
-                ) {
+        ) {
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text(
                             text = "${song.title} - ${if (song.artist.isNotBlank()) song.artist else "Unknown"}",
@@ -969,7 +794,7 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
     }
 }
 
-// Pro Equalizer Sheet
+// Full-Width Pro Equalizer Sheet (Zero Dimming on Outside Click)
 @Composable
 fun EqualizerSheet(manager: MusicManager, onDismiss: () -> Unit) {
     val accent = manager.accentColor
@@ -1158,7 +983,7 @@ fun MiniPlayerDock(manager: MusicManager, onClick: () -> Unit) {
     }
 }
 
-// Full-Width Edge-to-Edge Sleep Timer Dialog
+// Full-Width Edge-to-Edge Sleep Timer Dialog (Zero Dimming on Outside Click)
 @Composable
 fun SleepTimerDialog(manager: MusicManager, onDismiss: () -> Unit) {
     val isDark = manager.isDarkMode
@@ -1409,7 +1234,7 @@ fun TagEditorDialog(manager: MusicManager, song: Song, onDismiss: () -> Unit) {
     }
 }
 
-// Full-Width Add to Playlist Dialog
+// Full-Width Add to Playlist Dialog (Zero Dimming on Outside Click)
 @Composable
 fun AddToPlaylistDialog(manager: MusicManager, song: Song, onDismiss: () -> Unit) {
     val isDark = manager.isDarkMode
@@ -1445,7 +1270,7 @@ fun AddToPlaylistDialog(manager: MusicManager, song: Song, onDismiss: () -> Unit
     }
 }
 
-// Full-Width Playback Speed Dialog
+// Full-Width Playback Speed Dialog (Zero Dimming on Outside Click)
 @Composable
 fun MagneticSpeedDialog(manager: MusicManager, onDismiss: () -> Unit) {
     val haptic = LocalHapticFeedback.current
@@ -1485,7 +1310,7 @@ fun MagneticSpeedDialog(manager: MusicManager, onDismiss: () -> Unit) {
     }
 }
 
-// Full-Screen Playing Queue Sheet with Directional Arrows & Drag Reorder
+// Full-Screen Playing Queue Sheet with Hold & Drag / Reorder Controls & Bottom Close
 @Composable
 fun QueueSheet(manager: MusicManager, onDismiss: () -> Unit) {
     val isDark = manager.isDarkMode
@@ -1545,6 +1370,7 @@ fun QueueSheet(manager: MusicManager, onDismiss: () -> Unit) {
                             Text(song.title, color = textColor, fontSize = 14.sp, fontWeight = if (isCur) FontWeight.Bold else FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             Text("${formatFileSize(song.size)} • ${song.artist}", color = Color(0xFF64748B), fontSize = 11.sp)
                         }
+                        // Reorder Arrow Buttons + Drag Icon
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             if (index > 0) {
                                 Text("↑", fontSize = 16.sp, color = Color(0xFF64748B), modifier = Modifier.clickable { manager.moveQueueItem(index, index - 1) }.padding(horizontal = 6.dp))
@@ -1571,7 +1397,7 @@ fun QueueSheet(manager: MusicManager, onDismiss: () -> Unit) {
     }
 }
 
-// Full-Width Edge-to-Edge Lyrics Dialog
+// Full-Width Edge-to-Edge Lyrics Dialog (Zero Dimming on Outside Click)
 @Composable
 fun LyricsDialog(song: Song, isDark: Boolean, onDismiss: () -> Unit) {
     val textColor = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A)
