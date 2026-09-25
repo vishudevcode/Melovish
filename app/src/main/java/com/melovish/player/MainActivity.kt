@@ -317,7 +317,7 @@ fun MelovishRootApp(manager: MusicManager) {
                     },
                     onGoToArtist = {
                         val matchingArtist = manager.parsedArtistsList.find { it.name.equals(s.artist, ignoreCase = true) }
-                            ?: ArtistItem(name = s.artist, songs = listOf(s))
+                            ?: ArtistItem(name = s.artist, songs = mutableListOf(s))
                         selectedArtist = matchingArtist
                         activeSongForMenu = null
                     },
