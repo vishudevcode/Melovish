@@ -103,13 +103,13 @@ class MusicManager(private val context: Context) {
     // Parsed Artists List
     val parsedArtistsList = mutableStateListOf<ArtistItem>()
 
-    // Default System Theme
+    // Theme Mode & Accent Color
     var themeMode by mutableStateOf(prefs.getString("theme_mode", "System") ?: "System")
     var isDarkMode by mutableStateOf(false)
     var accentColor by mutableStateOf(Color(prefs.getInt("accent_color", 0xFF00B4D8.toInt())))
     val userSavedColorPresets = mutableStateListOf<Color>()
 
-    // Persistent Sorting
+    // Persistent Main Sorting
     var currentSortOrder by mutableStateOf(
         try {
             SongSortOrder.valueOf(prefs.getString("saved_song_sort", SongSortOrder.A_TO_Z.name) ?: SongSortOrder.A_TO_Z.name)
@@ -1006,7 +1006,6 @@ class MusicManager(private val context: Context) {
         return Color(hex)
     }
 
-    // Public so that all components (including ArtistsScreen) can immediately persist playlist modifications
     fun savePlaylists() {
         val arr = JSONArray()
         for (pl in customPlaylists) {
