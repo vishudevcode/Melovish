@@ -10,12 +10,14 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -409,7 +411,7 @@ fun SettingsScreen(
         }
     }
 
-    // Excluded Folders Dialog (With Dimmed Hidden Folders on Top & Tap-to-Unhide)
+    // Excluded Folders Dialog
     if (showHiddenFoldersDialog) {
         HiddenFoldersManagerDialog(
             manager = manager,
@@ -418,7 +420,7 @@ fun SettingsScreen(
         )
     }
 
-    // Hidden Audio Tracks Dialog (Symmetric to Folder Manager: Hidden Songs on Top & Tap-to-Unhide)
+    // Hidden Audio Tracks Dialog
     if (showHiddenAudioDialog) {
         HiddenAudioManagerDialog(
             manager = manager,
@@ -428,7 +430,7 @@ fun SettingsScreen(
     }
 }
 
-// Full Excluded Folders Manager (Hidden on top, Tap to unhide)
+// Full Excluded Folders Manager
 @Composable
 fun HiddenFoldersManagerDialog(
     manager: MusicManager,
@@ -446,8 +448,7 @@ fun HiddenFoldersManagerDialog(
     val filteredFolders = remember(allDiscoveredFolders, folderSearch, manager.hiddenFolders.size) {
         val list = if (folderSearch.isBlank()) allDiscoveredFolders
         else allDiscoveredFolders.filter { it.contains(folderSearch, ignoreCase = true) }
-        
-        // Puts hidden folders at the top
+
         val hidden = list.filter { manager.hiddenFolders.contains(it) }.sorted()
         val visible = list.filter { !manager.hiddenFolders.contains(it) }.sorted()
         hidden + visible
@@ -557,7 +558,7 @@ fun HiddenFoldersManagerDialog(
     }
 }
 
-// Full Hidden Audio Manager (Hidden tracks displayed on top, Tap to unhide)
+// Full Hidden Audio Manager
 @Composable
 fun HiddenAudioManagerDialog(
     manager: MusicManager,
@@ -569,8 +570,7 @@ fun HiddenAudioManagerDialog(
     var audioSearch by remember { mutableStateOf("") }
 
     val allSongsList = remember(manager.allSongs.size, manager.hiddenAudioIds.size) {
-        val visible = manager.allSongs.toList()
-        visible
+        manager.allSongs.toList()
     }
 
     val filteredSongs = remember(allSongsList, audioSearch, manager.hiddenAudioIds.size) {
@@ -579,7 +579,6 @@ fun HiddenAudioManagerDialog(
             it.title.contains(audioSearch, ignoreCase = true) || it.artist.contains(audioSearch, ignoreCase = true)
         }
 
-        // Puts hidden audio tracks on top with dimmed color
         val hidden = list.filter { manager.hiddenAudioIds.contains(it.id) }
         val normal = list.filter { !manager.hiddenAudioIds.contains(it.id) }
         hidden + normal

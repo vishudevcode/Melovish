@@ -95,6 +95,7 @@ import kotlinx.coroutines.delay
 import java.util.Locale
 import kotlin.math.atan2
 import kotlin.math.cos
+import kotlin.math.roundToInt
 import kotlin.math.sin
 import kotlin.math.sqrt
 
@@ -164,7 +165,7 @@ fun GlassmorphicFolderIcon(folderColor: Color, modifier: Modifier = Modifier) {
             quadraticBezierTo(w * 0.48f, h * 0.14f, w * 0.52f, h * 0.22f)
             lineTo(w * 0.56f, h * 0.28f)
             lineTo(w * 0.82f, h * 0.28f)
-            quadraticBezierTo(w * 0.88f, h * 0.28f, w * 0.88f, h * 0.35f)
+            quadraticBezierTo(w * 0.88f, h * 0.88f, w * 0.88f, h * 0.35f)
             lineTo(w * 0.88f, h * 0.82f)
             quadraticBezierTo(w * 0.88f, h * 0.88f, w * 0.80f, h * 0.88f)
             lineTo(w * 0.18f, h * 0.88f)
@@ -439,7 +440,6 @@ fun LiveAudioVisualizerView(
         }
     }
 
-    // Smooth animation loop: decays or simulates reactive motion if no mic permission granted
     LaunchedEffect(isPlaying, mode) {
         var phase = 0f
         while (true) {
@@ -469,7 +469,6 @@ fun LiveAudioVisualizerView(
         val h = size.height
 
         if (mode == "Waveform") {
-            // Symmetrical Waveform: Center-anchored vertical bars
             val centerY = h / 2f
             val spacing = w / (numPoints.toFloat())
             val barWidth = (spacing * 0.52f).coerceIn(2.5.dp.toPx(), 4.5.dp.toPx())
@@ -488,7 +487,6 @@ fun LiveAudioVisualizerView(
                 )
             }
         } else if (mode == "Dotted Equalizer") {
-            // Dotted LED Matrix Spectrum: Bottom-anchored columns of dots
             val colCount = numPoints
             val colWidth = w / colCount
             val dotRadius = (colWidth * 0.35f).coerceIn(2.2.dp.toPx(), 4.dp.toPx())
@@ -693,7 +691,7 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                 verticalArrangement = Arrangement.SpaceBetween,
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                // 1. Song Title & Subtitle (Shifted slightly upward)
+                // 1. Song Title & Subtitle
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     modifier = Modifier.fillMaxWidth().padding(top = 2.dp)
@@ -719,7 +717,7 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                     )
                 }
 
-                // 2. Custom Live Audio Visualizer (Directly between Song Details & Seekbar)
+                // 2. Custom Live Audio Visualizer
                 if (manager.visualizerMode != "Off") {
                     LiveAudioVisualizerView(
                         audioSessionId = manager.player.audioSessionId,
@@ -765,7 +763,6 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                                     .height(13.dp),
                                 contentAlignment = Alignment.CenterStart
                             ) {
-                                // Remaining / Unplayed Track (Neutral Light Gray / Darker Slate)
                                 Box(
                                     modifier = Modifier
                                         .fillMaxWidth()
@@ -773,7 +770,6 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                                         .clip(RoundedCornerShape(2.dp))
                                         .background(if (isDark) Color(0x40FFFFFF) else Color(0xFFD1D5DB))
                                 )
-                                // Played Track (Solid Filled with Dynamic Accent Color)
                                 Box(
                                     modifier = Modifier
                                         .fillMaxWidth(fraction.coerceIn(0f, 1f))
@@ -1477,7 +1473,7 @@ fun MagneticSpeedDialog(manager: MusicManager, onDismiss: () -> Unit) {
     }
 }
 
-// Full-Screen Playing Queue Sheet with Hold & Drag / Reorder Controls & Bottom Close
+// Full-Screen Playing Queue Sheet with Directional Arrows & Drag Reorder
 @Composable
 fun QueueSheet(manager: MusicManager, onDismiss: () -> Unit) {
     val isDark = manager.isDarkMode
