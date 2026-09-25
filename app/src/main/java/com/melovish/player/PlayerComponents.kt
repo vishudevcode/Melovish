@@ -95,6 +95,7 @@ import kotlinx.coroutines.delay
 import java.util.Locale
 import kotlin.math.atan2
 import kotlin.math.cos
+import kotlin.math.hypot
 import kotlin.math.roundToInt
 import kotlin.math.sin
 import kotlin.math.sqrt
@@ -165,7 +166,7 @@ fun GlassmorphicFolderIcon(folderColor: Color, modifier: Modifier = Modifier) {
             quadraticBezierTo(w * 0.48f, h * 0.14f, w * 0.52f, h * 0.22f)
             lineTo(w * 0.56f, h * 0.28f)
             lineTo(w * 0.82f, h * 0.28f)
-            quadraticBezierTo(w * 0.88f, h * 0.88f, w * 0.88f, h * 0.35f)
+            quadraticBezierTo(w * 0.88f, h * 0.28f, w * 0.88f, h * 0.35f)
             lineTo(w * 0.88f, h * 0.82f)
             quadraticBezierTo(w * 0.88f, h * 0.88f, w * 0.80f, h * 0.88f)
             lineTo(w * 0.18f, h * 0.88f)
@@ -370,7 +371,7 @@ fun extractMaterialYouPalette(bitmap: Bitmap?, isDarkMode: Boolean, fallbackAcce
     }
 }
 
-// Live Synchronized Audio Visualizer Component
+// Live Synchronized Left-to-Right Scrolling Audio Visualizer
 @Composable
 fun LiveAudioVisualizerView(
     audioSessionId: Int,
@@ -383,8 +384,8 @@ fun LiveAudioVisualizerView(
     if (mode == "Off") return
 
     val context = LocalContext.current
-    val numPoints = if (mode == "Waveform") 42 else 32
-    val rawMagnitudes = remember { mutableStateListOf<Float>().apply { repeat(numPoints) { add(0.08f) } } }
+    val numPoints = if (mode == "Waveform") 84 else 56
+    val audioRingBuffer = remember { mutableStateListOf<Float>().apply { repeat(numPoints) { add(0.04f) } } }
 
     var hasRecordAudioPermission by remember {
         mutableStateOf(
@@ -398,32 +399,41 @@ fun LiveAudioVisualizerView(
         if (hasRecordAudioPermission && audioSessionId != 0) {
             try {
                 visualizer = Visualizer(audioSessionId).apply {
-                    captureSize = Visualizer.getCaptureSizeRange()[0].coerceAtLeast(64)
+                    captureSize = Visualizer.getCaptureSizeRange()[1].coerceAtMost(512)
                     setDataCaptureListener(object : Visualizer.OnDataCaptureListener {
                         override fun onWaveFormDataCapture(vis: Visualizer?, waveform: ByteArray?, samplingRate: Int) {
-                            if (waveform != null && isPlaying) {
-                                val step = (waveform.size / numPoints).coerceAtLeast(1)
-                                for (i in 0 until numPoints) {
-                                    val idx = (i * step).coerceIn(0, waveform.size - 1)
-                                    val raw = (waveform[idx].toInt() and 0xFF) - 128
-                                    val mag = (kotlin.math.abs(raw) / 128f).coerceIn(0.06f, 1f)
-                                    rawMagnitudes[i] = rawMagnitudes[i] * 0.45f + mag * 0.55f
+                            if (waveform != null && isPlaying && mode == "Waveform") {
+                                // Extract average amplitude of the newest sound window
+                                var sum = 0.0
+                                for (b in waveform) {
+                                    val centered = (b.toInt() and 0xFF) - 128
+                                    sum += (centered * centered)
                                 }
+                                val rms = (sqrt(sum / waveform.size) / 128.0).toFloat().coerceIn(0.06f, 1f)
+                                // Shift buffer from left to right: drop oldest from left, insert latest on right
+                                if (audioRingBuffer.size >= numPoints) {
+                                    audioRingBuffer.removeAt(0)
+                                }
+                                audioRingBuffer.add(rms)
                             }
                         }
 
                         override fun onFftDataCapture(vis: Visualizer?, fft: ByteArray?, samplingRate: Int) {
-                            if (fft != null && isPlaying) {
-                                val step = (fft.size / (numPoints * 2)).coerceAtLeast(1)
+                            if (fft != null && isPlaying && mode == "Dotted Equalizer") {
+                                // Map frequency bands across columns
+                                val n = fft.size / 2
+                                val step = (n / numPoints).coerceAtLeast(1)
                                 for (i in 0 until numPoints) {
-                                    val r = fft[i * 2].toInt()
-                                    val im = fft[i * 2 + 1].toInt()
-                                    val mag = (sqrt((r * r + im * im).toDouble()).toFloat() / 128f).coerceIn(0.06f, 1f)
-                                    rawMagnitudes[i] = rawMagnitudes[i] * 0.5f + mag * 0.5f
+                                    val idx = (i * step).coerceIn(0, n - 1)
+                                    val r = fft[idx * 2].toFloat()
+                                    val im = fft[idx * 2 + 1].toFloat()
+                                    val mag = (hypot(r.toDouble(), im.toDouble()).toFloat() / 110f).coerceIn(0.05f, 1f)
+                                    val smoothed = audioRingBuffer[i] * 0.35f + mag * 0.65f
+                                    audioRingBuffer[i] = smoothed
                                 }
                             }
                         }
-                    }, Visualizer.getMaxCaptureRate() / 2, true, true)
+                    }, Visualizer.getMaxCaptureRate(), true, true)
                     enabled = true
                 }
             } catch (e: Exception) {
@@ -440,25 +450,25 @@ fun LiveAudioVisualizerView(
         }
     }
 
-    LaunchedEffect(isPlaying, mode) {
+    // Decay & Simulation when stopped or microphone permission is absent
+    LaunchedEffect(isPlaying, mode, hasRecordAudioPermission) {
         var phase = 0f
         while (true) {
             if (isPlaying) {
                 if (!hasRecordAudioPermission) {
-                    phase += 0.18f
-                    for (i in 0 until numPoints) {
-                        val base = (sin(phase + i * 0.38f) * 0.5f + 0.5f)
-                        val extra = (cos(phase * 1.5f + i * 0.6f) * 0.25f)
-                        val value = (base + extra).coerceIn(0.12f, 0.95f)
-                        rawMagnitudes[i] = rawMagnitudes[i] * 0.35f + value * 0.65f
+                    phase += 0.22f
+                    val newestSample = (sin(phase) * 0.5f + 0.5f) * 0.85f + 0.08f
+                    if (audioRingBuffer.size >= numPoints) {
+                        audioRingBuffer.removeAt(0)
                     }
+                    audioRingBuffer.add(newestSample.coerceIn(0.08f, 1f))
                 }
             } else {
-                for (i in 0 until numPoints) {
-                    rawMagnitudes[i] = rawMagnitudes[i] * 0.85f
+                for (i in 0 until audioRingBuffer.size) {
+                    audioRingBuffer[i] = (audioRingBuffer[i] * 0.85f).coerceAtLeast(0.03f)
                 }
             }
-            delay(35)
+            delay(25)
         }
     }
 
@@ -469,33 +479,35 @@ fun LiveAudioVisualizerView(
         val h = size.height
 
         if (mode == "Waveform") {
+            // High-resolution symmetrical center line waveform shifting left-to-right
             val centerY = h / 2f
             val spacing = w / (numPoints.toFloat())
-            val barWidth = (spacing * 0.52f).coerceIn(2.5.dp.toPx(), 4.5.dp.toPx())
+            val strokeWidthPx = (spacing * 0.58f).coerceIn(1.5.dp.toPx(), 3.5.dp.toPx())
 
-            for (i in 0 until numPoints) {
+            for (i in 0 until audioRingBuffer.size.coerceAtMost(numPoints)) {
                 val x = i * spacing + spacing / 2f
-                val mag = rawMagnitudes[i].coerceIn(0.06f, 1f)
-                val halfBarHeight = (mag * (h / 2f) * 0.92f).coerceAtLeast(2.dp.toPx())
+                val mag = audioRingBuffer[i].coerceIn(0.04f, 1f)
+                val halfBarHeight = (mag * (h / 2f) * 0.94f).coerceAtLeast(1.5.dp.toPx())
 
                 drawLine(
                     color = visualizerColor,
                     start = Offset(x, centerY - halfBarHeight),
                     end = Offset(x, centerY + halfBarHeight),
-                    strokeWidth = barWidth,
+                    strokeWidth = strokeWidthPx,
                     cap = StrokeCap.Round
                 )
             }
         } else if (mode == "Dotted Equalizer") {
+            // Highly detailed bottom-anchored LED matrix spectrum with smaller dots
             val colCount = numPoints
             val colWidth = w / colCount
-            val dotRadius = (colWidth * 0.35f).coerceIn(2.2.dp.toPx(), 4.dp.toPx())
-            val maxDotsInCol = 9
+            val dotRadius = (colWidth * 0.38f).coerceIn(1.2.dp.toPx(), 2.8.dp.toPx())
+            val maxDotsInCol = 14
             val verticalSpacing = h / maxDotsInCol
 
-            for (i in 0 until colCount) {
+            for (i in 0 until audioRingBuffer.size.coerceAtMost(colCount)) {
                 val x = i * colWidth + colWidth / 2f
-                val mag = rawMagnitudes[i].coerceIn(0.05f, 1f)
+                val mag = audioRingBuffer[i].coerceIn(0.03f, 1f)
                 val activeDots = (mag * maxDotsInCol).roundToInt().coerceIn(1, maxDotsInCol)
 
                 for (dot in 0 until maxDotsInCol) {
@@ -682,7 +694,7 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                 }
             }
 
-            // Lower Half: Song Name -> Visualizer -> Redesigned Seekbar -> Controls -> Utility Dock
+            // Lower Half: Song Name -> Visualizer -> Seekbar -> Controls -> Utility Dock
             Column(
                 modifier = Modifier
                     .fillMaxWidth()

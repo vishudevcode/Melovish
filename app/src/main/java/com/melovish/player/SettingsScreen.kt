@@ -81,7 +81,6 @@ fun SettingsScreen(
             contentPadding = PaddingValues(bottom = 80.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            // Sound & Audio Effects
             item {
                 Text("Sound & Audio Effects", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = accent)
                 Spacer(modifier = Modifier.height(8.dp))
@@ -136,49 +135,39 @@ fun SettingsScreen(
                             }
                         )
                     }
-                }
-            }
 
-            // Audio Visualizer Settings
-            item {
-                Text("Audio Visualizer", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = accent)
-                Spacer(modifier = Modifier.height(8.dp))
-                Column(
-                    modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(cardBg).border(1.dp, if (isDark) Color(0x22FFFFFF) else Color(0xFFE2E8F0), RoundedCornerShape(20.dp)).padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Column {
-                        Text("Live Player Visualizer", color = textColor, fontSize = 15.sp, fontWeight = FontWeight.Bold)
-                        Text("Render reactive live audio waveforms on the player screen", color = Color(0xFF64748B), fontSize = 12.sp)
-                    }
-
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        listOf("Off", "Waveform", "Dotted Equalizer").forEach { mode ->
-                            val isSel = manager.visualizerMode == mode
-                            Box(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .height(42.dp)
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .background(if (isSel) accent else if (isDark) Color(0x1FFFFFFF) else Color(0xFFF1F5F9))
-                                    .clickable { manager.setVisualizerPreference(mode) },
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    text = mode,
-                                    color = if (isSel) Color.White else textColor,
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
+                    // Live Audio Visualizer Settings Option
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        Text("Audio Visualizer", color = textColor, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                        Text("Real-time live visualizer on the player screen", color = Color(0xFF64748B), fontSize = 12.sp)
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            listOf("Off", "Waveform", "Dotted Equalizer").forEach { mode ->
+                                val isSel = manager.visualizerMode == mode
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(40.dp)
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(if (isSel) accent else if (isDark) Color(0x1FFFFFFF) else Color(0xFFF1F5F9))
+                                        .clickable { manager.setVisualizerPreference(mode) },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = mode,
+                                        color = if (isSel) Color.White else textColor,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
                             }
                         }
                     }
                 }
             }
 
-            // Theme & Visual Style
             item {
                 Text("Theme & Visual Style", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = accent)
                 Spacer(modifier = Modifier.height(8.dp))
@@ -221,7 +210,6 @@ fun SettingsScreen(
                 }
             }
 
-            // Library Management & Storage (Content Manager)
             item {
                 Text("Library Management & Storage", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = accent)
                 Spacer(modifier = Modifier.height(8.dp))
@@ -266,7 +254,7 @@ fun SettingsScreen(
         }
     }
 
-    // Excluded Folders Dialog (Hidden folders on top with dimmed color, Tap to unhide)
+    // Excluded Folders Dialog (Hidden on top, Dimmed, Tap to unhide)
     if (showHiddenFoldersDialog) {
         HiddenFoldersManagerDialog(
             manager = manager,
@@ -275,7 +263,7 @@ fun SettingsScreen(
         )
     }
 
-    // Hidden Audio Tracks Dialog (Hidden audio on top with dimmed color, Tap to unhide)
+    // Hidden Audio Dialog (Hidden on top, Dimmed, Tap to unhide)
     if (showHiddenAudioDialog) {
         HiddenAudioManagerDialog(
             manager = manager,
@@ -285,7 +273,6 @@ fun SettingsScreen(
     }
 }
 
-// Full Excluded Folders Manager (Hidden on top, Tap to unhide)
 @Composable
 fun HiddenFoldersManagerDialog(
     manager: MusicManager,
@@ -413,7 +400,6 @@ fun HiddenFoldersManagerDialog(
     }
 }
 
-// Full Hidden Audio Manager (Hidden tracks on top with dimmed color, Tap to unhide)
 @Composable
 fun HiddenAudioManagerDialog(
     manager: MusicManager,
@@ -434,7 +420,6 @@ fun HiddenAudioManagerDialog(
             it.title.contains(audioSearch, ignoreCase = true) || it.artist.contains(audioSearch, ignoreCase = true)
         }
 
-        // Puts hidden audio tracks on top with dimmed color
         val hidden = list.filter { manager.hiddenAudioIds.contains(it.id) }
         val normal = list.filter { !manager.hiddenAudioIds.contains(it.id) }
         hidden + normal
@@ -463,7 +448,7 @@ fun HiddenAudioManagerDialog(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Column {
-                        Text("Hidden Tracks Manager", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = textColor)
+                        Text("Hidden Tracks", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = textColor)
                         Text("Tap any track to hide or unhide it", fontSize = 12.sp, color = Color(0xFF64748B))
                     }
                     Button(onClick = onDismiss, shape = RoundedCornerShape(10.dp)) { Text("Done") }
@@ -522,7 +507,7 @@ fun HiddenAudioManagerDialog(
                                         overflow = TextOverflow.Ellipsis
                                     )
                                     Text(
-                                        text = if (isHidden) "Hidden from player • Tap to Unhide" else "${formatFileSize(song.size)} • ${song.artist} • Tap to Hide",
+                                        text = if (isHidden) "Hidden from library (Tap to unhide)" else "${formatFileSize(song.size)} • ${song.artist} (Tap to hide)",
                                         color = if (isHidden) Color(0xFFEF4444) else Color(0xFF64748B),
                                         fontSize = 11.sp,
                                         maxLines = 1,
