@@ -87,12 +87,11 @@ object ArtistDataManager {
 
     val hiddenArtists = mutableStateListOf<String>()
     val pinnedArtists = mutableStateListOf<String>()
-    val artistAliases = mutableStateMapOf<String, String>() // sourceArtist -> targetArtist
-    val manuallyCreatedArtists = mutableStateListOf<String>() // Set of manual artist names
-    val removedSongMap = mutableStateMapOf<String, MutableList<Long>>() // artistName -> removed song IDs
-    val movedSongMap = mutableStateMapOf<String, MutableList<Long>>() // artistName -> added song IDs
+    val artistAliases = mutableStateMapOf<String, String>()
+    val manuallyCreatedArtists = mutableStateListOf<String>()
+    val removedSongMap = mutableStateMapOf<String, MutableList<Long>>()
+    val movedSongMap = mutableStateMapOf<String, MutableList<Long>>()
 
-    // Trigger state to notify screens of live updates
     var refreshTrigger by mutableIntStateOf(0)
 
     fun init(context: Context) {
@@ -286,7 +285,6 @@ object ArtistParsingEngine {
     fun parseAndGroupArtists(allSongs: List<Song>): List<ArtistItem> {
         val intermediateMap = mutableMapOf<String, MutableList<Song>>()
 
-        // 1. Split raw metadata and sanitize
         for (song in allSongs) {
             val rawArtist = song.artist.trim()
             if (rawArtist.isEmpty() || rawArtist.contains("unknown", ignoreCase = true)) {
@@ -308,7 +306,6 @@ object ArtistParsingEngine {
             }
         }
 
-        // 2. Automated Prefix Merging (if the first two words match, merge into the one with more tracks)
         val groupedPrefixMap = mutableMapOf<String, MutableList<Pair<String, List<Song>>>>()
 
         intermediateMap.forEach { (name, songs) ->
@@ -329,7 +326,6 @@ object ArtistParsingEngine {
             }
         }
 
-        // 3. Apply User Manual Merges (Aliases)
         val userMergedMap = mutableMapOf<String, MutableList<Song>>()
         canonicalMap.forEach { (name, songs) ->
             var target = name
@@ -339,14 +335,12 @@ object ArtistParsingEngine {
             userMergedMap.getOrPut(target) { mutableListOf() }.addAll(songs)
         }
 
-        // 4. Inject Manually Created Artists
         ArtistDataManager.manuallyCreatedArtists.forEach { customName ->
             if (!userMergedMap.containsKey(customName)) {
                 userMergedMap[customName] = mutableListOf()
             }
         }
 
-        // 5. Apply Song Moves & Removals & Check Pinned
         val finalResult = mutableListOf<ArtistItem>()
 
         userMergedMap.forEach { (name, songs) ->
@@ -398,12 +392,10 @@ fun ArtistsScreen(
     var selectedArtistForActions by remember { mutableStateOf<ArtistItem?>(null) }
     var artistToMergeSource by remember { mutableStateOf<ArtistItem?>(null) }
 
-    // Re-parse automatically whenever songs, manager lists, or custom actions update
     val artistsList = remember(manager.allSongs.size, ArtistDataManager.refreshTrigger) {
         ArtistParsingEngine.parseAndGroupArtists(manager.allSongs)
     }
 
-    // Filter and Sort, keeping pinned artists at the very top
     val sortedArtists = remember(artistsList, query, sortOrder) {
         val filtered = if (query.isBlank()) artistsList
         else artistsList.filter { it.name.contains(query, ignoreCase = true) }
@@ -423,7 +415,6 @@ fun ArtistsScreen(
             ArtistSortOrder.FEWEST_TRACKS -> compareBy<ArtistItem> { it.songs.size }
         }
 
-        // Pinned artists stay at the top, then sorted within their respective groups
         val pinned = filtered.filter { it.isPinned }.sortedWith(comparator)
         val unpinned = filtered.filter { !it.isPinned }.sortedWith(comparator)
         pinned + unpinned
@@ -432,7 +423,6 @@ fun ArtistsScreen(
     val alphabet = remember { listOf('#') + ('A'..'Z').toList() }
 
     Column(modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
-        // Top Header
         Row(
             modifier = Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 4.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -444,7 +434,6 @@ fun ArtistsScreen(
             }
 
             Row(verticalAlignment = Alignment.CenterVertically) {
-                // View Switcher (Cards vs Lines)
                 Box(
                     modifier = Modifier
                         .size(38.dp)
@@ -462,7 +451,6 @@ fun ArtistsScreen(
 
                 Spacer(modifier = Modifier.width(8.dp))
 
-                // Sort Dropdown
                 Box {
                     Box(
                         modifier = Modifier
@@ -501,7 +489,6 @@ fun ArtistsScreen(
 
                 Spacer(modifier = Modifier.width(8.dp))
 
-                // New Artist Button
                 Button(
                     onClick = { showCreateArtistDialog = true },
                     colors = ButtonDefaults.buttonColors(containerColor = accentColor),
@@ -514,7 +501,6 @@ fun ArtistsScreen(
 
         Spacer(modifier = Modifier.height(10.dp))
 
-        // Search Bar
         OutlinedTextField(
             value = query,
             onValueChange = { query = it },
@@ -533,7 +519,6 @@ fun ArtistsScreen(
         } else {
             Box(modifier = Modifier.fillMaxSize()) {
                 if (isCardView) {
-                    // Card / Grid View
                     LazyVerticalGrid(
                         columns = GridCells.Fixed(2),
                         contentPadding = PaddingValues(bottom = 80.dp),
@@ -595,7 +580,6 @@ fun ArtistsScreen(
                         }
                     }
                 } else {
-                    // Lines / List View
                     LazyColumn(
                         state = listState,
                         modifier = Modifier.fillMaxSize().padding(end = 22.dp),
@@ -647,7 +631,6 @@ fun ArtistsScreen(
                     }
                 }
 
-                // Fast-Scroll Alphabet Scroller
                 Column(
                     modifier = Modifier
                         .align(Alignment.CenterEnd)
@@ -683,7 +666,6 @@ fun ArtistsScreen(
         }
     }
 
-    // Artist Actions Sheet (Pin, Add to Favourite Playlists, Merge, Hide)
     if (selectedArtistForActions != null) {
         val target = selectedArtistForActions!!
         Box(
@@ -707,7 +689,6 @@ fun ArtistsScreen(
                     Text(target.name, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = textColor)
                     Spacer(modifier = Modifier.height(4.dp))
 
-                    // 1. Pin / Unpin
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -724,7 +705,6 @@ fun ArtistsScreen(
                         Text(if (target.isPinned) "Unpin from top" else "Pin to top", fontSize = 15.sp, color = textColor, fontWeight = FontWeight.SemiBold)
                     }
 
-                    // 2. Add to Favourite Playlists
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -741,7 +721,6 @@ fun ArtistsScreen(
                         Text("Add to Favourite Playlists (Home)", fontSize = 15.sp, color = textColor, fontWeight = FontWeight.SemiBold)
                     }
 
-                    // 3. Merge
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -758,7 +737,6 @@ fun ArtistsScreen(
                         Text("Merge into another artist...", fontSize = 15.sp, color = textColor, fontWeight = FontWeight.SemiBold)
                     }
 
-                    // 4. Hide
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -789,7 +767,6 @@ fun ArtistsScreen(
         }
     }
 
-    // Merge Target Picker Dialog
     if (artistToMergeSource != null) {
         val src = artistToMergeSource!!
         var mergeSearchQuery by remember { mutableStateOf("") }
@@ -860,7 +837,6 @@ fun ArtistsScreen(
         }
     }
 
-    // Create New Artist Dialog
     if (showCreateArtistDialog) {
         CreateArtistDialog(
             manager = manager,
@@ -888,7 +864,6 @@ fun ArtistDetailScreen(
     var showMoveTargetDialog by remember { mutableStateOf(false) }
     var showAddSongsDialog by remember { mutableStateOf(false) }
 
-    // Re-resolve the live songs for this artist when refreshTrigger updates
     val sortedSongs = remember(sortOrder, ArtistDataManager.refreshTrigger) {
         val allCurrent = ArtistParsingEngine.parseAndGroupArtists(manager.allSongs)
             .find { it.name.equals(artistItem.name, ignoreCase = true) }?.songs ?: artistItem.songs
@@ -902,7 +877,6 @@ fun ArtistDetailScreen(
     }
 
     Column(modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
-        // Symmetrical Top Bar
         Row(
             modifier = Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 2.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -918,7 +892,6 @@ fun ArtistDetailScreen(
             }
 
             Row(verticalAlignment = Alignment.CenterVertically) {
-                // Add to Favourite Playlists
                 Box(
                     modifier = Modifier
                         .size(36.dp)
@@ -932,7 +905,6 @@ fun ArtistDetailScreen(
 
                 Spacer(modifier = Modifier.width(6.dp))
 
-                // Sort Tracks
                 Box {
                     Box(
                         modifier = Modifier
@@ -955,7 +927,6 @@ fun ArtistDetailScreen(
 
                 Spacer(modifier = Modifier.width(6.dp))
 
-                // Add Songs to Artist
                 Button(
                     onClick = { showAddSongsDialog = true },
                     colors = ButtonDefaults.buttonColors(containerColor = if (isDark) Color(0x22FFFFFF) else Color(0xFFF1F5F9)),
@@ -966,7 +937,6 @@ fun ArtistDetailScreen(
 
                 Spacer(modifier = Modifier.width(6.dp))
 
-                // Shuffle
                 Button(
                     onClick = {
                         val shuffled = sortedSongs.shuffled()
@@ -1004,7 +974,6 @@ fun ArtistDetailScreen(
         }
     }
 
-    // Song Move / Remove Modal
     if (selectedSongForAction != null) {
         val s = selectedSongForAction!!
         Box(
@@ -1091,7 +1060,6 @@ fun ArtistDetailScreen(
         }
     }
 
-    // Move Song to Another Artist Picker Dialog
     if (showMoveTargetDialog && selectedSongForAction != null) {
         val songToMove = selectedSongForAction!!
         var destSearch by remember { mutableStateOf("") }
@@ -1168,7 +1136,6 @@ fun ArtistDetailScreen(
         }
     }
 
-    // Add Songs to this Artist Dialog
     if (showAddSongsDialog) {
         var addSongSearch by remember { mutableStateOf("") }
         val candidates = manager.allSongs.filter {
@@ -1346,13 +1313,14 @@ fun CreateArtistDialog(
     }
 }
 
-// Universal Helper: Adds any Artist directly to Home Screen "Favourite Playlists"
+// Universal Helper: Adds any Artist directly to Home Screen "Favourite Playlists" & permanently calls savePlaylists()
 fun addArtistToFavouritePlaylists(context: Context, manager: MusicManager, artist: ArtistItem) {
     val existing = manager.customPlaylists.find { it.name.equals(artist.name, ignoreCase = true) }
     if (existing != null) {
         artist.songs.forEach { s ->
             if (!existing.songIds.contains(s.id)) existing.songIds.add(s.id)
         }
+        manager.savePlaylists()
         Toast.makeText(context, "'${artist.name}' playlist updated!", Toast.LENGTH_SHORT).show()
     } else {
         val newPl = Playlist(
@@ -1363,6 +1331,7 @@ fun addArtistToFavouritePlaylists(context: Context, manager: MusicManager, artis
             iconColorHex = manager.accentColor.toArgb().toLong()
         )
         manager.customPlaylists.add(newPl)
+        manager.savePlaylists()
         Toast.makeText(context, "Added '${artist.name}' to Favourite Playlists!", Toast.LENGTH_SHORT).show()
     }
 }

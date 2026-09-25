@@ -62,7 +62,7 @@ class MusicManager(private val context: Context) {
         var activeInstance: MusicManager? = null
     }
 
-    private val prefs: SharedPreferences = context.getSharedPreferences("melovish_prefs_v11", Context.MODE_PRIVATE)
+    val prefs: SharedPreferences = context.getSharedPreferences("melovish_prefs_v11", Context.MODE_PRIVATE)
     private val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
 
     val player: ExoPlayer = ExoPlayer.Builder(context).build().apply {
@@ -100,14 +100,16 @@ class MusicManager(private val context: Context) {
     val hiddenAudioIds = mutableStateListOf<Long>()
     val folderColors = mutableStateMapOf<String, Long>()
 
-    // Parsed Artists List populated via ArtistParsingEngine
+    // Parsed Artists List
     val parsedArtistsList = mutableStateListOf<ArtistItem>()
 
+    // Default System Theme
     var themeMode by mutableStateOf(prefs.getString("theme_mode", "System") ?: "System")
     var isDarkMode by mutableStateOf(false)
     var accentColor by mutableStateOf(Color(prefs.getInt("accent_color", 0xFF00B4D8.toInt())))
     val userSavedColorPresets = mutableStateListOf<Color>()
 
+    // Persistent Sorting
     var currentSortOrder by mutableStateOf(
         try {
             SongSortOrder.valueOf(prefs.getString("saved_song_sort", SongSortOrder.A_TO_Z.name) ?: SongSortOrder.A_TO_Z.name)
@@ -122,6 +124,25 @@ class MusicManager(private val context: Context) {
             FolderSortOrder.A_TO_Z
         }
     )
+
+    // Inner Folder & Playlist Sort / View Preferences
+    var folderInnerSortOrder by mutableStateOf(
+        try {
+            SongSortOrder.valueOf(prefs.getString("folder_inner_sort", SongSortOrder.A_TO_Z.name) ?: SongSortOrder.A_TO_Z.name)
+        } catch (_: Exception) {
+            SongSortOrder.A_TO_Z
+        }
+    )
+    var folderInnerIsCardView by mutableStateOf(prefs.getBoolean("folder_inner_card_view", false))
+
+    var playlistInnerSortOrder by mutableStateOf(
+        try {
+            SongSortOrder.valueOf(prefs.getString("playlist_inner_sort", SongSortOrder.A_TO_Z.name) ?: SongSortOrder.A_TO_Z.name)
+        } catch (_: Exception) {
+            SongSortOrder.A_TO_Z
+        }
+    )
+    var playlistInnerIsCardView by mutableStateOf(prefs.getBoolean("playlist_inner_card_view", false))
 
     private val maxCacheSize = (Runtime.getRuntime().maxMemory() / 1024 / 8).toInt()
     private val memoryCache = object : LruCache<Long, Bitmap>(maxCacheSize) {
@@ -181,6 +202,34 @@ class MusicManager(private val context: Context) {
     fun setPersistentFolderSort(order: FolderSortOrder) {
         currentFolderSortOrder = order
         prefs.edit().putString("saved_folder_sort", order.name).apply()
+    }
+
+    fun setPersistentFolderInnerSort(order: SongSortOrder) {
+        folderInnerSortOrder = order
+        prefs.edit().putString("folder_inner_sort", order.name).apply()
+    }
+
+    fun setPersistentFolderInnerCardView(isCard: Boolean) {
+        folderInnerIsCardView = isCard
+        prefs.edit().putBoolean("folder_inner_card_view", isCard).apply()
+    }
+
+    fun setPersistentPlaylistInnerSort(order: SongSortOrder) {
+        playlistInnerSortOrder = order
+        prefs.edit().putString("playlist_inner_sort", order.name).apply()
+    }
+
+    fun setPersistentPlaylistInnerCardView(isCard: Boolean) {
+        playlistInnerIsCardView = isCard
+        prefs.edit().putBoolean("playlist_inner_card_view", isCard).apply()
+    }
+
+    fun movePlaylistItem(fromIndex: Int, toIndex: Int) {
+        if (fromIndex in customPlaylists.indices && toIndex in customPlaylists.indices && fromIndex != toIndex) {
+            val moved = customPlaylists.removeAt(fromIndex)
+            customPlaylists.add(toIndex, moved)
+            savePlaylists()
+        }
     }
 
     private fun initMediaSession() {
@@ -690,7 +739,6 @@ class MusicManager(private val context: Context) {
                 allSongs.addAll(visibleSongs)
                 refreshHistory()
 
-                // Execute artist parsing on a background thread using ArtistParsingEngine
                 scope.launch(Dispatchers.Default) {
                     val parsed = ArtistParsingEngine.parseAndGroupArtists(visibleSongs)
                     withContext(Dispatchers.Main) {
@@ -958,7 +1006,8 @@ class MusicManager(private val context: Context) {
         return Color(hex)
     }
 
-    private fun savePlaylists() {
+    // Public so that all components (including ArtistsScreen) can immediately persist playlist modifications
+    fun savePlaylists() {
         val arr = JSONArray()
         for (pl in customPlaylists) {
             val obj = JSONObject().apply {
