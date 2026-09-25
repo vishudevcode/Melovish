@@ -2,11 +2,9 @@ package com.melovish.player
 
 import android.content.Context
 import android.content.Intent
-import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -35,27 +33,21 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Switch
-import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import java.io.File
-import java.util.Locale
 
 @Composable
 fun SettingsScreen(
@@ -73,9 +65,6 @@ fun SettingsScreen(
     var showHiddenAudioDialog by remember { mutableStateOf(false) }
     var showHiddenFoldersDialog by remember { mutableStateOf(false) }
 
-    val avatarFile = manager.profileImagePath?.let { File(it) }
-    val avatarBitmap = if (avatarFile != null && avatarFile.exists()) BitmapFactory.decodeFile(avatarFile.absolutePath) else null
-
     Column(modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 4.dp),
@@ -90,45 +79,67 @@ fun SettingsScreen(
 
         LazyColumn(
             contentPadding = PaddingValues(bottom = 80.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+            verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            // Profile Card Preview
+            // Sound & Audio Effects
             item {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(20.dp))
-                        .background(cardBg)
-                        .border(1.dp, if (isDark) Color(0x22FFFFFF) else Color(0xFFE2E8F0), RoundedCornerShape(20.dp))
-                        .clickable { onOpenProfile() }
-                        .padding(16.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                Text("Sound & Audio Effects", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = accent)
+                Spacer(modifier = Modifier.height(8.dp))
+                Column(
+                    modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(cardBg).border(1.dp, if (isDark) Color(0x22FFFFFF) else Color(0xFFE2E8F0), RoundedCornerShape(20.dp)).padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .size(54.dp)
-                            .shadow(6.dp, CircleShape)
-                            .clip(CircleShape)
-                            .background(Color(0xFF030712))
-                            .border(2.dp, accent, CircleShape),
-                        contentAlignment = Alignment.Center
+                    Row(
+                        modifier = Modifier.fillMaxWidth().clickable { onOpenEqualizer() },
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        if (avatarBitmap != null) {
-                            Image(bitmap = avatarBitmap.asImageBitmap(), contentDescription = "Avatar", modifier = Modifier.fillMaxSize())
-                        } else {
-                            DefaultProfileAvatar(modifier = Modifier.fillMaxSize())
+                        Column {
+                            Text("Equalizer & Spatial Sound", color = textColor, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                            Text("Hardware DSP: ${manager.selectedEqPreset}", color = Color(0xFF64748B), fontSize = 12.sp)
                         }
+                        Text("›", color = accent, fontSize = 24.sp, fontWeight = FontWeight.Bold)
                     }
-                    Spacer(modifier = Modifier.width(14.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(manager.profileName, color = textColor, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                        Text(if (manager.profileEmail.isNotBlank()) manager.profileEmail else "Personal Profile & Statistics", color = Color(0xFF64748B), fontSize = 12.sp)
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text("Lossless Engine (Hi-Res Audio)", color = textColor, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                            Text("Bit-perfect decoding up to 24-bit 192kHz", color = Color(0xFF64748B), fontSize = 12.sp)
+                        }
+                        Switch(
+                            checked = manager.isLosslessEnabled,
+                            onCheckedChange = {
+                                manager.isLosslessEnabled = it
+                                manager.prefs.edit().putBoolean("lossless", it).apply()
+                            }
+                        )
                     }
-                    Text("›", color = accent, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text("Gapless Playback", color = textColor, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                            Text("Preloads next track in queue with zero latency", color = Color(0xFF64748B), fontSize = 12.sp)
+                        }
+                        Switch(
+                            checked = manager.isGaplessEnabled,
+                            onCheckedChange = {
+                                manager.isGaplessEnabled = it
+                                manager.prefs.edit().putBoolean("gapless", it).apply()
+                            }
+                        )
+                    }
                 }
             }
 
-            // Player Live Visualizer Settings Integration
+            // Audio Visualizer Settings
             item {
                 Text("Audio Visualizer", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = accent)
                 Spacer(modifier = Modifier.height(8.dp))
@@ -138,7 +149,7 @@ fun SettingsScreen(
                 ) {
                     Column {
                         Text("Live Player Visualizer", color = textColor, fontSize = 15.sp, fontWeight = FontWeight.Bold)
-                        Text("Real-time audio reaction between track details and seekbar", color = Color(0xFF64748B), fontSize = 12.sp)
+                        Text("Render reactive live audio waveforms on the player screen", color = Color(0xFF64748B), fontSize = 12.sp)
                     }
 
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -163,162 +174,6 @@ fun SettingsScreen(
                                 )
                             }
                         }
-                    }
-                }
-            }
-
-            // Sound & Audio Effects
-            item {
-                Text("Sound & Audio Effects", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = accent)
-                Spacer(modifier = Modifier.height(8.dp))
-                Column(
-                    modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(cardBg).border(1.dp, if (isDark) Color(0x22FFFFFF) else Color(0xFFE2E8F0), RoundedCornerShape(20.dp)).padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(14.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth().clickable { onOpenEqualizer() },
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column {
-                            Text("Equalizer & Audio DSP", color = textColor, fontSize = 15.sp, fontWeight = FontWeight.Bold)
-                            Text("Hardware Effect: ${manager.selectedEqPreset}", color = Color(0xFF64748B), fontSize = 12.sp)
-                        }
-                        Text("›", color = accent, fontSize = 24.sp, fontWeight = FontWeight.Bold)
-                    }
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text("Lossless Engine (Hi-Res Audio)", color = textColor, fontSize = 15.sp, fontWeight = FontWeight.Bold)
-                            Text("Bit-perfect decoding up to 24-bit 192kHz", color = Color(0xFF64748B), fontSize = 12.sp)
-                        }
-                        Switch(
-                            checked = manager.isLosslessEnabled,
-                            onCheckedChange = {
-                                manager.isLosslessEnabled = it
-                                manager.prefs.edit().putBoolean("lossless", it).apply()
-                            },
-                            colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = accent)
-                        )
-                    }
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text("Gapless Playback", color = textColor, fontSize = 15.sp, fontWeight = FontWeight.Bold)
-                            Text("Seamless transitions with zero delay between tracks", color = Color(0xFF64748B), fontSize = 12.sp)
-                        }
-                        Switch(
-                            checked = manager.isGaplessEnabled,
-                            onCheckedChange = {
-                                manager.isGaplessEnabled = it
-                                manager.prefs.edit().putBoolean("gapless", it).apply()
-                            },
-                            colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = accent)
-                        )
-                    }
-
-                    // Crossfade Engine
-                    Column(modifier = Modifier.fillMaxWidth()) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text("Crossfade", color = textColor, fontSize = 15.sp, fontWeight = FontWeight.Bold)
-                                Text("${String.format(Locale.getDefault(), "%.1f", manager.crossfadeDuration)}s overlap between tracks", color = Color(0xFF64748B), fontSize = 12.sp)
-                            }
-                            Switch(
-                                checked = manager.isCrossfadeEnabled,
-                                onCheckedChange = {
-                                    manager.isCrossfadeEnabled = it
-                                    manager.prefs.edit().putBoolean("crossfade_enabled", it).apply()
-                                },
-                                colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = accent)
-                            )
-                        }
-                        if (manager.isCrossfadeEnabled) {
-                            Spacer(modifier = Modifier.height(6.dp))
-                            Slider(
-                                value = manager.crossfadeDuration,
-                                onValueChange = {
-                                    manager.crossfadeDuration = it
-                                    manager.prefs.edit().putFloat("crossfade_duration", it).apply()
-                                },
-                                valueRange = 1f..10f,
-                                colors = SliderDefaults.colors(thumbColor = accent, activeTrackColor = accent)
-                            )
-                        }
-                    }
-
-                    // Volume Normalization
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text("Volume Normalization", color = textColor, fontSize = 15.sp, fontWeight = FontWeight.Bold)
-                            Text("Consistent track volume balancing (ReplayGain)", color = Color(0xFF64748B), fontSize = 12.sp)
-                        }
-                        Switch(
-                            checked = manager.isVolumeNormalized,
-                            onCheckedChange = {
-                                manager.isVolumeNormalized = it
-                                manager.prefs.edit().putBoolean("vol_norm", it).apply()
-                            },
-                            colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = accent)
-                        )
-                    }
-
-                    // Audio Output Routing Selector
-                    Column(modifier = Modifier.fillMaxWidth()) {
-                        Text("Audio Output Routing", color = textColor, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                        Spacer(modifier = Modifier.height(6.dp))
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            listOf("Phone", "Speaker", "Buds").forEach { out ->
-                                val isSel = manager.selectedAudioOutput == out
-                                Box(
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .height(38.dp)
-                                        .clip(RoundedCornerShape(10.dp))
-                                        .background(if (isSel) accent else if (isDark) Color(0x1FFFFFFF) else Color(0xFFF1F5F9))
-                                        .clickable { manager.setAudioOutputRouting(out) },
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text(out, color = if (isSel) Color.White else textColor, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                                }
-                            }
-                        }
-                    }
-
-                    // Mono Audio Downmixer
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text("Mono Audio", color = textColor, fontSize = 15.sp, fontWeight = FontWeight.Bold)
-                            Text("Combine stereo left & right channels into mono", color = Color(0xFF64748B), fontSize = 12.sp)
-                        }
-                        Switch(
-                            checked = manager.isMonoAudio,
-                            onCheckedChange = {
-                                manager.isMonoAudio = it
-                                manager.prefs.edit().putBoolean("mono", it).apply()
-                            },
-                            colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = accent)
-                        )
                     }
                 }
             }
@@ -381,7 +236,7 @@ fun SettingsScreen(
                     ) {
                         Column {
                             Text("Excluded Folders (${manager.hiddenFolders.size})", color = textColor, fontSize = 15.sp, fontWeight = FontWeight.Bold)
-                            Text("View and unhide excluded directories", color = Color(0xFF64748B), fontSize = 12.sp)
+                            Text("Manage hidden or non-music directory paths", color = Color(0xFF64748B), fontSize = 12.sp)
                         }
                         Text("›", color = accent, fontSize = 24.sp, fontWeight = FontWeight.Bold)
                     }
@@ -392,8 +247,8 @@ fun SettingsScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Column {
-                            Text("Hidden Tracks Manager (${manager.hiddenAudioIds.size})", color = textColor, fontSize = 15.sp, fontWeight = FontWeight.Bold)
-                            Text("View hidden audio files at the top and unhide by tapping", color = Color(0xFF64748B), fontSize = 12.sp)
+                            Text("Hidden Tracks (${manager.hiddenAudioIds.size})", color = textColor, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                            Text("Manage unlisted sound files and recordings", color = Color(0xFF64748B), fontSize = 12.sp)
                         }
                         Text("›", color = accent, fontSize = 24.sp, fontWeight = FontWeight.Bold)
                     }
@@ -401,17 +256,17 @@ fun SettingsScreen(
                     Button(
                         onClick = { manager.scanStorage() },
                         colors = ButtonDefaults.buttonColors(containerColor = if (isDark) Color(0x22FFFFFF) else Color(0xFFF1F5F9)),
-                        modifier = Modifier.fillMaxWidth().height(46.dp),
+                        modifier = Modifier.fillMaxWidth().height(44.dp),
                         shape = RoundedCornerShape(12.dp)
                     ) {
-                        Text("🔄 Rescan Storage Files", color = textColor, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                        Text("🔄 Rescan Device Storage", color = textColor, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                     }
                 }
             }
         }
     }
 
-    // Excluded Folders Dialog
+    // Excluded Folders Dialog (Hidden folders on top with dimmed color, Tap to unhide)
     if (showHiddenFoldersDialog) {
         HiddenFoldersManagerDialog(
             manager = manager,
@@ -420,7 +275,7 @@ fun SettingsScreen(
         )
     }
 
-    // Hidden Audio Tracks Dialog
+    // Hidden Audio Tracks Dialog (Hidden audio on top with dimmed color, Tap to unhide)
     if (showHiddenAudioDialog) {
         HiddenAudioManagerDialog(
             manager = manager,
@@ -430,7 +285,7 @@ fun SettingsScreen(
     }
 }
 
-// Full Excluded Folders Manager
+// Full Excluded Folders Manager (Hidden on top, Tap to unhide)
 @Composable
 fun HiddenFoldersManagerDialog(
     manager: MusicManager,
@@ -558,7 +413,7 @@ fun HiddenFoldersManagerDialog(
     }
 }
 
-// Full Hidden Audio Manager
+// Full Hidden Audio Manager (Hidden tracks on top with dimmed color, Tap to unhide)
 @Composable
 fun HiddenAudioManagerDialog(
     manager: MusicManager,
@@ -579,6 +434,7 @@ fun HiddenAudioManagerDialog(
             it.title.contains(audioSearch, ignoreCase = true) || it.artist.contains(audioSearch, ignoreCase = true)
         }
 
+        // Puts hidden audio tracks on top with dimmed color
         val hidden = list.filter { manager.hiddenAudioIds.contains(it.id) }
         val normal = list.filter { !manager.hiddenAudioIds.contains(it.id) }
         hidden + normal
@@ -608,7 +464,7 @@ fun HiddenAudioManagerDialog(
                 ) {
                     Column {
                         Text("Hidden Tracks Manager", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = textColor)
-                        Text("Hidden tracks shown on top with dimmed styling", fontSize = 12.sp, color = Color(0xFF64748B))
+                        Text("Tap any track to hide or unhide it", fontSize = 12.sp, color = Color(0xFF64748B))
                     }
                     Button(onClick = onDismiss, shape = RoundedCornerShape(10.dp)) { Text("Done") }
                 }
