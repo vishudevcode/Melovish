@@ -239,7 +239,7 @@ fun SettingsScreen(
             }
         }
 
-        // 3. Player Settings Section (With Gapless Playback & Crossfade)
+        // 3. Player Settings Section
         item(key = "player_settings_section", contentType = "player_settings_card") {
             Column(
                 modifier = Modifier
@@ -305,42 +305,27 @@ fun SettingsScreen(
 
                 Spacer(modifier = Modifier.height(14.dp))
 
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(if (isDark) Color(0x14FFFFFF) else Color(0xFFF8FAFC))
-                        .padding(14.dp)
+                // Crossfade Row - Completely Symmetrical with Upper Rows
+                SettingSwitchRow(
+                    icon = "↔️",
+                    title = "Crossfade",
+                    subtitle = "Adjust the fade duration between tracks.",
+                    checked = manager.isCrossfadeEnabled,
+                    textColor = textColor
                 ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                    manager.isCrossfadeEnabled = it
+                    manager.prefs.edit().putBoolean("crossfade_enabled", it).apply()
+                }
+
+                if (manager.isCrossfadeEnabled) {
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(start = 32.dp, end = 4.dp)
                     ) {
                         Row(
-                            modifier = Modifier.weight(1f),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text("↔️", fontSize = 20.sp)
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Column {
-                                Text("Crossfade", color = textColor, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                                Text("Adjust the fade duration between tracks.", color = Color(0xFF64748B), fontSize = 11.sp)
-                            }
-                        }
-                        Switch(
-                            checked = manager.isCrossfadeEnabled,
-                            onCheckedChange = {
-                                manager.isCrossfadeEnabled = it
-                                manager.prefs.edit().putBoolean("crossfade_enabled", it).apply()
-                            }
-                        )
-                    }
-
-                    if (manager.isCrossfadeEnabled) {
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Row(
-                            modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
+                            modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
@@ -362,7 +347,7 @@ fun SettingsScreen(
             }
         }
 
-        // 4. Audio Section Directly On Page (Matching 2nd Photo exactly)
+        // 4. Audio Section Directly On Page
         item(key = "audio_section_direct", contentType = "audio_card") {
             Column(
                 modifier = Modifier
@@ -390,7 +375,7 @@ fun SettingsScreen(
 
                 Spacer(modifier = Modifier.height(14.dp))
 
-                // Volume Normalization (Mapped to ReplayGain)
+                // Volume Normalization (Mapped directly to ReplayGain)
                 SettingSwitchRow(
                     icon = "🔉",
                     title = "Volume Normalization",
@@ -421,7 +406,7 @@ fun SettingsScreen(
 
                 Spacer(modifier = Modifier.height(14.dp))
 
-                // Mono Audio Toggle
+                // Mono Audio Toggle (Combines L & R Channels)
                 SettingSwitchRow(
                     icon = "🎚️",
                     title = "Mono Audio",
@@ -429,13 +414,12 @@ fun SettingsScreen(
                     checked = manager.isMonoAudio,
                     textColor = textColor
                 ) {
-                    manager.isMonoAudio = it
-                    manager.prefs.edit().putBoolean("mono", it).apply()
+                    manager.toggleMonoAudio(it)
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // Audio Output Routing (Phone, Speaker, Buds)
+                // Audio Output Selection
                 Text("Audio Output", color = textColor, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                 Spacer(modifier = Modifier.height(10.dp))
 
@@ -544,7 +528,6 @@ fun SettingsScreen(
 
     if (showCircularPicker) CircularColorPickerDialog(manager = manager, onDismiss = { showCircularPicker = false })
 
-    // Equalizer Sheet with Vertical Sliders and Save Button
     if (showEqualizerModal) {
         VerticalLinesEqualizerSheet(manager = manager, onDismiss = { showEqualizerModal = false })
     }
@@ -705,7 +688,6 @@ fun VerticalLinesEqualizerSheet(manager: MusicManager, onDismiss: () -> Unit) {
     }
 }
 
-// Vertical Line Mixer Slider for Hardware Frequency Bands
 @Composable
 fun VerticalBandFader(
     level: Int,
@@ -766,7 +748,6 @@ fun VerticalBandFader(
                 val trackHeight = bottomY - topY
                 val knobY = bottomY - (fraction * trackHeight)
 
-                // Background Vertical Track Line
                 drawLine(
                     color = if (isDark) Color(0xFF334155) else Color(0xFFCBD5E1),
                     start = Offset(centerX, topY),
@@ -775,7 +756,6 @@ fun VerticalBandFader(
                     cap = StrokeCap.Round
                 )
 
-                // Active Vertical Track Line (From bottom up to knob)
                 drawLine(
                     color = accentColor,
                     start = Offset(centerX, bottomY),
@@ -784,7 +764,6 @@ fun VerticalBandFader(
                     cap = StrokeCap.Round
                 )
 
-                // Fader Knob Ball
                 drawCircle(
                     color = accentColor,
                     radius = 6.dp.toPx(),
@@ -804,10 +783,6 @@ fun VerticalBandFader(
         )
     }
 }
-
-// -----------------------------------------------------------------------------------------
-// Sub-Screens: Content Management (Hidden Folders and Hidden Audio)
-// -----------------------------------------------------------------------------------------
 
 @UnstableApi
 @Composable
@@ -1062,13 +1037,23 @@ fun ManageHiddenAudioFullScreen(manager: MusicManager, isDark: Boolean, onBack: 
 }
 
 @Composable
-fun SettingSwitchRow(icon: String, title: String, subtitle: String, checked: Boolean, textColor: Color, onCheckedChange: (Boolean) -> Unit) {
+fun SettingSwitchRow(
+    icon: String,
+    title: String,
+    subtitle: String,
+    checked: Boolean,
+    textColor: Color,
+    onCheckedChange: (Boolean) -> Unit
+) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            modifier = Modifier.weight(1f),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             Text(icon, fontSize = 20.sp)
             Spacer(modifier = Modifier.width(12.dp))
             Column {

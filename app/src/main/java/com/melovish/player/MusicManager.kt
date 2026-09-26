@@ -10,7 +10,6 @@ import android.content.IntentFilter
 import android.content.SharedPreferences
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
-import android.media.AudioDeviceCallback
 import android.media.AudioDeviceInfo
 import android.media.AudioManager
 import android.media.MediaMetadataRetriever
@@ -18,7 +17,6 @@ import android.media.RingtoneManager
 import android.media.audiofx.BassBoost
 import android.media.audiofx.Equalizer
 import android.media.audiofx.LoudnessEnhancer
-import android.media.audiofx.PresetReverb
 import android.media.audiofx.Virtualizer
 import android.net.Uri
 import android.os.Build
@@ -44,8 +42,13 @@ import androidx.media3.common.MediaMetadata
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
+import androidx.media3.common.audio.ChannelMixingAudioProcessor
+import androidx.media3.common.audio.ChannelMixingMatrix
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.audio.AudioSink
+import androidx.media3.exoplayer.audio.DefaultAudioSink
 import androidx.media3.session.MediaSession
 import kotlinx.collections.immutable.toImmutableList
 import kotlinx.coroutines.CoroutineExceptionHandler
@@ -61,6 +64,7 @@ import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream
 import java.util.Locale
+import kotlin.math.pow
 
 @UnstableApi
 class MusicManager(private val context: Context) {
@@ -71,19 +75,31 @@ class MusicManager(private val context: Context) {
             private set
     }
 
-    // Phase 3 Invariant: Global Uncaught Coroutine Exception Handler
     private val exceptionHandler = CoroutineExceptionHandler { _, throwable ->
         throwable.printStackTrace()
     }
 
-    // Phase 1 Invariant: Low-latency Main.immediate scope avoiding looper message-queue delays
     val managerScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate + exceptionHandler)
     val prefs: SharedPreferences = context.getSharedPreferences("melovish_prefs_v12", Context.MODE_PRIVATE)
     private val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
     private val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
-    // Core ExoPlayer Engine Configured for Continuous Low-Latency Streaming
-    val player: ExoPlayer = ExoPlayer.Builder(context)
+    // Mono Audio Hardware Mixing Processor
+    private val channelMixingAudioProcessor = ChannelMixingAudioProcessor()
+
+    private val renderersFactory = object : DefaultRenderersFactory(context) {
+        override fun buildAudioSink(
+            context: Context,
+            enableFloatOutput: Boolean,
+            enableAudioTrackPlaybackParams: Boolean
+        ): AudioSink {
+            return DefaultAudioSink.Builder(context)
+                .setAudioProcessors(arrayOf(channelMixingAudioProcessor))
+                .build()
+        }
+    }
+
+    val player: ExoPlayer = ExoPlayer.Builder(context, renderersFactory)
         .setAudioAttributes(
             AudioAttributes.Builder()
                 .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
@@ -100,14 +116,14 @@ class MusicManager(private val context: Context) {
     var mediaSession: MediaSession? = null
         private set
 
-    // Hardware Audio Effects Chain
+    // Hardware Audio Effects
+    private var currentAudioSessionId: Int = C.AUDIO_SESSION_ID_UNSET
     private var equalizer: Equalizer? = null
     private var bassBoost: BassBoost? = null
     private var virtualizer: Virtualizer? = null
     private var loudnessEnhancer: LoudnessEnhancer? = null
-    private var presetReverb: PresetReverb? = null
 
-    // Reactive Playback States
+    // Playback States
     var currentSong by mutableStateOf<Song?>(null)
     var isPlaying by mutableStateOf(false)
     var currentPosition by mutableLongStateOf(0L)
@@ -139,7 +155,7 @@ class MusicManager(private val context: Context) {
     var accentColor by mutableStateOf(Color(prefs.getInt("accent_color", 0xFF00B4D8.toInt())))
     val userSavedColorPresets = mutableStateListOf<Color>()
 
-    // Sorting Modes
+    // Sorting
     var currentSortOrder by mutableStateOf(
         try {
             SongSortOrder.valueOf(prefs.getString("saved_song_sort", SongSortOrder.A_TO_Z.name) ?: SongSortOrder.A_TO_Z.name)
@@ -162,7 +178,6 @@ class MusicManager(private val context: Context) {
         }
     )
     var folderInnerIsCardView by mutableStateOf(prefs.getBoolean("folder_inner_card_view", false))
-
     var playlistInnerSortOrder by mutableStateOf(
         try {
             SongSortOrder.valueOf(prefs.getString("playlist_inner_sort", SongSortOrder.A_TO_Z.name) ?: SongSortOrder.A_TO_Z.name)
@@ -172,42 +187,22 @@ class MusicManager(private val context: Context) {
     )
     var playlistInnerIsCardView by mutableStateOf(prefs.getBoolean("playlist_inner_card_view", false))
 
-    // Phase 3 Invariant: Sub-sampled Memory Pooled LRU Cache
-    private val maxCacheSize = (Runtime.getRuntime().maxMemory() / 1024 / 8).toInt().coerceAtLeast(1024 * 16)
-    private val memoryCache = object : LruCache<Long, Bitmap>(maxCacheSize) {
-        override fun sizeOf(key: Long, bitmap: Bitmap): Int = bitmap.byteCount / 1024
-    }
-
-    // Audio Manager Features
+    // Player Settings Features
     var isColorfulPlayer by mutableStateOf(prefs.getBoolean("colorful_player", true))
     var isResumeFirstOnly by mutableStateOf(prefs.getBoolean("resume_first", false))
     var isFadeOnStart by mutableStateOf(prefs.getBoolean("fade_start", false))
     var isGaplessEnabled by mutableStateOf(prefs.getBoolean("gapless", true))
     var isCrossfadeEnabled by mutableStateOf(prefs.getBoolean("crossfade_enabled", false))
-    var crossfadeDuration by mutableFloatStateOf(prefs.getFloat("crossfade_duration", 3.0f))
+    var crossfadeDuration by mutableFloatStateOf(prefs.getFloat("crossfade_duration", 2.0f))
 
-    // High-Resolution Audio & Bit-Perfect DAC
-    var isBitPerfectEnabled by mutableStateOf(prefs.getBoolean("bit_perfect_enabled", false))
-    var isExternalDacConnected by mutableStateOf(false)
-    var connectedDacName by mutableStateOf<String?>(null)
-
-    // ReplayGain Loudness Mapping (Mapped to Volume Normalization)
-    var isVolumeNormalized by mutableStateOf(prefs.getBoolean("vol_norm", true))
-    var replayGainMode by mutableStateOf(
-        try {
-            ReplayGainMode.valueOf(prefs.getString("replay_gain_mode", ReplayGainMode.TRACK.name) ?: ReplayGainMode.TRACK.name)
-        } catch (_: Exception) {
-            ReplayGainMode.TRACK
-        }
-    )
-    var replayGainPreampDb by mutableFloatStateOf(prefs.getFloat("replay_gain_preamp", 0.0f))
-
+    // Audio Features
     var isLosslessEnabled by mutableStateOf(prefs.getBoolean("lossless", true))
+    var isVolumeNormalized by mutableStateOf(prefs.getBoolean("vol_norm", false))
     var volumeBoostLevel by mutableFloatStateOf(prefs.getFloat("vol_boost", 100f))
     var isMonoAudio by mutableStateOf(prefs.getBoolean("mono", false))
     var selectedAudioOutput by mutableStateOf(prefs.getString("audio_output", "Phone") ?: "Phone")
 
-    // Hardware Equalizer State
+    // Equalizer & Audio FX
     var isEqEnabled by mutableStateOf(prefs.getBoolean("eq_enabled", true))
     var eqBandsCount by mutableIntStateOf(5)
     val eqBandLevels = mutableStateMapOf<Int, Int>()
@@ -216,23 +211,6 @@ class MusicManager(private val context: Context) {
     var eqMaxLevel by mutableIntStateOf(1500)
     val eqPresetNames = mutableStateListOf<String>()
     var selectedEqPreset by mutableStateOf(prefs.getString("selected_eq_preset", "Original") ?: "Original")
-
-    // 32-Band Virtual Equalizer Mapping
-    val eq32BandLevels = mutableStateMapOf<Int, Int>().apply {
-        for (i in 0 until 32) {
-            this[i] = prefs.getInt("eq32_band_$i", 0)
-        }
-    }
-
-    // Environmental Reverb & Acoustics
-    var isReverbEnabled by mutableStateOf(prefs.getBoolean("reverb_enabled", false))
-    var selectedReverbPreset by mutableStateOf(
-        try {
-            ReverbPresetMode.valueOf(prefs.getString("selected_reverb", ReverbPresetMode.NONE.name) ?: ReverbPresetMode.NONE.name)
-        } catch (_: Exception) {
-            ReverbPresetMode.NONE
-        }
-    )
 
     var bassBoostPercent by mutableIntStateOf(prefs.getInt("bass_boost", 50))
     var virtualizerPercent by mutableIntStateOf(prefs.getInt("virtualizer", 30))
@@ -243,15 +221,9 @@ class MusicManager(private val context: Context) {
     var profileEmail by mutableStateOf(prefs.getString("prof_email", "") ?: "")
     var profileImagePath by mutableStateOf(prefs.getString("prof_image_path", null))
 
-    // USB DAC Hardware Listener Callback
-    private val audioDeviceCallback = object : AudioDeviceCallback() {
-        override fun onAudioDevicesAdded(addedDevices: Array<out AudioDeviceInfo>?) {
-            checkConnectedDac()
-        }
-
-        override fun onAudioDevicesRemoved(removedDevices: Array<out AudioDeviceInfo>?) {
-            checkConnectedDac()
-        }
+    private val maxCacheSize = (Runtime.getRuntime().maxMemory() / 1024 / 8).toInt().coerceAtLeast(1024 * 16)
+    private val memoryCache = object : LruCache<Long, Bitmap>(maxCacheSize) {
+        override fun sizeOf(key: Long, bitmap: Bitmap): Int = bitmap.byteCount / 1024
     }
 
     init {
@@ -263,7 +235,7 @@ class MusicManager(private val context: Context) {
         setupPlayerListener()
         startPositionTracker()
         syncDeviceVolume()
-        initAudioManagerPipeline()
+        applyMonoAudio(isMonoAudio)
     }
 
     private fun initMediaSession() {
@@ -277,37 +249,11 @@ class MusicManager(private val context: Context) {
                 intent,
                 PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
             )
-
             mediaSession = MediaSession.Builder(context, player)
                 .setSessionActivity(pendingIntent)
                 .build()
         } catch (e: Exception) {
             e.printStackTrace()
-        }
-    }
-
-    private fun initAudioManagerPipeline() {
-        try {
-            audioManager.registerAudioDeviceCallback(audioDeviceCallback, null)
-            checkConnectedDac()
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
-    }
-
-    private fun checkConnectedDac() {
-        try {
-            val devices = audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
-            val dac = devices.find {
-                it.type == AudioDeviceInfo.TYPE_USB_DEVICE ||
-                it.type == AudioDeviceInfo.TYPE_USB_HEADSET ||
-                it.type == AudioDeviceInfo.TYPE_USB_ACCESSORY
-            }
-            isExternalDacConnected = dac != null
-            connectedDacName = dac?.productName?.toString()
-        } catch (_: Exception) {
-            isExternalDacConnected = false
-            connectedDacName = null
         }
     }
 
@@ -340,17 +286,26 @@ class MusicManager(private val context: Context) {
 
     private fun setupPlayerListener() {
         player.addListener(object : Player.Listener {
+            override fun onAudioSessionIdChanged(audioSessionId: Int) {
+                if (audioSessionId != C.AUDIO_SESSION_ID_UNSET && audioSessionId != 0) {
+                    currentAudioSessionId = audioSessionId
+                    attachAudioEffects(audioSessionId)
+                }
+            }
+
             override fun onIsPlayingChanged(playing: Boolean) {
                 isPlaying = playing
                 updateNotification()
+                if (playing && isFadeOnStart && !isCrossfadeEnabled) {
+                    triggerFadeIn(1000L)
+                }
             }
 
             override fun onPlaybackStateChanged(state: Int) {
                 if (state == Player.STATE_READY) {
                     duration = player.duration.coerceAtLeast(0L)
-                    managerScope.launch(Dispatchers.Default) {
-                        attachAudioEffects()
-                        applyReplayGainCompensation(currentSong)
+                    if (currentAudioSessionId != C.AUDIO_SESSION_ID_UNSET && currentAudioSessionId != 0) {
+                        attachAudioEffects(currentAudioSessionId)
                     }
                     updateNotification()
                 } else if (state == Player.STATE_ENDED) {
@@ -359,7 +314,7 @@ class MusicManager(private val context: Context) {
                     } else {
                         managerScope.launch {
                             player.pause()
-                            delay(350)
+                            delay(500)
                             playNext()
                         }
                     }
@@ -373,17 +328,24 @@ class MusicManager(private val context: Context) {
                     currentSong = song
                     recordSongPlayed(song)
                     updateNotification()
-                    applyReplayGainCompensation(song)
+                    applyVolumeNormalization()
 
-                    // Audio Fade Transitions
                     isFadingOutForCrossfade = false
                     if (isCrossfadeEnabled) {
-                        val inDuration = ((crossfadeDuration * 1000) / 2).toLong().coerceAtLeast(400L)
-                        triggerFadeIn(inDuration)
+                        val fadeMs = (crossfadeDuration * 1000).toLong() / 2
+                        triggerFadeIn(fadeMs.coerceAtLeast(400L))
                     } else if (isFadeOnStart) {
                         triggerFadeIn(1200L)
                     } else {
                         player.volume = 1.0f
+                    }
+
+                    if (!isGaplessEnabled && reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO) {
+                        managerScope.launch {
+                            player.pause()
+                            delay(500)
+                            player.play()
+                        }
                     }
                 }
             }
@@ -398,339 +360,77 @@ class MusicManager(private val context: Context) {
         })
     }
 
-    fun updateNotification() {
-        val song = currentSong ?: return
-        val art = getCachedAlbumArt(song.id)
-
-        val launchIntent = Intent(context, MainActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
-        }
-        val contentPendingIntent = PendingIntent.getActivity(
-            context, 0, launchIntent,
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
-        )
-
-        val playPauseIcon = if (isPlaying) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play
-        val playPauseTitle = if (isPlaying) "Pause" else "Play"
-
-        val prevIntent = PendingIntent.getBroadcast(
-            context, 1, Intent("ACTION_PREV"),
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
-        )
-        val playPauseIntent = PendingIntent.getBroadcast(
-            context, 2, Intent(if (isPlaying) "ACTION_PAUSE" else "ACTION_PLAY"),
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
-        )
-        val nextIntent = PendingIntent.getBroadcast(
-            context, 3, Intent("ACTION_NEXT"),
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
-        )
-
-        val builder = NotificationCompat.Builder(context, MediaPlaybackService.NOTIF_CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.ic_media_play)
-            .setContentTitle(song.title)
-            .setContentText("${formatFileSize(song.size)} • ${if (song.artist.isNotBlank()) song.artist else "Melovish"}")
-            .setContentIntent(contentPendingIntent)
-            .setColor(accentColor.toArgb())
-            .setColorized(true)
-            .setOngoing(isPlaying)
-            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-            .setPriority(NotificationCompat.PRIORITY_LOW)
-            .addAction(android.R.drawable.ic_media_previous, "Previous", prevIntent)
-            .addAction(playPauseIcon, playPauseTitle, playPauseIntent)
-            .addAction(android.R.drawable.ic_media_next, "Next", nextIntent)
-
-        if (art != null) {
-            builder.setLargeIcon(art)
-        }
-
+    // Audio Effects Engine
+    fun attachAudioEffects(sessionId: Int = currentAudioSessionId) {
+        if (sessionId == C.AUDIO_SESSION_ID_UNSET || sessionId == 0) return
         try {
-            notificationManager.notify(MediaPlaybackService.NOTIF_ID, builder.build())
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
-    }
-
-    fun getCachedAlbumArt(songId: Long): Bitmap? = memoryCache.get(songId)
-
-    suspend fun loadAlbumArtAsync(song: Song): Bitmap? = withContext(Dispatchers.IO) {
-        val cached = memoryCache.get(song.id)
-        if (cached != null) return@withContext cached
-
-        var resultBitmap: Bitmap? = null
-
-        // 1. Direct custom filesystem path
-        if (song.customCoverPath != null) {
-            val file = File(song.customCoverPath)
-            if (file.exists()) {
-                val opts = BitmapFactory.Options().apply {
-                    inJustDecodeBounds = true
-                    BitmapFactory.decodeFile(file.absolutePath, this)
-                    inSampleSize = calculateInSampleSize(this, 256, 256)
-                    inJustDecodeBounds = false
-                    inPreferredConfig = Bitmap.Config.RGB_565
+            // Equalizer Setup
+            if (equalizer == null) {
+                equalizer = Equalizer(1000, sessionId).apply { enabled = isEqEnabled }
+                eqBandsCount = (equalizer?.numberOfBands?.toInt() ?: 5).coerceAtLeast(1)
+                val range = equalizer?.bandLevelRange
+                if (range != null && range.size >= 2) {
+                    eqMinLevel = range[0].toInt()
+                    eqMaxLevel = range[1].toInt()
                 }
-                resultBitmap = BitmapFactory.decodeFile(file.absolutePath, opts)
+                for (i in 0 until eqBandsCount) {
+                    val freq = (equalizer?.getCenterFreq(i.toShort()) ?: 0) / 1000
+                    eqCenterFreqs[i] = if (freq > 0) freq else (60 * (i + 1) * (i + 1))
+                    val savedLevel = prefs.getInt("eq_band_$i", equalizer?.getBandLevel(i.toShort())?.toInt() ?: 0)
+                    eqBandLevels[i] = savedLevel
+                    equalizer?.setBandLevel(i.toShort(), savedLevel.toShort())
+                }
+                eqPresetNames.clear()
+                val presetsCount = equalizer?.numberOfPresets?.toInt() ?: 0
+                for (p in 0 until presetsCount) {
+                    eqPresetNames.add(equalizer?.getPresetName(p.toShort()) ?: "Preset $p")
+                }
+                if (eqPresetNames.isEmpty()) {
+                    listOf("Flat", "Rock", "Pop", "Jazz", "Classical", "Hip Hop", "Dance").forEach { eqPresetNames.add(it) }
+                }
+            } else {
+                equalizer?.enabled = isEqEnabled
+                for (i in 0 until eqBandsCount) {
+                    val lvl = eqBandLevels[i] ?: 0
+                    equalizer?.setBandLevel(i.toShort(), lvl.toShort())
+                }
             }
-        }
 
-        // 2. MediaStore content resolver
-        if (resultBitmap == null) {
-            try {
-                val sArtworkUri = Uri.parse("content://media/external/audio/albumart")
-                val uri = ContentUris.withAppendedId(sArtworkUri, song.albumId)
-                context.contentResolver.openInputStream(uri)?.use { stream ->
-                    val opts = BitmapFactory.Options().apply {
-                        inSampleSize = 2
-                        inPreferredConfig = Bitmap.Config.RGB_565
-                    }
-                    resultBitmap = BitmapFactory.decodeStream(stream, null, opts)
-                }
-            } catch (_: Exception) {}
-        }
+            // Bass Boost
+            if (bassBoost == null) bassBoost = BassBoost(1000, sessionId)
+            bassBoost?.enabled = !isStopBass && isEqEnabled
+            bassBoost?.setStrength((bassBoostPercent * 10).toShort().coerceIn(0, 1000))
 
-        // 3. Fallback embedded ID3 binary frames
-        if (resultBitmap == null) {
-            try {
-                val retriever = MediaMetadataRetriever()
-                retriever.setDataSource(context, song.uri)
-                val artBytes = retriever.embeddedPicture
-                if (artBytes != null) {
-                    val opts = BitmapFactory.Options().apply {
-                        inJustDecodeBounds = true
-                        BitmapFactory.decodeByteArray(artBytes, 0, artBytes.size, this)
-                        inSampleSize = calculateInSampleSize(this, 256, 256)
-                        inJustDecodeBounds = false
-                        inPreferredConfig = Bitmap.Config.RGB_565
-                    }
-                    resultBitmap = BitmapFactory.decodeByteArray(artBytes, 0, artBytes.size, opts)
-                }
-                retriever.release()
-            } catch (_: Exception) {}
-        }
+            // 3D Virtualizer
+            if (virtualizer == null) virtualizer = Virtualizer(1000, sessionId)
+            virtualizer?.enabled = isEqEnabled
+            virtualizer?.setStrength((virtualizerPercent * 10).toShort().coerceIn(0, 1000))
 
-        val finalBmp = resultBitmap
-        if (finalBmp != null) {
-            memoryCache.put(song.id, finalBmp)
-            return@withContext finalBmp
-        }
-        null
-    }
+            // Loudness Enhancer & Boost
+            if (loudnessEnhancer == null) loudnessEnhancer = LoudnessEnhancer(sessionId)
+            val boostGainMb = ((volumeBoostLevel - 100f) * 30f).toInt().coerceAtLeast(0)
+            loudnessEnhancer?.setTargetGain(boostGainMb)
+            loudnessEnhancer?.enabled = volumeBoostLevel > 100f || isVolumeNormalized
 
-    private fun calculateInSampleSize(options: BitmapFactory.Options, reqWidth: Int, reqHeight: Int): Int {
-        val (height: Int, width: Int) = options.outHeight to options.outWidth
-        var inSampleSize = 1
-        if (height > reqHeight || width > reqWidth) {
-            val halfHeight: Int = height / 2
-            val halfWidth: Int = width / 2
-            while (halfHeight / inSampleSize >= reqHeight && halfWidth / inSampleSize >= reqWidth) {
-                inSampleSize *= 2
-            }
-        }
-        return inSampleSize
-    }
+            applyVolumeNormalization()
 
-    // Hardware Audio Effects (HAL-Safe Initializer)
-    fun attachAudioEffects() {
-        try {
-            val audioSessionId = player.audioSessionId
-            if (audioSessionId != C.AUDIO_SESSION_ID_UNSET && audioSessionId != 0) {
-                if (equalizer == null) {
-                    equalizer = Equalizer(0, audioSessionId).apply { enabled = isEqEnabled }
-                    eqBandsCount = (equalizer?.numberOfBands?.toInt() ?: 5).coerceAtLeast(1)
-                    val range = equalizer?.bandLevelRange
-                    if (range != null && range.size >= 2) {
-                        eqMinLevel = range[0].toInt()
-                        eqMaxLevel = range[1].toInt()
-                    }
-                    for (i in 0 until eqBandsCount) {
-                        val freq = (equalizer?.getCenterFreq(i.toShort()) ?: 0) / 1000
-                        eqCenterFreqs[i] = if (freq > 0) freq else (60 * (i + 1) * (i + 1))
-                        eqBandLevels[i] = equalizer?.getBandLevel(i.toShort())?.toInt() ?: 0
-                    }
-                    eqPresetNames.clear()
-                    val presetsCount = equalizer?.numberOfPresets?.toInt() ?: 0
-                    for (p in 0 until presetsCount) {
-                        eqPresetNames.add(equalizer?.getPresetName(p.toShort()) ?: "Preset $p")
-                    }
-                    if (eqPresetNames.isEmpty()) {
-                        listOf("Flat", "Rock", "Pop", "Jazz", "Classical", "Hip Hop", "Dance").forEach { eqPresetNames.add(it) }
-                    }
-                } else {
-                    equalizer?.enabled = isEqEnabled
-                }
-
-                if (bassBoost == null) bassBoost = BassBoost(0, audioSessionId)
-                bassBoost?.enabled = !isStopBass && isEqEnabled
-                bassBoost?.setStrength((bassBoostPercent * 10).toShort().coerceIn(0, 1000))
-
-                if (virtualizer == null) virtualizer = Virtualizer(0, audioSessionId)
-                virtualizer?.enabled = isEqEnabled
-                virtualizer?.setStrength((virtualizerPercent * 10).toShort().coerceIn(0, 1000))
-
-                if (presetReverb == null) {
-                    presetReverb = PresetReverb(0, audioSessionId)
-                }
-                applyReverbPreset(selectedReverbPreset)
-
-                if (isStopBass && equalizer != null && eqBandsCount > 0) {
-                    equalizer?.setBandLevel(0, eqMinLevel.toShort())
-                    eqBandLevels[0] = eqMinLevel
-                }
+            if (isStopBass && equalizer != null && eqBandsCount > 0) {
+                equalizer?.setBandLevel(0, eqMinLevel.toShort())
+                eqBandLevels[0] = eqMinLevel
             }
         } catch (e: Exception) {
             e.printStackTrace()
-        }
-    }
-
-    // 32-Band Virtual Equalizer Mapping Engine
-    fun set32BandLevel(bandIndex: Int, level: Int) {
-        eq32BandLevels[bandIndex] = level
-        managerScope.launch(Dispatchers.IO) {
-            prefs.edit().putInt("eq32_band_$bandIndex", level).apply()
-        }
-
-        if (equalizer != null && eqBandsCount > 0) {
-            val hwBand = ((bandIndex.toFloat() / 32f) * eqBandsCount).toInt().coerceIn(0, eqBandsCount - 1)
-            val averageGroupLevel = (0 until 32)
-                .filter { ((it.toFloat() / 32f) * eqBandsCount).toInt() == hwBand }
-                .map { eq32BandLevels[it] ?: 0 }
-                .average().toInt()
-
-            try {
-                equalizer?.setBandLevel(
-                    hwBand.toShort(),
-                    averageGroupLevel.toShort().coerceIn(eqMinLevel.toShort(), eqMaxLevel.toShort())
-                )
-                eqBandLevels[hwBand] = averageGroupLevel
-            } catch (_: Exception) {}
-        }
-    }
-
-    fun applyReverbPreset(preset: ReverbPresetMode) {
-        selectedReverbPreset = preset
-        managerScope.launch(Dispatchers.IO) {
-            prefs.edit().putString("selected_reverb", preset.name).apply()
-        }
-        try {
-            presetReverb?.enabled = (preset != ReverbPresetMode.NONE)
-            val nativePreset = when (preset) {
-                ReverbPresetMode.NONE -> PresetReverb.PRESET_NONE
-                ReverbPresetMode.SMALL_ROOM -> PresetReverb.PRESET_SMALLROOM
-                ReverbPresetMode.MEDIUM_ROOM -> PresetReverb.PRESET_MEDIUMROOM
-                ReverbPresetMode.LARGE_ROOM -> PresetReverb.PRESET_LARGEROOM
-                ReverbPresetMode.MEDIUM_HALL -> PresetReverb.PRESET_MEDIUMHALL
-                ReverbPresetMode.LARGE_HALL -> PresetReverb.PRESET_LARGEHALL
-                ReverbPresetMode.PLATE -> PresetReverb.PRESET_PLATE
-            }
-            presetReverb?.preset = nativePreset
-        } catch (_: Exception) {}
-    }
-
-    // Volume Normalisation & ReplayGain Processing
-    fun toggleVolumeNormalization(enabled: Boolean) {
-        isVolumeNormalized = enabled
-        managerScope.launch(Dispatchers.IO) {
-            prefs.edit().putBoolean("vol_norm", enabled).apply()
-        }
-        applyReplayGainCompensation(currentSong)
-    }
-
-    fun applyReplayGainCompensation(song: Song?) {
-        if (song == null || !isVolumeNormalized || replayGainMode == ReplayGainMode.OFF) {
-            try {
-                loudnessEnhancer?.enabled = false
-            } catch (_: Exception) {}
-            return
-        }
-        try {
-            val audioSessionId = player.audioSessionId
-            if (audioSessionId != 0 && audioSessionId != C.AUDIO_SESSION_ID_UNSET) {
-                if (loudnessEnhancer == null) {
-                    loudnessEnhancer = LoudnessEnhancer(audioSessionId)
-                }
-
-                val targetDb = when (replayGainMode) {
-                    ReplayGainMode.TRACK -> if (song.replayGainTrackDb != 0.0f) song.replayGainTrackDb else -3.0f
-                    ReplayGainMode.ALBUM -> if (song.replayGainAlbumDb != 0.0f) song.replayGainAlbumDb else song.replayGainTrackDb
-                    ReplayGainMode.OFF -> 0.0f
-                }
-
-                val totalGainDb = targetDb + replayGainPreampDb
-                val gainMb = (totalGainDb * 100).toInt().coerceIn(-1500, 1500)
-
-                loudnessEnhancer?.setTargetGain(gainMb.coerceAtLeast(0))
-                loudnessEnhancer?.enabled = totalGainDb > 0.0f || isVolumeNormalized
-            }
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
-    }
-
-    fun setReplayGainSettings(mode: ReplayGainMode, preamp: Float) {
-        replayGainMode = mode
-        replayGainPreampDb = preamp
-        managerScope.launch(Dispatchers.IO) {
-            prefs.edit()
-                .putString("replay_gain_mode", mode.name)
-                .putFloat("replay_gain_preamp", preamp)
-                .apply()
-        }
-        applyReplayGainCompensation(currentSong)
-    }
-
-    // Hi-Res Bit-Perfect Playback Support
-    fun toggleBitPerfect(enabled: Boolean) {
-        isBitPerfectEnabled = enabled
-        managerScope.launch(Dispatchers.IO) {
-            prefs.edit().putBoolean("bit_perfect_enabled", enabled).apply()
-        }
-        if (enabled && isExternalDacConnected) {
-            player.playbackParameters = PlaybackParameters(1.0f)
-        }
-    }
-
-    // Audio Transition Fades
-    fun triggerFadeIn(durationMs: Long = 1000L) {
-        fadeJob?.cancel()
-        if (!isFadeOnStart && !isCrossfadeEnabled) {
-            player.volume = 1.0f
-            return
-        }
-        fadeJob = managerScope.launch {
-            player.volume = 0f
-            val steps = 25
-            val stepDelay = (durationMs / steps).coerceAtLeast(15L)
-            for (i in 1..steps) {
-                delay(stepDelay)
-                player.volume = i.toFloat() / steps
-            }
-            player.volume = 1.0f
-        }
-    }
-
-    private fun startCrossfadeOut(fadeDurationMs: Long) {
-        fadeJob?.cancel()
-        fadeJob = managerScope.launch {
-            val steps = 20
-            val stepDelay = (fadeDurationMs / steps).coerceAtLeast(20L)
-            val initialVol = player.volume
-            for (i in steps downTo 0) {
-                player.volume = initialVol * (i.toFloat() / steps)
-                delay(stepDelay)
-            }
-            player.volume = 0f
         }
     }
 
     fun setEqBandLevel(band: Int, level: Int) {
         eqBandLevels[band] = level
+        managerScope.launch(Dispatchers.IO) {
+            prefs.edit().putInt("eq_band_$band", level).putString("selected_eq_preset", "Custom").apply()
+        }
+        selectedEqPreset = "Custom"
         try {
             equalizer?.setBandLevel(band.toShort(), level.toShort())
-            selectedEqPreset = "Custom"
-            managerScope.launch(Dispatchers.IO) {
-                prefs.edit().putString("selected_eq_preset", "Custom").apply()
-            }
         } catch (_: Exception) {}
     }
 
@@ -744,7 +444,9 @@ class MusicManager(private val context: Context) {
             if (index >= 0 && index < (equalizer?.numberOfPresets ?: 0)) {
                 equalizer?.usePreset(index.toShort())
                 for (i in 0 until eqBandsCount) {
-                    eqBandLevels[i] = equalizer?.getBandLevel(i.toShort())?.toInt() ?: 0
+                    val lvl = equalizer?.getBandLevel(i.toShort())?.toInt() ?: 0
+                    eqBandLevels[i] = lvl
+                    prefs.edit().putInt("eq_band_$i", lvl).apply()
                 }
             }
         } catch (_: Exception) {}
@@ -778,34 +480,63 @@ class MusicManager(private val context: Context) {
         try { virtualizer?.setStrength((percent * 10).toShort().coerceIn(0, 1000)) } catch (_: Exception) {}
     }
 
-    fun toggleStopBass(stop: Boolean) {
-        isStopBass = stop
+    // Volume Normalization via ReplayGain + Loudness Enhancer
+    fun toggleVolumeNormalization(enabled: Boolean) {
+        isVolumeNormalized = enabled
         managerScope.launch(Dispatchers.IO) {
-            prefs.edit().putBoolean("stop_bass", stop).apply()
+            prefs.edit().putBoolean("vol_norm", enabled).apply()
         }
-        try {
-            bassBoost?.enabled = !stop && isEqEnabled
-            if (stop && eqBandsCount > 0) {
-                equalizer?.setBandLevel(0.toShort(), eqMinLevel.toShort())
-                eqBandLevels[0] = eqMinLevel
+        applyVolumeNormalization()
+    }
+
+    private fun applyVolumeNormalization() {
+        val song = currentSong
+        if (!isVolumeNormalized || song == null) {
+            if (volumeBoostLevel <= 100f) {
+                try { loudnessEnhancer?.enabled = false } catch (_: Exception) {}
             }
+            player.volume = 1.0f
+            return
+        }
+
+        val targetDb = if (song.replayGainTrackDb != 0.0f) song.replayGainTrackDb else -3.5f
+        if (targetDb < 0) {
+            val linear = 10f.pow(targetDb / 20f).coerceIn(0.2f, 1.0f)
+            player.volume = linear
+            try {
+                loudnessEnhancer?.setTargetGain(0)
+            } catch (_: Exception) {}
+        } else {
+            player.volume = 1.0f
+            val gainMb = (targetDb * 100).toInt().coerceIn(0, 800)
+            try {
+                loudnessEnhancer?.setTargetGain(gainMb)
+                loudnessEnhancer?.enabled = true
+            } catch (_: Exception) {}
+        }
+    }
+
+    // Mono Audio Channel Mixing
+    fun toggleMonoAudio(enabled: Boolean) {
+        isMonoAudio = enabled
+        managerScope.launch(Dispatchers.IO) {
+            prefs.edit().putBoolean("mono", enabled).apply()
+        }
+        applyMonoAudio(enabled)
+    }
+
+    private fun applyMonoAudio(enabled: Boolean) {
+        try {
+            val matrix = if (enabled) {
+                ChannelMixingMatrix(2, 2, floatArrayOf(0.5f, 0.5f, 0.5f, 0.5f))
+            } else {
+                ChannelMixingMatrix(2, 2, floatArrayOf(1.0f, 0.0f, 0.0f, 1.0f))
+            }
+            channelMixingAudioProcessor.putChannelMixingMatrix(matrix)
         } catch (_: Exception) {}
     }
 
-    fun toggleRemoveVocals(remove: Boolean) {
-        isRemoveVocals = remove
-        managerScope.launch(Dispatchers.IO) {
-            prefs.edit().putBoolean("remove_vocals", remove).apply()
-        }
-        try {
-            if (remove && eqBandsCount >= 3) {
-                val mid = eqBandsCount / 2
-                equalizer?.setBandLevel(mid.toShort(), eqMinLevel.toShort())
-                eqBandLevels[mid] = eqMinLevel
-            }
-        } catch (_: Exception) {}
-    }
-
+    // Audio Output Routing
     fun setAudioOutputRouting(output: String) {
         selectedAudioOutput = output
         managerScope.launch(Dispatchers.IO) {
@@ -831,19 +562,54 @@ class MusicManager(private val context: Context) {
         } catch (_: Exception) {}
     }
 
+    // Audio Transition Fades
+    fun triggerFadeIn(durationMs: Long = 1000L) {
+        fadeJob?.cancel()
+        fadeJob = managerScope.launch {
+            player.volume = 0f
+            val steps = 25
+            val stepDelay = (durationMs / steps).coerceAtLeast(15L)
+            for (i in 1..steps) {
+                delay(stepDelay)
+                player.volume = i.toFloat() / steps
+            }
+            player.volume = 1.0f
+        }
+    }
+
+    private fun startCrossfadeOut(fadeDurationMs: Long) {
+        fadeJob?.cancel()
+        fadeJob = managerScope.launch {
+            val steps = 20
+            val stepDelay = (fadeDurationMs / steps).coerceAtLeast(20L)
+            val initialVol = player.volume
+            for (i in steps downTo 0) {
+                player.volume = initialVol * (i.toFloat() / steps)
+                delay(stepDelay)
+            }
+            player.volume = 0f
+        }
+    }
+
     private fun startPositionTracker() {
         managerScope.launch {
             while (true) {
                 if (isPlaying) {
                     currentPosition = player.currentPosition.coerceAtLeast(0L)
+                    currentSong?.let { song ->
+                        saveSongPosition(song.id, currentPosition)
+                    }
 
                     // Crossfade Audio Monitor
                     if (isCrossfadeEnabled && duration > 0L) {
                         val remainingMs = duration - currentPosition
-                        val fadeWindowMs = (crossfadeDuration * 1000).toLong()
+                        val fadeWindowMs = (crossfadeDuration * 1000).toLong().coerceIn(1000L, 12000L)
                         if (remainingMs in 1..fadeWindowMs && !isFadingOutForCrossfade) {
                             isFadingOutForCrossfade = true
                             startCrossfadeOut(fadeWindowMs)
+                        }
+                        if (remainingMs <= 350L && player.hasNextMediaItem()) {
+                            playNext()
                         }
                     }
                 }
@@ -862,15 +628,6 @@ class MusicManager(private val context: Context) {
         }
     }
 
-    fun setHardwareVolume(volFraction: Float) {
-        currentVolume = volFraction.coerceIn(0f, 1f)
-        try {
-            val max = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
-            audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, (currentVolume * max).toInt(), 0)
-        } catch (_: Exception) {}
-    }
-
-    // MediaStore Audio Ingestion Engine
     fun scanStorage() {
         managerScope.launch(Dispatchers.IO) {
             val songList = ArrayList<Song>()
@@ -935,7 +692,6 @@ class MusicManager(private val context: Context) {
                         val customAlbum = prefs.getString("custom_album_$id", album) ?: album
                         val customDate = prefs.getString("custom_date_$id", dateAdded.toString()) ?: ""
 
-                        // Identify Audio Quality & ReplayGain Flags from Extension
                         val ext = file.extension.uppercase(Locale.getDefault())
                         val format = when (ext) {
                             "FLAC" -> "FLAC"
@@ -1020,7 +776,7 @@ class MusicManager(private val context: Context) {
         }
     }
 
-    fun playSong(song: Song, queue: List<Song>, section: String) {
+    fun playSong(song: Song, queue: List<Song>, section: String, initialPositionMs: Long = 0L) {
         currentSectionName = section
         currentSong = song
         playbackQueue.clear()
@@ -1043,11 +799,16 @@ class MusicManager(private val context: Context) {
             val index = queue.indexOfFirst { it.id == song.id }.coerceAtLeast(0)
 
             withContext(Dispatchers.Main.immediate) {
-                player.setMediaItems(mediaItems, index, 0L)
+                player.setMediaItems(mediaItems, index, initialPositionMs)
                 player.prepare()
+                if (isFadeOnStart) {
+                    triggerFadeIn(1200L)
+                } else {
+                    player.volume = 1.0f
+                }
                 player.play()
                 recordSongPlayed(song)
-                applyReplayGainCompensation(song)
+                applyVolumeNormalization()
             }
         }
     }
@@ -1097,7 +858,13 @@ class MusicManager(private val context: Context) {
     }
 
     fun togglePlayPause() {
-        if (player.isPlaying) player.pause() else player.play()
+        if (player.isPlaying) {
+            currentSong?.let { saveSongPosition(it.id, player.currentPosition) }
+            player.pause()
+        } else {
+            if (isFadeOnStart) triggerFadeIn(1000L)
+            player.play()
+        }
     }
 
     fun playNext() {
@@ -1119,6 +886,7 @@ class MusicManager(private val context: Context) {
     fun seekTo(positionMs: Long) {
         currentPosition = positionMs.coerceIn(0L, duration)
         player.seekTo(currentPosition)
+        currentSong?.let { saveSongPosition(it.id, currentPosition) }
     }
 
     fun toggleRepeat() {
@@ -1221,11 +989,26 @@ class MusicManager(private val context: Context) {
         }
     }
 
+    // Resume First File Logic
+    fun saveSongPosition(songId: Long, positionMs: Long) {
+        prefs.edit().putLong("last_pos_$songId", positionMs).putLong("last_active_song_id", songId).apply()
+    }
+
+    fun getSavedPosition(songId: Long): Long {
+        return prefs.getLong("last_pos_$songId", 0L)
+    }
+
     fun resumeLastPlayed() {
-        val candidate = historySongs.firstOrNull() ?: allSongs.firstOrNull()
-        if (candidate != null) {
-            playSong(candidate, allSongs, "Storage")
+        val lastSavedId = prefs.getLong("last_active_song_id", -1L)
+        val candidate = allSongs.find { it.id == lastSavedId } ?: historySongs.firstOrNull() ?: allSongs.firstOrNull() ?: return
+
+        val startPosition = if (isResumeFirstOnly) {
+            getSavedPosition(candidate.id)
+        } else {
+            0L
         }
+
+        playSong(candidate, allSongs, "Storage", initialPositionMs = startPosition)
     }
 
     fun createPlaylist(name: String) {
@@ -1578,6 +1361,135 @@ class MusicManager(private val context: Context) {
             val moved = customPlaylists.removeAt(fromIndex)
             customPlaylists.add(toIndex, moved)
             savePlaylists()
+        }
+    }
+
+    fun getCachedAlbumArt(songId: Long): Bitmap? = memoryCache.get(songId)
+
+    suspend fun loadAlbumArtAsync(song: Song): Bitmap? = withContext(Dispatchers.IO) {
+        val cached = memoryCache.get(song.id)
+        if (cached != null) return@withContext cached
+
+        var resultBitmap: Bitmap? = null
+
+        if (song.customCoverPath != null) {
+            val file = File(song.customCoverPath)
+            if (file.exists()) {
+                val opts = BitmapFactory.Options().apply {
+                    inJustDecodeBounds = true
+                    BitmapFactory.decodeFile(file.absolutePath, this)
+                    inSampleSize = calculateInSampleSize(this, 256, 256)
+                    inJustDecodeBounds = false
+                    inPreferredConfig = Bitmap.Config.RGB_565
+                }
+                resultBitmap = BitmapFactory.decodeFile(file.absolutePath, opts)
+            }
+        }
+
+        if (resultBitmap == null) {
+            try {
+                val sArtworkUri = Uri.parse("content://media/external/audio/albumart")
+                val uri = ContentUris.withAppendedId(sArtworkUri, song.albumId)
+                context.contentResolver.openInputStream(uri)?.use { stream ->
+                    val opts = BitmapFactory.Options().apply {
+                        inSampleSize = 2
+                        inPreferredConfig = Bitmap.Config.RGB_565
+                    }
+                    resultBitmap = BitmapFactory.decodeStream(stream, null, opts)
+                }
+            } catch (_: Exception) {}
+        }
+
+        if (resultBitmap == null) {
+            try {
+                val retriever = MediaMetadataRetriever()
+                retriever.setDataSource(context, song.uri)
+                val artBytes = retriever.embeddedPicture
+                if (artBytes != null) {
+                    val opts = BitmapFactory.Options().apply {
+                        inJustDecodeBounds = true
+                        BitmapFactory.decodeByteArray(artBytes, 0, artBytes.size, this)
+                        inSampleSize = calculateInSampleSize(this, 256, 256)
+                        inJustDecodeBounds = false
+                        inPreferredConfig = Bitmap.Config.RGB_565
+                    }
+                    resultBitmap = BitmapFactory.decodeByteArray(artBytes, 0, artBytes.size, opts)
+                }
+                retriever.release()
+            } catch (_: Exception) {}
+        }
+
+        val finalBmp = resultBitmap
+        if (finalBmp != null) {
+            memoryCache.put(song.id, finalBmp)
+            return@withContext finalBmp
+        }
+        null
+    }
+
+    private fun calculateInSampleSize(options: BitmapFactory.Options, reqWidth: Int, reqHeight: Int): Int {
+        val (height: Int, width: Int) = options.outHeight to options.outWidth
+        var inSampleSize = 1
+        if (height > reqHeight || width > reqWidth) {
+            val halfHeight: Int = height / 2
+            val halfWidth: Int = width / 2
+            while (halfHeight / inSampleSize >= reqHeight && halfWidth / inSampleSize >= reqWidth) {
+                inSampleSize *= 2
+            }
+        }
+        return inSampleSize
+    }
+
+    fun updateNotification() {
+        val song = currentSong ?: return
+        val art = getCachedAlbumArt(song.id)
+
+        val launchIntent = Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
+        val contentPendingIntent = PendingIntent.getActivity(
+            context, 0, launchIntent,
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+
+        val playPauseIcon = if (isPlaying) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play
+        val playPauseTitle = if (isPlaying) "Pause" else "Play"
+
+        val prevIntent = PendingIntent.getBroadcast(
+            context, 1, Intent("ACTION_PREV"),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+        val playPauseIntent = PendingIntent.getBroadcast(
+            context, 2, Intent(if (isPlaying) "ACTION_PAUSE" else "ACTION_PLAY"),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+        val nextIntent = PendingIntent.getBroadcast(
+            context, 3, Intent("ACTION_NEXT"),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+
+        val builder = NotificationCompat.Builder(context, MediaPlaybackService.NOTIF_CHANNEL_ID)
+            .setSmallIcon(android.R.drawable.ic_media_play)
+            .setContentTitle(song.title)
+            .setContentText("${formatFileSize(song.size)} • ${if (song.artist.isNotBlank()) song.artist else "Melovish"}")
+            .setContentIntent(contentPendingIntent)
+            .setColor(accentColor.toArgb())
+            .setColorized(true)
+            .setOngoing(isPlaying)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .addAction(android.R.drawable.ic_media_previous, "Previous", prevIntent)
+            .addAction(playPauseIcon, playPauseTitle, playPauseIntent)
+            .addAction(android.R.drawable.ic_media_next, "Next", nextIntent)
+
+        if (art != null) {
+            builder.setLargeIcon(art)
+        }
+
+        try {
+            notificationManager.notify(MediaPlaybackService.NOTIF_ID, builder.build())
+        } catch (e: Exception) {
+            e.printStackTrace()
         }
     }
 
