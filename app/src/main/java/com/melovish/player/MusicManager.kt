@@ -85,7 +85,7 @@ class MusicManager(private val context: Context) {
     private val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
     private val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
-    // Mono Audio Hardware Channel Mixer Processor
+    // Hardware Audio Processor for Mono Audio & Center-Vocal Cancellation
     private val channelMixingAudioProcessor = ChannelMixingAudioProcessor()
 
     private val renderersFactory = object : DefaultRenderersFactory(context) {
@@ -214,7 +214,6 @@ class MusicManager(private val context: Context) {
     val eqPresetNames = mutableStateListOf<String>()
     var selectedEqPreset by mutableStateOf(prefs.getString("selected_eq_preset", "Original") ?: "Original")
 
-    // Standard DSP Sound Preset Curves (-1500 to +1500 mB)
     val standardPresetCurves = mapOf(
         "Original" to listOf(0, 0, 0, 0, 0),
         "Flat" to listOf(0, 0, 0, 0, 0),
@@ -262,7 +261,7 @@ class MusicManager(private val context: Context) {
         setupPlayerListener()
         startPositionTracker()
         syncDeviceVolume()
-        applyMonoAudio(isMonoAudio)
+        applyChannelMixing()
         registerAudioDeviceCallback()
     }
 
@@ -412,10 +411,6 @@ class MusicManager(private val context: Context) {
         })
     }
 
-    /**
-     * Binds Equalizer, Bass Boost, Virtualizer, and Loudness Enhancer.
-     * Releases prior stale effect sessions to ensure real-time response.
-     */
     fun bindHardwareAudioEffects(sessionId: Int) {
         if (sessionId == C.AUDIO_SESSION_ID_UNSET || sessionId == 0) return
         if (boundAudioSessionId == sessionId && equalizer != null) {
@@ -427,7 +422,7 @@ class MusicManager(private val context: Context) {
             releaseAudioEffects()
             boundAudioSessionId = sessionId
 
-            // Equalizer (Priority 0 for application-level access)
+            // Hardware Equalizer
             equalizer = Equalizer(0, sessionId).apply {
                 enabled = isEqEnabled
                 val range = bandLevelRange
@@ -444,19 +439,19 @@ class MusicManager(private val context: Context) {
                 }
             }
 
-            // Bass Boost
+            // Hardware Bass Boost
             bassBoost = BassBoost(0, sessionId).apply {
                 enabled = !isStopBass && isEqEnabled
                 setStrength((bassBoostPercent * 10).toShort().coerceIn(0, 1000))
             }
 
-            // 3D Virtualizer
+            // Hardware 3D Virtualizer
             virtualizer = Virtualizer(0, sessionId).apply {
                 enabled = isEqEnabled
                 setStrength((virtualizerPercent * 10).toShort().coerceIn(0, 1000))
             }
 
-            // Loudness Enhancer
+            // Hardware Loudness Enhancer
             loudnessEnhancer = LoudnessEnhancer(sessionId).apply {
                 val boostGainMb = (((volumeBoostLevel - 100f) / 100f) * 2000f).toInt().coerceIn(0, 3000)
                 setTargetGain(boostGainMb)
@@ -464,6 +459,7 @@ class MusicManager(private val context: Context) {
             }
 
             applyVolumeNormalization()
+            applyChannelMixing()
         } catch (e: Exception) {
             e.printStackTrace()
         }
@@ -488,6 +484,7 @@ class MusicManager(private val context: Context) {
             loudnessEnhancer?.enabled = volumeBoostLevel > 100f || isVolumeNormalized
 
             applyVolumeNormalization()
+            applyChannelMixing()
         } catch (e: Exception) {
             e.printStackTrace()
         }
@@ -542,8 +539,8 @@ class MusicManager(private val context: Context) {
         }
 
         val curve = standardPresetCurves[presetName] ?: standardPresetCurves["Flat"] ?: listOf(0, 0, 0, 0, 0)
-        for (i in 0 until eqBandsCount.coerceAtMost(curve.size)) {
-            val lvl = curve[i]
+        for (i in 0 until eqBandsCount) {
+            val lvl = if (i < curve.size) curve[i] else 0
             eqBandLevels[i] = lvl
             prefs.edit().putInt("eq_band_$i", lvl).apply()
             try {
@@ -593,6 +590,45 @@ class MusicManager(private val context: Context) {
             virtualizer?.enabled = true
             virtualizer?.setStrength((percent * 10).toShort().coerceIn(0, 1000))
         } catch (_: Exception) {}
+    }
+
+    fun toggleStopBass(stop: Boolean) {
+        isStopBass = stop
+        managerScope.launch(Dispatchers.IO) {
+            prefs.edit().putBoolean("stop_bass", stop).apply()
+        }
+        try {
+            bassBoost?.enabled = !stop && isEqEnabled
+            if (stop && eqBandsCount > 0) {
+                equalizer?.setBandLevel(0.toShort(), eqMinLevel.toShort())
+                eqBandLevels[0] = eqMinLevel
+            } else if (!stop && eqBandsCount > 0) {
+                val saved = prefs.getInt("eq_band_0", 0)
+                equalizer?.setBandLevel(0.toShort(), saved.toShort())
+                eqBandLevels[0] = saved
+            }
+        } catch (_: Exception) {}
+    }
+
+    fun toggleRemoveVocals(remove: Boolean) {
+        isRemoveVocals = remove
+        managerScope.launch(Dispatchers.IO) {
+            prefs.edit().putBoolean("remove_vocals", remove).apply()
+        }
+        applyChannelMixing()
+
+        if (remove && isEqEnabled && eqBandsCount >= 3) {
+            val midBand = eqBandsCount / 2
+            try {
+                equalizer?.setBandLevel(midBand.toShort(), (eqMinLevel * 0.7f).toInt().toShort())
+            } catch (_: Exception) {}
+        } else if (!remove && isEqEnabled && eqBandsCount >= 3) {
+            val midBand = eqBandsCount / 2
+            val saved = eqBandLevels[midBand] ?: 0
+            try {
+                equalizer?.setBandLevel(midBand.toShort(), saved.toShort())
+            } catch (_: Exception) {}
+        }
     }
 
     fun setVolumeBoost(level: Float) {
@@ -662,15 +698,28 @@ class MusicManager(private val context: Context) {
         managerScope.launch(Dispatchers.IO) {
             prefs.edit().putBoolean("mono", enabled).apply()
         }
-        applyMonoAudio(enabled)
+        applyChannelMixing()
     }
 
-    private fun applyMonoAudio(enabled: Boolean) {
+    /**
+     * Applies real-time channel mixing to ExoPlayer's hardware sink.
+     * When Remove Vocals is enabled, out-of-phase center cancellation strips vocals to leave the instrumental.
+     */
+    private fun applyChannelMixing() {
         try {
-            val matrix = if (enabled) {
-                ChannelMixingMatrix(2, 2, floatArrayOf(0.5f, 0.5f, 0.5f, 0.5f))
-            } else {
-                ChannelMixingMatrix(2, 2, floatArrayOf(1.0f, 0.0f, 0.0f, 1.0f))
+            val matrix = when {
+                isRemoveVocals -> {
+                    // Out-of-phase center-channel cancellation (L - R)
+                    ChannelMixingMatrix(2, 2, floatArrayOf(0.707f, -0.707f, -0.707f, 0.707f))
+                }
+                isMonoAudio -> {
+                    // Mono audio channel summing (L + R) / 2
+                    ChannelMixingMatrix(2, 2, floatArrayOf(0.5f, 0.5f, 0.5f, 0.5f))
+                }
+                else -> {
+                    // Standard Stereo
+                    ChannelMixingMatrix(2, 2, floatArrayOf(1.0f, 0.0f, 0.0f, 1.0f))
+                }
             }
             channelMixingAudioProcessor.putChannelMixingMatrix(matrix)
         } catch (_: Exception) {}

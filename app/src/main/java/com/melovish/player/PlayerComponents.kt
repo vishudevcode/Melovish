@@ -211,119 +211,6 @@ fun GlassmorphicFolderIcon(folderColor: Color, modifier: Modifier = Modifier) {
     )
 }
 
-// 9 Preset Colors + 10th Rainbow Wheel Dialog
-@Composable
-fun FolderColorDialog(
-    folderName: String,
-    currentColor: Color,
-    isDark: Boolean,
-    onColorSelected: (Color) -> Unit,
-    onOpenRainbowPicker: () -> Unit,
-    onDismiss: () -> Unit
-) {
-    val preset9Colors = remember {
-        listOf(
-            Color(0xFFF59E0B), Color(0xFF00B4D8), Color(0xFF10B981), Color(0xFF39FF14), Color(0xFFFF2A85),
-            Color(0xFFEF4444), Color(0xFF8B5CF6), Color(0xFF3B82F6), Color(0xFFFF6B35)
-        )
-    }
-
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color.Transparent)
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null
-            ) { onDismiss() },
-        contentAlignment = Alignment.BottomCenter
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
-                .background(if (isDark) Color(0xFF1E293B) else Color.White)
-                .clickable(enabled = false) {}
-                .padding(22.dp)
-        ) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(
-                    text = "Folder Color: $folderName",
-                    color = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A),
-                    fontSize = 17.sp,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Spacer(modifier = Modifier.height(14.dp))
-                Box(
-                    modifier = Modifier.size(68.dp).clip(RoundedCornerShape(16.dp)).background(if (isDark) Color(0x14FFFFFF) else Color(0xFFF8FAFC)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    GlassmorphicFolderIcon(folderColor = currentColor, modifier = Modifier.size(52.dp))
-                }
-                Spacer(modifier = Modifier.height(16.dp))
-
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        preset9Colors.take(5).forEach { color ->
-                            Box(
-                                modifier = Modifier
-                                    .size(38.dp)
-                                    .clip(CircleShape)
-                                    .background(color)
-                                    .border(2.dp, if (currentColor == color) Color.White else Color.Transparent, CircleShape)
-                                    .clickable {
-                                        onColorSelected(color)
-                                        onDismiss()
-                                    }
-                            )
-                        }
-                    }
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                        preset9Colors.drop(5).take(4).forEach { color ->
-                            Box(
-                                modifier = Modifier
-                                    .size(38.dp)
-                                    .clip(CircleShape)
-                                    .background(color)
-                                    .border(2.dp, if (currentColor == color) Color.White else Color.Transparent, CircleShape)
-                                    .clickable {
-                                        onColorSelected(color)
-                                        onDismiss()
-                                    }
-                            )
-                        }
-                        Box(
-                            modifier = Modifier
-                                .size(38.dp)
-                                .clip(CircleShape)
-                                .background(Brush.sweepGradient(listOf(Color.Red, Color.Yellow, Color.Green, Color.Cyan, Color.Blue, Color.Magenta, Color.Red)))
-                                .border(2.dp, Color.White, CircleShape)
-                                .clickable {
-                                    onDismiss()
-                                    onOpenRainbowPicker()
-                                },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Box(modifier = Modifier.size(12.dp).clip(CircleShape).background(Color.White))
-                        }
-                    }
-                }
-                Spacer(modifier = Modifier.height(20.dp))
-                Button(
-                    onClick = { onDismiss() },
-                    colors = ButtonDefaults.buttonColors(containerColor = if (isDark) Color(0x22FFFFFF) else Color(0xFFF1F5F9)),
-                    shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier.fillMaxWidth().height(48.dp)
-                ) {
-                    Text("Cancel", color = if (isDark) Color.White else Color(0xFF0F172A), fontWeight = FontWeight.Bold)
-                }
-            }
-        }
-    }
-}
-
 // Minimalist Vector Avatar
 @Composable
 fun DefaultProfileAvatar(modifier: Modifier = Modifier, backgroundColor: Color = Color(0xFF030712)) {
@@ -420,8 +307,7 @@ suspend fun extractMaterialYouPaletteAsync(bitmap: Bitmap?, isDarkMode: Boolean,
     }
 }
 
-// 100% MATHEMATICALLY CENTERED PROGRESS BAR
-// Eliminates Material3 Slider thumb-offset. Line and ball share the exact same centerY coordinates.
+// 100% Mathematically Centered Progress Bar
 @Composable
 fun IsolatedScrubberLeaf(
     currentPositionMs: Long,
@@ -477,7 +363,6 @@ fun IsolatedScrubberLeaf(
                     .fillMaxWidth()
                     .height(32.dp)
             ) {
-                // Guaranteed 100% mathematical vertical and horizontal center
                 val centerY = size.height / 2f
                 val strokeWidthPx = 3.dp.toPx()
                 val thumbRadiusPx = 5.dp.toPx()
@@ -487,7 +372,6 @@ fun IsolatedScrubberLeaf(
                 val trackWidth = (trackEnd - trackStart).coerceAtLeast(1f)
                 val thumbX = trackStart + currentFraction * trackWidth
 
-                // 1. Inactive Track (Full-length Neutral Grey)
                 drawLine(
                     color = inactiveTrackColor,
                     start = Offset(trackStart, centerY),
@@ -496,7 +380,6 @@ fun IsolatedScrubberLeaf(
                     cap = StrokeCap.Round
                 )
 
-                // 2. Active Track (Accent Color from trackStart to thumbX)
                 if (thumbX > trackStart) {
                     drawLine(
                         color = accentColor,
@@ -507,7 +390,6 @@ fun IsolatedScrubberLeaf(
                     )
                 }
 
-                // 3. Thumb Ball (Drawn on the exact same centerY center point)
                 drawCircle(
                     color = accentColor,
                     radius = thumbRadiusPx,
@@ -657,7 +539,7 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                 .padding(horizontal = 24.dp)
                 .padding(top = 10.dp, bottom = 14.dp)
         ) {
-            // Upper Half: 3D Tilt Art View
+            // Upper Half: 3D Tilt Artwork View
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -925,6 +807,7 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
             }
         }
 
+        // Shared Unified Equalizer Modal Opened from 3-Dots Menu
         if (showEqualizerSheet) EqualizerSheet(manager = manager, onDismiss = { showEqualizerSheet = false })
         if (showSpeedDialog) MagneticSpeedDialog(manager = manager, onDismiss = { showSpeedDialog = false })
         if (showSleepDialog) SleepTimerDialog(manager = manager, onDismiss = { showSleepDialog = false })
@@ -935,11 +818,12 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
     }
 }
 
-// Pro Equalizer Sheet
+// Unified Equalizer Modal Sheet Shared by Settings Page & Music Player
 @Composable
 fun EqualizerSheet(manager: MusicManager, onDismiss: () -> Unit) {
-    val accent = manager.accentColor
     val isDark = manager.isDarkMode
+    val textColor = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A)
+    val accent = manager.accentColor
 
     Box(
         modifier = Modifier
@@ -954,114 +838,288 @@ fun EqualizerSheet(manager: MusicManager, onDismiss: () -> Unit) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .fillMaxHeight(0.85f)
+                .fillMaxHeight(0.88f)
                 .clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
                 .background(if (isDark) Color(0xFF1E293B) else Color.White)
                 .clickable(enabled = false) {}
                 .padding(22.dp)
         ) {
-            LazyColumn(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                item(key = "eq_header", contentType = "header") {
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                        Text("Equalizer & Audio FX", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A))
-                        Button(onClick = { onDismiss() }, shape = RoundedCornerShape(10.dp), colors = ButtonDefaults.buttonColors(containerColor = accent)) {
-                            Text("Done", color = Color.White, fontWeight = FontWeight.Bold)
-                        }
+            Column(modifier = Modifier.fillMaxSize()) {
+                // Top Header with Preset and Save Button
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text("Equalizer", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = textColor)
+                        Text(manager.selectedEqPreset, fontSize = 12.sp, color = accent, fontWeight = FontWeight.Bold)
                     }
-                }
-
-                item(key = "master_eq", contentType = "card") {
-                    Row(
-                        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(if (isDark) Color(0x14FFFFFF) else Color(0xFFF1F5F9)).padding(16.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                    Button(
+                        onClick = onDismiss,
+                        shape = RoundedCornerShape(10.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = accent)
                     ) {
-                        Column {
-                            Text("Master Equalizer", color = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A), fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                            Text(if (manager.isEqEnabled) "Hardware audio processor enabled" else "Processor bypassed", color = Color(0xFF64748B), fontSize = 12.sp)
-                        }
-                        Switch(checked = manager.isEqEnabled, onCheckedChange = { manager.toggleEqualizer(it) })
+                        Text("Save", color = Color.White, fontWeight = FontWeight.Bold)
                     }
                 }
 
-                item(key = "eq_presets", contentType = "presets_row") {
-                    Text("Sound Presets", color = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A), fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                    Spacer(modifier = Modifier.height(8.dp))
-                    LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        items(manager.eqPresetNames, key = { it }) { preset ->
-                            val isSel = manager.selectedEqPreset == preset
-                            Box(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .background(if (isSel) accent else if (isDark) Color(0x22FFFFFF) else Color(0xFFF1F5F9))
-                                    .clickable { manager.applyEqPreset(preset) }
-                                    .padding(horizontal = 16.dp, vertical = 8.dp)
-                            ) {
-                                Text(preset, color = if (isSel) Color.White else if (isDark) Color.White else Color(0xFF0F172A), fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.height(14.dp))
+
+                LazyColumn(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    // Sound Presets Row
+                    item {
+                        Text("Sound Presets", color = textColor, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                        Spacer(modifier = Modifier.height(8.dp))
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            items(manager.eqPresetNames, key = { it }) { preset ->
+                                val isSel = manager.selectedEqPreset == preset
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .background(if (isSel) accent else if (isDark) Color(0x22FFFFFF) else Color(0xFFF1F5F9))
+                                        .clickable { manager.applyEqPreset(preset) }
+                                        .padding(horizontal = 14.dp, vertical = 8.dp)
+                                ) {
+                                    Text(
+                                        text = preset,
+                                        color = if (isSel) Color.White else textColor,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
                             }
                         }
                     }
-                }
 
-                item(key = "freq_bands", contentType = "bands_group") {
-                    Text("Frequency Response (-15dB to +15dB)", color = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A), fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                    Spacer(modifier = Modifier.height(10.dp))
-                    Column(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(if (isDark) Color(0x14FFFFFF) else Color(0xFFF8FAFC)).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        for (i in 0 until manager.eqBandsCount) {
-                            val freq = manager.eqCenterFreqs[i] ?: (60 * (i + 1) * (i + 1))
-                            val label = if (freq >= 1000) "${freq / 1000} kHz" else "$freq Hz"
-                            val level = manager.eqBandLevels[i] ?: 0
-                            val levelDb = level / 100
-                            val levelString = if (levelDb > 0) "+$levelDb dB" else "$levelDb dB"
+                    // Multi-band Graphic EQ in Vertical Lines
+                    item {
+                        Text("Frequency Response (-15dB to +15dB)", color = textColor, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                        Spacer(modifier = Modifier.height(10.dp))
 
-                            Column {
-                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                    Text(label, color = if (isDark) Color(0xFFE2E8F0) else Color(0xFF334155), fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                                    Text(levelString, color = accent, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(210.dp)
+                                .clip(RoundedCornerShape(18.dp))
+                                .background(if (isDark) Color(0x14FFFFFF) else Color(0xFFF8FAFC))
+                                .padding(horizontal = 12.dp, vertical = 10.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxSize(),
+                                horizontalArrangement = Arrangement.SpaceEvenly,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                for (i in 0 until manager.eqBandsCount) {
+                                    val freq = manager.eqCenterFreqs[i] ?: (60 * (i + 1) * (i + 1))
+                                    val freqLabel = if (freq >= 1000) "${freq / 1000}k" else "$freq"
+                                    val level = manager.eqBandLevels[i] ?: 0
+                                    val levelDb = level / 100
+
+                                    VerticalBandFader(
+                                        level = level,
+                                        minLevel = manager.eqMinLevel,
+                                        maxLevel = manager.eqMaxLevel,
+                                        dbLabel = if (levelDb > 0) "+$levelDb" else "$levelDb",
+                                        freqLabel = freqLabel,
+                                        accentColor = accent,
+                                        isDark = isDark,
+                                        onLevelChange = { newLevel ->
+                                            manager.setEqBandLevel(i, newLevel)
+                                        }
+                                    )
                                 }
-                                Slider(
-                                    value = level.toFloat(),
-                                    onValueChange = { manager.setEqBandLevel(i, it.toInt()) },
-                                    valueRange = manager.eqMinLevel.toFloat()..manager.eqMaxLevel.toFloat(),
-                                    colors = SliderDefaults.colors(thumbColor = accent, activeTrackColor = accent)
+                            }
+                        }
+                    }
+
+                    // Bass Boost & Virtualizer
+                    item {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(18.dp))
+                                .background(if (isDark) Color(0x14FFFFFF) else Color(0xFFF8FAFC))
+                                .padding(16.dp)
+                        ) {
+                            Text("Bass Boost: ${manager.bassBoostPercent}%", color = textColor, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                            Slider(
+                                value = manager.bassBoostPercent.toFloat(),
+                                onValueChange = { manager.setBassBoost(it.toInt()) },
+                                valueRange = 0f..100f,
+                                colors = SliderDefaults.colors(thumbColor = accent, activeTrackColor = accent)
+                            )
+
+                            Spacer(modifier = Modifier.height(10.dp))
+
+                            Text("3D Surround (Virtualizer): ${manager.virtualizerPercent}%", color = textColor, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                            Slider(
+                                value = manager.virtualizerPercent.toFloat(),
+                                onValueChange = { manager.setVirtualizer(it.toInt()) },
+                                valueRange = 0f..100f,
+                                colors = SliderDefaults.colors(thumbColor = accent, activeTrackColor = accent)
+                            )
+                        }
+                    }
+
+                    // Remove Vocals & Stop Bass Controls
+                    item {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(18.dp))
+                                .background(if (isDark) Color(0x14FFFFFF) else Color(0xFFF8FAFC))
+                                .padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(14.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text("Remove Vocals", color = textColor, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                                    Text("Cancels center vocals so you only hear music.", color = Color(0xFF64748B), fontSize = 11.sp)
+                                }
+                                Switch(
+                                    checked = manager.isRemoveVocals,
+                                    onCheckedChange = { manager.toggleRemoveVocals(it) }
+                                )
+                            }
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text("Stop Bass (Full Cut)", color = textColor, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                                    Text("Cuts sub-bass frequencies.", color = Color(0xFF64748B), fontSize = 11.sp)
+                                }
+                                Switch(
+                                    checked = manager.isStopBass,
+                                    onCheckedChange = { manager.toggleStopBass(it) }
                                 )
                             }
                         }
                     }
                 }
 
-                item(key = "bass_virtualizer", contentType = "acoustics_group") {
-                    Text("Acoustics & Depth", color = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A), fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                    Spacer(modifier = Modifier.height(10.dp))
-                    Column(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(if (isDark) Color(0x14FFFFFF) else Color(0xFFF8FAFC)).padding(16.dp)) {
-                        Text("Bass Boost: ${manager.bassBoostPercent}%", color = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A), fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                        Slider(value = manager.bassBoostPercent.toFloat(), onValueChange = { manager.setBassBoost(it.toInt()) }, valueRange = 0f..100f, colors = SliderDefaults.colors(thumbColor = accent, activeTrackColor = accent))
-                        Spacer(modifier = Modifier.height(10.dp))
-                        Text("3D Surround (Virtualizer): ${manager.virtualizerPercent}%", color = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A), fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                        Slider(value = manager.virtualizerPercent.toFloat(), onValueChange = { manager.setVirtualizer(it.toInt()) }, valueRange = 0f..100f, colors = SliderDefaults.colors(thumbColor = accent, activeTrackColor = accent))
-                    }
-                }
-
-                item(key = "switches", contentType = "switches_group") {
-                    Column(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(if (isDark) Color(0x14FFFFFF) else Color(0xFFF8FAFC)).padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                            Column {
-                                Text("Stop Bass (Full Cut)", color = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A), fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                                Text("Completely cuts sub-bass frequencies", color = Color(0xFF64748B), fontSize = 11.sp)
-                            }
-                            Switch(checked = manager.isStopBass, onCheckedChange = { manager.toggleStopBass(it) })
-                        }
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                            Column {
-                                Text("Remove Vocals (Center Cut)", color = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A), fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                                Text("Attenuates vocal center frequency bands", color = Color(0xFF64748B), fontSize = 11.sp)
-                            }
-                            Switch(checked = manager.isRemoveVocals, onCheckedChange = { manager.toggleRemoveVocals(it) })
-                        }
-                    }
+                // Bottom Close Button
+                Spacer(modifier = Modifier.height(12.dp))
+                Button(
+                    onClick = onDismiss,
+                    modifier = Modifier.fillMaxWidth().height(48.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = if (isDark) Color(0x22FFFFFF) else Color(0xFFF1F5F9)),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text("Close", color = textColor, fontWeight = FontWeight.Bold)
                 }
             }
         }
+    }
+}
+
+// Vertical Line Mixer Slider for Frequency Bands
+@Composable
+fun VerticalBandFader(
+    level: Int,
+    minLevel: Int,
+    maxLevel: Int,
+    dbLabel: String,
+    freqLabel: String,
+    accentColor: Color,
+    isDark: Boolean,
+    onLevelChange: (Int) -> Unit
+) {
+    val totalRange = (maxLevel - minLevel).coerceAtLeast(1)
+    val fraction = ((level - minLevel).toFloat() / totalRange.toFloat()).coerceIn(0f, 1f)
+
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier.width(42.dp)
+    ) {
+        Text(
+            text = dbLabel,
+            fontSize = 10.sp,
+            fontWeight = FontWeight.Bold,
+            color = accentColor
+        )
+
+        Spacer(modifier = Modifier.height(4.dp))
+
+        Box(
+            modifier = Modifier
+                .width(36.dp)
+                .height(140.dp)
+                .pointerInput(minLevel, maxLevel) {
+                    awaitEachGesture {
+                        val down = awaitFirstDown(requireUnconsumed = false)
+                        val topY = 8.dp.toPx()
+                        val bottomY = size.height - 8.dp.toPx()
+                        val trackHeight = (bottomY - topY).coerceAtLeast(1f)
+
+                        val newFraction = 1f - ((down.position.y - topY) / trackHeight).coerceIn(0f, 1f)
+                        onLevelChange((minLevel + newFraction * totalRange).toInt())
+
+                        while (true) {
+                            val event = awaitPointerEvent()
+                            val change = event.changes.firstOrNull() ?: break
+                            if (change.pressed) {
+                                change.consume()
+                                val moveFraction = 1f - ((change.position.y - topY) / trackHeight).coerceIn(0f, 1f)
+                                onLevelChange((minLevel + moveFraction * totalRange).toInt())
+                            } else {
+                                break
+                            }
+                        }
+                    }
+                },
+            contentAlignment = Alignment.Center
+        ) {
+            Canvas(modifier = Modifier.fillMaxSize()) {
+                val centerX = size.width / 2f
+                val topY = 8.dp.toPx()
+                val bottomY = size.height - 8.dp.toPx()
+                val trackHeight = bottomY - topY
+                val knobY = bottomY - (fraction * trackHeight)
+
+                drawLine(
+                    color = if (isDark) Color(0xFF334155) else Color(0xFFCBD5E1),
+                    start = Offset(centerX, topY),
+                    end = Offset(centerX, bottomY),
+                    strokeWidth = 3.dp.toPx(),
+                    cap = StrokeCap.Round
+                )
+
+                drawLine(
+                    color = accentColor,
+                    start = Offset(centerX, bottomY),
+                    end = Offset(centerX, knobY),
+                    strokeWidth = 3.dp.toPx(),
+                    cap = StrokeCap.Round
+                )
+
+                drawCircle(
+                    color = accentColor,
+                    radius = 6.dp.toPx(),
+                    center = Offset(centerX, knobY)
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(4.dp))
+
+        Text(
+            text = freqLabel,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = if (isDark) Color(0xFF94A3B8) else Color(0xFF64748B),
+            textAlign = TextAlign.Center
+        )
     }
 }
 
@@ -1125,7 +1183,7 @@ fun MiniPlayerDock(manager: MusicManager, onClick: () -> Unit) {
     }
 }
 
-// Full-Width Sleep Timer Dialog
+// Sleep Timer Dialog
 @UnstableApi
 @Composable
 fun SleepTimerDialog(manager: MusicManager, onDismiss: () -> Unit) {
@@ -1230,7 +1288,7 @@ fun SleepTimerDialog(manager: MusicManager, onDismiss: () -> Unit) {
     }
 }
 
-// Circular Rainbow Picker Dialog
+// Circular Rainbow Color Picker
 @Composable
 fun CircularColorPickerDialog(manager: MusicManager, onDismiss: () -> Unit) {
     val isDark = manager.isDarkMode
@@ -1433,7 +1491,7 @@ fun MagneticSpeedDialog(manager: MusicManager, onDismiss: () -> Unit) {
     }
 }
 
-// Full-Screen Playing Queue Sheet
+// Queue Sheet
 @UnstableApi
 @Composable
 fun QueueSheet(manager: MusicManager, onDismiss: () -> Unit) {
@@ -1524,7 +1582,7 @@ fun QueueSheet(manager: MusicManager, onDismiss: () -> Unit) {
     }
 }
 
-// Full-Width Lyrics Dialog
+// Lyrics Dialog
 @Composable
 fun LyricsDialog(song: Song, isDark: Boolean, onDismiss: () -> Unit) {
     val textColor = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A)
@@ -1594,7 +1652,7 @@ fun HeartIconVector(isFavorite: Boolean, defaultTint: Color, modifier: Modifier 
     )
 }
 
-// Playback Control Vectors with Cached Paths
+// Repeat Control Icon
 @Composable
 fun RepeatControlIcon(repeatMode: Int, tint: Color, modifier: Modifier = Modifier) {
     val isActive = repeatMode != Player.REPEAT_MODE_OFF
@@ -1641,6 +1699,7 @@ fun RepeatControlIcon(repeatMode: Int, tint: Color, modifier: Modifier = Modifie
     }
 }
 
+// Previous Control Icon
 @Composable
 fun PreviousControlIcon(tint: Color, modifier: Modifier = Modifier) {
     Spacer(
@@ -1662,6 +1721,7 @@ fun PreviousControlIcon(tint: Color, modifier: Modifier = Modifier) {
     )
 }
 
+// Next Control Icon
 @Composable
 fun NextControlIcon(tint: Color, modifier: Modifier = Modifier) {
     Spacer(
@@ -1683,6 +1743,7 @@ fun NextControlIcon(tint: Color, modifier: Modifier = Modifier) {
     )
 }
 
+// Shuffle Control Icon
 @Composable
 fun ShuffleControlIcon(isShuffleOn: Boolean, tint: Color, modifier: Modifier = Modifier) {
     val alpha = if (isShuffleOn) 1f else 0.4f
