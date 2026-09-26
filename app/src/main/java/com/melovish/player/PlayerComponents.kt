@@ -81,6 +81,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.drawscope.Fill
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
@@ -184,7 +185,7 @@ fun GlassmorphicFolderIcon(folderColor: Color, modifier: Modifier = Modifier) {
                 quadraticBezierTo(w * 0.48f, h * 0.14f, w * 0.52f, h * 0.22f)
                 lineTo(w * 0.56f, h * 0.28f)
                 lineTo(w * 0.82f, h * 0.28f)
-                quadraticBezierTo(w * 0.88f, h * 0.28f, w * 0.88f, h * 0.35f)
+                quadraticBezierTo(w * 0.88f, h * 0.82f, w * 0.88f, h * 0.35f)
                 lineTo(w * 0.88f, h * 0.82f)
                 quadraticBezierTo(w * 0.88f, h * 0.88f, w * 0.80f, h * 0.88f)
                 lineTo(w * 0.18f, h * 0.88f)
@@ -563,10 +564,8 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
         pageCount = { currentQueue.size }
     )
 
-    // Flag to prevent cyclic feedback loops between programmatic scroll and gesture settling
     var isProgrammaticScroll by remember { mutableStateOf(false) }
 
-    // External track changes (like next/prev buttons) scroll the pager cleanly
     LaunchedEffect(manager.currentSong?.id) {
         val targetIdx = currentQueue.indexOfFirst { it.id == manager.currentSong?.id }
         if (targetIdx != -1 && targetIdx != pagerState.currentPage && !pagerState.isScrollInProgress) {
@@ -576,7 +575,6 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
         }
     }
 
-    // Only switch the song ONCE when the user releases touch and the page settles past the 50% boundary
     LaunchedEffect(pagerState) {
         snapshotFlow { pagerState.isScrollInProgress }.collect { isScrolling ->
             if (!isScrolling && !isProgrammaticScroll) {
@@ -621,7 +619,6 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
     val leftSeekAlpha by animateFloatAsState(if (showSeekLeftAnim) 1f else 0f, tween(if (showSeekLeftAnim) 80 else 350), label = "leftAlpha")
     val rightSeekAlpha by animateFloatAsState(if (showSeekRightAnim) 1f else 0f, tween(if (showSeekRightAnim) 80 else 350), label = "rightAlpha")
 
-    // Extract dominant palette cleanly without recomposition spam
     val activeSong = manager.currentSong ?: currentQueue[pagerState.currentPage]
     var albumArtBitmap by remember(activeSong.id) { mutableStateOf(manager.getCachedAlbumArt(activeSong.id)) }
     LaunchedEffect(activeSong.id) {
@@ -864,7 +861,6 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                         )
                     }
 
-                    // Scrubber locked cleanly to playback position
                     val isCurrentActiveTrack = pageSong.id == manager.currentSong?.id
                     IsolatedScrubberLeaf(
                         currentPositionMs = if (isCurrentActiveTrack) manager.currentPosition else 0L,
@@ -875,7 +871,7 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                         onSeek = { manager.seekTo(it) }
                     )
 
-                    // Control Buttons (Instantly reflects player state without double-bounce)
+                    // Control Buttons
                     Row(
                         modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
@@ -939,7 +935,7 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                         )
                     }
 
-                    // Bottom Dock
+                    // Bottom Dock with Live-Glowing Red Heart Button
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -960,10 +956,17 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                             modifier = Modifier.clickable { showSleepDialog = true }
                         )
 
+                        // Replaced static isFavorite with live observable lookup
+                        val isTrackFavorite = manager.allSongs.find { it.id == pageSong.id }?.isFavorite
+                            ?: (pageSong.id == manager.currentSong?.id && manager.currentSong?.isFavorite == true)
+
                         HeartIconVector(
-                            isFavorite = pageSong.isFavorite,
+                            isFavorite = isTrackFavorite,
                             defaultTint = animTextPrimary,
-                            modifier = Modifier.clickable { manager.toggleFavorite(pageSong) }
+                            modifier = Modifier.clickable {
+                                val currentTrackInList = manager.allSongs.find { it.id == pageSong.id } ?: pageSong
+                                manager.toggleFavorite(currentTrackInList)
+                            }
                         )
 
                         Text("≡♪", fontSize = 24.sp, fontWeight = FontWeight.Black, color = animTextPrimary, modifier = Modifier.clickable { showQueueSheet = true })
@@ -1862,9 +1865,11 @@ fun LyricsDialog(song: Song, isDark: Boolean, onDismiss: () -> Unit) {
     }
 }
 
-// Vector Heart Icon
+// Vector Heart Icon: Solid Glowing Red when Favorited
 @Composable
 fun HeartIconVector(isFavorite: Boolean, defaultTint: Color, modifier: Modifier = Modifier) {
+    val heartColor = if (isFavorite) Color(0xFFFF2A55) else defaultTint
+
     Spacer(
         modifier = modifier.size(24.dp).drawWithCache {
             val w = size.width
@@ -1880,10 +1885,17 @@ fun HeartIconVector(isFavorite: Boolean, defaultTint: Color, modifier: Modifier 
                 close()
             }
             val strokeStyle = Stroke(width = 2.2f.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
+
             onDrawBehind {
                 if (isFavorite) {
-                    drawPath(path, color = Color(0xFFEF4444))
+                    // Soft Glowing Background Aura
+                    drawPath(path, color = Color(0x66FF2A55), style = Stroke(width = 5.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round))
+                    // Solid Vibrant Red Fill
+                    drawPath(path, color = heartColor, style = Fill)
+                    // Sharp Foreground Border
+                    drawPath(path, color = Color(0xFFFF4D79), style = Stroke(width = 1.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round))
                 } else {
+                    // Outlined Unfavorited State
                     drawPath(path, color = defaultTint, style = strokeStyle)
                 }
             }
@@ -1891,7 +1903,7 @@ fun HeartIconVector(isFavorite: Boolean, defaultTint: Color, modifier: Modifier 
     )
 }
 
-// Playback Control Vectors with Cached Paths
+// Repeat Control Icon
 @Composable
 fun RepeatControlIcon(repeatMode: Int, tint: Color, modifier: Modifier = Modifier) {
     val isActive = repeatMode != Player.REPEAT_MODE_OFF
@@ -1938,6 +1950,7 @@ fun RepeatControlIcon(repeatMode: Int, tint: Color, modifier: Modifier = Modifie
     }
 }
 
+// Previous Control Icon
 @Composable
 fun PreviousControlIcon(tint: Color, modifier: Modifier = Modifier) {
     Spacer(
@@ -1959,6 +1972,7 @@ fun PreviousControlIcon(tint: Color, modifier: Modifier = Modifier) {
     )
 }
 
+// Next Control Icon
 @Composable
 fun NextControlIcon(tint: Color, modifier: Modifier = Modifier) {
     Spacer(
@@ -1980,6 +1994,7 @@ fun NextControlIcon(tint: Color, modifier: Modifier = Modifier) {
     )
 }
 
+// Shuffle Control Icon
 @Composable
 fun ShuffleControlIcon(isShuffleOn: Boolean, tint: Color, modifier: Modifier = Modifier) {
     val alpha = if (isShuffleOn) 1f else 0.4f
