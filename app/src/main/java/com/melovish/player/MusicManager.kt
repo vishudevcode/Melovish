@@ -10,6 +10,7 @@ import android.content.IntentFilter
 import android.content.SharedPreferences
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.media.AudioDeviceCallback
 import android.media.AudioDeviceInfo
 import android.media.AudioManager
 import android.media.MediaMetadataRetriever
@@ -84,7 +85,7 @@ class MusicManager(private val context: Context) {
     private val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
     private val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
-    // Mono Audio Hardware Mixing Processor
+    // Mono Audio Hardware Channel Mixer Processor
     private val channelMixingAudioProcessor = ChannelMixingAudioProcessor()
 
     private val renderersFactory = object : DefaultRenderersFactory(context) {
@@ -141,7 +142,7 @@ class MusicManager(private val context: Context) {
 
     // Collections
     val allSongs = mutableStateListOf<Song>()
-    val rawStorageSongs = mutableStateListOf<Song>() // Retains full library so hidden audio never vanishes
+    val rawStorageSongs = mutableStateListOf<Song>()
     val playbackQueue = mutableStateListOf<Song>()
     val historySongs = mutableStateListOf<Song>()
     val customPlaylists = mutableStateListOf<Playlist>()
@@ -227,6 +228,16 @@ class MusicManager(private val context: Context) {
         override fun sizeOf(key: Long, bitmap: Bitmap): Int = bitmap.byteCount / 1024
     }
 
+    private val audioDeviceCallback = object : AudioDeviceCallback() {
+        override fun onAudioDevicesAdded(addedDevices: Array<out AudioDeviceInfo>?) {
+            syncDeviceVolume()
+        }
+
+        override fun onAudioDevicesRemoved(removedDevices: Array<out AudioDeviceInfo>?) {
+            syncDeviceVolume()
+        }
+    }
+
     init {
         activeInstance = this
         initMediaSession()
@@ -237,6 +248,7 @@ class MusicManager(private val context: Context) {
         startPositionTracker()
         syncDeviceVolume()
         applyMonoAudio(isMonoAudio)
+        registerAudioDeviceCallback()
     }
 
     private fun initMediaSession() {
@@ -253,6 +265,14 @@ class MusicManager(private val context: Context) {
             mediaSession = MediaSession.Builder(context, player)
                 .setSessionActivity(pendingIntent)
                 .build()
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    private fun registerAudioDeviceCallback() {
+        try {
+            audioManager.registerAudioDeviceCallback(audioDeviceCallback, null)
         } catch (e: Exception) {
             e.printStackTrace()
         }
@@ -361,11 +381,9 @@ class MusicManager(private val context: Context) {
         })
     }
 
-    // Audio Effects Engine
     fun attachAudioEffects(sessionId: Int = currentAudioSessionId) {
         if (sessionId == C.AUDIO_SESSION_ID_UNSET || sessionId == 0) return
         try {
-            // Equalizer Setup
             if (equalizer == null) {
                 equalizer = Equalizer(1000, sessionId).apply { enabled = isEqEnabled }
                 eqBandsCount = (equalizer?.numberOfBands?.toInt() ?: 5).coerceAtLeast(1)
@@ -397,17 +415,14 @@ class MusicManager(private val context: Context) {
                 }
             }
 
-            // Bass Boost
             if (bassBoost == null) bassBoost = BassBoost(1000, sessionId)
             bassBoost?.enabled = !isStopBass && isEqEnabled
             bassBoost?.setStrength((bassBoostPercent * 10).toShort().coerceIn(0, 1000))
 
-            // 3D Virtualizer
             if (virtualizer == null) virtualizer = Virtualizer(1000, sessionId)
             virtualizer?.enabled = isEqEnabled
             virtualizer?.setStrength((virtualizerPercent * 10).toShort().coerceIn(0, 1000))
 
-            // Loudness Enhancer & Boost
             if (loudnessEnhancer == null) loudnessEnhancer = LoudnessEnhancer(sessionId)
             val boostGainMb = ((volumeBoostLevel - 100f) * 30f).toInt().coerceAtLeast(0)
             loudnessEnhancer?.setTargetGain(boostGainMb)
@@ -481,7 +496,34 @@ class MusicManager(private val context: Context) {
         try { virtualizer?.setStrength((percent * 10).toShort().coerceIn(0, 1000)) } catch (_: Exception) {}
     }
 
-    // Volume Normalization via ReplayGain + Loudness Enhancer
+    fun toggleStopBass(stop: Boolean) {
+        isStopBass = stop
+        managerScope.launch(Dispatchers.IO) {
+            prefs.edit().putBoolean("stop_bass", stop).apply()
+        }
+        try {
+            bassBoost?.enabled = !stop && isEqEnabled
+            if (stop && eqBandsCount > 0) {
+                equalizer?.setBandLevel(0.toShort(), eqMinLevel.toShort())
+                eqBandLevels[0] = eqMinLevel
+            }
+        } catch (_: Exception) {}
+    }
+
+    fun toggleRemoveVocals(remove: Boolean) {
+        isRemoveVocals = remove
+        managerScope.launch(Dispatchers.IO) {
+            prefs.edit().putBoolean("remove_vocals", remove).apply()
+        }
+        try {
+            if (remove && eqBandsCount >= 3) {
+                val mid = eqBandsCount / 2
+                equalizer?.setBandLevel(mid.toShort(), eqMinLevel.toShort())
+                eqBandLevels[mid] = eqMinLevel
+            }
+        } catch (_: Exception) {}
+    }
+
     fun toggleVolumeNormalization(enabled: Boolean) {
         isVolumeNormalized = enabled
         managerScope.launch(Dispatchers.IO) {
@@ -517,7 +559,6 @@ class MusicManager(private val context: Context) {
         }
     }
 
-    // Mono Audio Channel Mixing
     fun toggleMonoAudio(enabled: Boolean) {
         isMonoAudio = enabled
         managerScope.launch(Dispatchers.IO) {
@@ -537,7 +578,6 @@ class MusicManager(private val context: Context) {
         } catch (_: Exception) {}
     }
 
-    // Audio Output Routing
     fun setAudioOutputRouting(output: String) {
         selectedAudioOutput = output
         managerScope.launch(Dispatchers.IO) {
@@ -563,7 +603,6 @@ class MusicManager(private val context: Context) {
         } catch (_: Exception) {}
     }
 
-    // Audio Transition Fades
     fun triggerFadeIn(durationMs: Long = 1000L) {
         fadeJob?.cancel()
         fadeJob = managerScope.launch {
@@ -601,7 +640,6 @@ class MusicManager(private val context: Context) {
                         saveSongPosition(song.id, currentPosition)
                     }
 
-                    // Crossfade Audio Monitor
                     if (isCrossfadeEnabled && duration > 0L) {
                         val remainingMs = duration - currentPosition
                         val fadeWindowMs = (crossfadeDuration * 1000).toLong().coerceIn(1000L, 12000L)
@@ -627,6 +665,14 @@ class MusicManager(private val context: Context) {
         } catch (_: Exception) {
             currentVolume = 0.7f
         }
+    }
+
+    fun setHardwareVolume(volFraction: Float) {
+        currentVolume = volFraction.coerceIn(0f, 1f)
+        try {
+            val max = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+            audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, (currentVolume * max).toInt(), 0)
+        } catch (_: Exception) {}
     }
 
     fun scanStorage() {
@@ -744,7 +790,7 @@ class MusicManager(private val context: Context) {
 
             withContext(Dispatchers.Main.immediate) {
                 rawStorageSongs.clear()
-                rawStorageSongs.addAll(songList) // Stores all songs so hidden audio is accessible to Content Manager
+                rawStorageSongs.addAll(songList)
                 allSongs.clear()
                 allSongs.addAll(visibleSongs)
                 refreshHistory()
@@ -1290,7 +1336,6 @@ class MusicManager(private val context: Context) {
         }
     }
 
-    // Toggle Hide Audio with immediate update
     fun toggleHideAudio(songId: Long) {
         if (songId in hiddenAudioIds) {
             hiddenAudioIds.remove(songId)
