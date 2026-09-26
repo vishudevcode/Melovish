@@ -35,7 +35,6 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -316,15 +315,18 @@ fun SettingsScreen(
                     manager.prefs.edit().putBoolean("crossfade_enabled", it).apply()
                 }
 
+                // Centered Crossfade Duration Slider (Balanced layout matching card borders)
                 if (manager.isCrossfadeEnabled) {
-                    Spacer(modifier = Modifier.height(10.dp))
+                    Spacer(modifier = Modifier.height(12.dp))
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(start = 32.dp, end = 4.dp)
+                            .padding(horizontal = 4.dp)
                     ) {
                         Row(
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 2.dp),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
@@ -339,6 +341,7 @@ fun SettingsScreen(
                             },
                             valueRange = 1f..12f,
                             steps = 10,
+                            modifier = Modifier.fillMaxWidth(),
                             colors = SliderDefaults.colors(thumbColor = accent, activeTrackColor = accent)
                         )
                     }
@@ -385,18 +388,17 @@ fun SettingsScreen(
 
                 Spacer(modifier = Modifier.height(14.dp))
 
+                // Fully Functional Live Volume Boost (100% to 200%)
                 Text("Volume Boost", color = textColor, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                 Text("Increase the maximum volume (${manager.volumeBoostLevel.toInt()}%).", color = Color(0xFF64748B), fontSize = 12.sp)
 
-                var boostSliderVal by remember(manager.volumeBoostLevel) { mutableFloatStateOf(manager.volumeBoostLevel) }
                 Slider(
-                    value = boostSliderVal,
-                    onValueChange = { boostSliderVal = it },
-                    onValueChangeFinished = {
-                        manager.volumeBoostLevel = boostSliderVal
-                        manager.attachAudioEffects()
+                    value = manager.volumeBoostLevel,
+                    onValueChange = { liveLevel ->
+                        manager.setVolumeBoost(liveLevel)
                     },
                     valueRange = 100f..200f,
+                    modifier = Modifier.fillMaxWidth(),
                     colors = SliderDefaults.colors(thumbColor = accent, activeTrackColor = accent)
                 )
 
@@ -890,7 +892,6 @@ fun ManageHiddenFoldersFullScreen(manager: MusicManager, isDark: Boolean, onBack
     }
 }
 
-// Fixed Hide Audio Screen: Displays hidden audio on top and restores on tap
 @UnstableApi
 @Composable
 fun ManageHiddenAudioFullScreen(manager: MusicManager, isDark: Boolean, onBack: () -> Unit) {
@@ -959,7 +960,6 @@ fun ManageHiddenAudioFullScreen(manager: MusicManager, isDark: Boolean, onBack: 
             contentPadding = PaddingValues(bottom = 80.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            // Hidden Audio Section appears on top when files are hidden
             if (hiddenSongs.isNotEmpty()) {
                 item(key = "hidden_audio_header", contentType = "section_header") {
                     Text(
@@ -1015,15 +1015,15 @@ fun ManageHiddenAudioFullScreen(manager: MusicManager, isDark: Boolean, onBack: 
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(16.dp))
+                        .clip(RoundedCornerShape(14.dp))
                         .background(cardBg)
-                        .border(1.dp, if (isDark) Color(0x22FFFFFF) else Color(0xFFECEFF3), RoundedCornerShape(16.dp))
+                        .border(1.dp, if (isDark) Color(0x22FFFFFF) else Color(0xFFECEFF3), RoundedCornerShape(14.dp))
                         .clickable { manager.toggleHideAudio(song.id) }
                         .padding(14.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text("🎵", fontSize = 18.sp)
-                    Spacer(modifier = Modifier.width(12.dp))
+                    Spacer(modifier = Modifier.width(10.dp))
                     Column(modifier = Modifier.weight(1f)) {
                         Text(song.title, color = textColor, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         Text("${formatFileSize(song.size)} • ${if (song.artist.isNotBlank()) song.artist else "Unknown"}", color = Color(0xFF64748B), fontSize = 11.sp)

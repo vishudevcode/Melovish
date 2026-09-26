@@ -85,7 +85,6 @@ class MusicManager(private val context: Context) {
     private val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
     private val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
-    // Mono Audio Hardware Channel Mixer Processor
     private val channelMixingAudioProcessor = ChannelMixingAudioProcessor()
 
     private val renderersFactory = object : DefaultRenderersFactory(context) {
@@ -424,7 +423,7 @@ class MusicManager(private val context: Context) {
             virtualizer?.setStrength((virtualizerPercent * 10).toShort().coerceIn(0, 1000))
 
             if (loudnessEnhancer == null) loudnessEnhancer = LoudnessEnhancer(sessionId)
-            val boostGainMb = ((volumeBoostLevel - 100f) * 30f).toInt().coerceAtLeast(0)
+            val boostGainMb = (((volumeBoostLevel - 100f) / 100f) * 2000f).toInt().coerceIn(0, 3000)
             loudnessEnhancer?.setTargetGain(boostGainMb)
             loudnessEnhancer?.enabled = volumeBoostLevel > 100f || isVolumeNormalized
 
@@ -436,6 +435,36 @@ class MusicManager(private val context: Context) {
             }
         } catch (e: Exception) {
             e.printStackTrace()
+        }
+    }
+
+    /**
+     * Real-time Volume Boost adjustment up to 200%.
+     * Adjusts LoudnessEnhancer target gain live as the user slides.
+     */
+    fun setVolumeBoost(level: Float) {
+        volumeBoostLevel = level
+        val sessionId = if (currentAudioSessionId != C.AUDIO_SESSION_ID_UNSET && currentAudioSessionId != 0) {
+            currentAudioSessionId
+        } else {
+            player.audioSessionId
+        }
+
+        if (sessionId != C.AUDIO_SESSION_ID_UNSET && sessionId != 0) {
+            try {
+                if (loudnessEnhancer == null) {
+                    loudnessEnhancer = LoudnessEnhancer(sessionId)
+                }
+                val boostGainMb = (((level - 100f) / 100f) * 2000f).toInt().coerceIn(0, 3000)
+                loudnessEnhancer?.setTargetGain(boostGainMb)
+                loudnessEnhancer?.enabled = level > 100f || isVolumeNormalized
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+
+        managerScope.launch(Dispatchers.IO) {
+            prefs.edit().putFloat("vol_boost", level).apply()
         }
     }
 
@@ -547,13 +576,14 @@ class MusicManager(private val context: Context) {
             val linear = 10f.pow(targetDb / 20f).coerceIn(0.2f, 1.0f)
             player.volume = linear
             try {
-                loudnessEnhancer?.setTargetGain(0)
+                if (volumeBoostLevel <= 100f) loudnessEnhancer?.setTargetGain(0)
             } catch (_: Exception) {}
         } else {
             player.volume = 1.0f
-            val gainMb = (targetDb * 100).toInt().coerceIn(0, 800)
+            val baseGain = (targetDb * 100).toInt().coerceIn(0, 800)
+            val boostGain = (((volumeBoostLevel - 100f) / 100f) * 2000f).toInt().coerceIn(0, 3000)
             try {
-                loudnessEnhancer?.setTargetGain(gainMb)
+                loudnessEnhancer?.setTargetGain(baseGain + boostGain)
                 loudnessEnhancer?.enabled = true
             } catch (_: Exception) {}
         }
