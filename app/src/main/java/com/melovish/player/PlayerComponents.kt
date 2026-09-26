@@ -197,7 +197,7 @@ fun GlassmorphicFolderIcon(folderColor: Color, modifier: Modifier = Modifier) {
                 quadraticBezierTo(w * 0.48f, h * 0.14f, w * 0.52f, h * 0.22f)
                 lineTo(w * 0.56f, h * 0.28f)
                 lineTo(w * 0.82f, h * 0.28f)
-                quadraticBezierTo(w * 0.88f, h * 0.28f, w * 0.88f, h * 0.35f)
+                quadraticBezierTo(w * 0.88f, h * 0.82f, w * 0.88f, h * 0.35f)
                 lineTo(w * 0.88f, h * 0.82f)
                 quadraticBezierTo(w * 0.88f, h * 0.88f, w * 0.80f, h * 0.88f)
                 lineTo(w * 0.18f, h * 0.88f)
@@ -1218,6 +1218,7 @@ fun QueueSheet(
     var draggingIndex by remember { mutableStateOf<Int?>(null) }
     var draggingOffsetPx by remember { mutableFloatStateOf(0f) }
 
+    // Intercept downward drag gestures across the entire screen (including over songs) when at the top of the queue
     val nestedScrollConnection = remember {
         object : NestedScrollConnection {
             override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
@@ -1230,8 +1231,17 @@ fun QueueSheet(
                 return Offset.Zero
             }
 
+            override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
+                // If scrolling down reached the very top of the list and user keeps dragging down anywhere on cards
+                if (available.y > 15f && draggingSongId == null) {
+                    onDismiss()
+                    return available
+                }
+                return Offset.Zero
+            }
+
             override suspend fun onPreFling(available: Velocity): Velocity {
-                if (available.y > 400f && listState.firstVisibleItemIndex == 0 && draggingSongId == null) {
+                if (available.y > 350f && listState.firstVisibleItemIndex == 0 && draggingSongId == null) {
                     onDismiss()
                     return available
                 }
