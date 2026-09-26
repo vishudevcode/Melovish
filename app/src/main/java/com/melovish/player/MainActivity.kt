@@ -159,14 +159,13 @@ fun MainAppScaffold(manager: MusicManager) {
     val accent = manager.accentColor
 
     var activeTab by remember { mutableStateOf("home") }
-    var currentScreen by remember { mutableStateOf<String?>(null) } // "settings", "profile", "equalizer_fullscreen"
+    var currentScreen by remember { mutableStateOf<String?>(null) }
 
     var selectedPlaylist by remember { mutableStateOf<Playlist?>(null) }
     var selectedArtist by remember { mutableStateOf<ArtistItem?>(null) }
     var selectedFolder by remember { mutableStateOf<String?>(null) }
     var isPlayerMaximized by remember { mutableStateOf(false) }
 
-    // Prioritized 1-Step Back Navigation Hierarchy
     BackHandler(enabled = true) {
         when {
             isPlayerMaximized -> {
@@ -219,7 +218,6 @@ fun MainAppScaffold(manager: MusicManager) {
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
-            // Main Tab Views
             when (activeTab) {
                 "home" -> HomeScreen(
                     manager = manager,
@@ -248,7 +246,6 @@ fun MainAppScaffold(manager: MusicManager) {
                 )
             }
 
-            // Folder Detail View
             if (selectedFolder != null) {
                 FolderDetailView(
                     manager = manager,
@@ -258,7 +255,6 @@ fun MainAppScaffold(manager: MusicManager) {
                 )
             }
 
-            // Artist Detail View
             if (selectedArtist != null) {
                 ArtistDetailView(
                     manager = manager,
@@ -268,7 +264,6 @@ fun MainAppScaffold(manager: MusicManager) {
                 )
             }
 
-            // Playlist Detail View
             if (selectedPlaylist != null) {
                 PlaylistDetailView(
                     manager = manager,
@@ -278,7 +273,6 @@ fun MainAppScaffold(manager: MusicManager) {
                 )
             }
 
-            // Foreground Elevated Settings Overlay (Opens on foreground over anything clicked)
             if (currentScreen == "settings") {
                 Box(
                     modifier = Modifier
@@ -294,7 +288,6 @@ fun MainAppScaffold(manager: MusicManager) {
                 }
             }
 
-            // Foreground Elevated Profile Edit Overlay
             if (currentScreen == "profile") {
                 Box(
                     modifier = Modifier
@@ -308,7 +301,6 @@ fun MainAppScaffold(manager: MusicManager) {
                 }
             }
 
-            // Full Player Screen (Elevated with Hardware Transform Animations)
             AnimatedVisibility(
                 visible = isPlayerMaximized && manager.currentSong != null,
                 enter = slideInVertically(
@@ -326,6 +318,121 @@ fun MainAppScaffold(manager: MusicManager) {
                 )
             }
         }
+    }
+}
+
+// -----------------------------------------------------------------------------------------
+// Universal Song Row Component (Resolves unresolved reference in ArtistsScreen.kt)
+// -----------------------------------------------------------------------------------------
+
+@OptIn(ExperimentalFoundationApi::class)
+@UnstableApi
+@Composable
+fun UniversalSongRow(
+    song: Song,
+    manager: MusicManager,
+    isDark: Boolean,
+    modifier: Modifier = Modifier,
+    isCurrent: Boolean = song.id == manager.currentSong?.id,
+    isPlaying: Boolean = manager.isPlaying && song.id == manager.currentSong?.id,
+    onClick: () -> Unit = {
+        manager.playSong(song, manager.allSongs, manager.currentSectionName)
+    },
+    onLongClick: () -> Unit = {},
+    onMoreClick: () -> Unit = {}
+) {
+    val textColor = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A)
+    val accent = manager.accentColor
+    var songArt by remember(song.id) { mutableStateOf(manager.getCachedAlbumArt(song.id)) }
+
+    LaunchedEffect(song.id) {
+        if (songArt == null) songArt = manager.loadAlbumArtAsync(song)
+    }
+
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .background(
+                if (isCurrent) accent.copy(alpha = 0.12f)
+                else if (isDark) Color(0xFF131B2E)
+                else Color.White
+            )
+            .border(
+                1.dp,
+                if (isCurrent) accent
+                else if (isDark) Color(0x14FFFFFF)
+                else Color(0xFFECEFF3),
+                RoundedCornerShape(14.dp)
+            )
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = onLongClick
+            )
+            .padding(10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .size(46.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .background(Color(0xFF1E293B)),
+            contentAlignment = Alignment.Center
+        ) {
+            if (songArt != null) {
+                Image(
+                    bitmap = songArt!!.asImageBitmap(),
+                    contentDescription = "Art",
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize()
+                )
+            } else {
+                Text("🎵", fontSize = 18.sp)
+            }
+        }
+
+        Spacer(modifier = Modifier.width(12.dp))
+
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = song.title,
+                color = textColor,
+                fontSize = 14.sp,
+                fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                text = "${formatFileSize(song.size)} • ${if (song.artist.isNotBlank()) song.artist else "Unknown"}",
+                color = Color(0xFF64748B),
+                fontSize = 11.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+
+        if (isCurrent && isPlaying) {
+            LiveAudioWaveEqualizer(isAnimating = true, accentColor = accent)
+            Spacer(modifier = Modifier.width(8.dp))
+        }
+
+        HeartIconVector(
+            isFavorite = song.isFavorite,
+            defaultTint = Color(0xFF64748B),
+            modifier = Modifier.clickable { manager.toggleFavorite(song) }
+        )
+
+        Spacer(modifier = Modifier.width(6.dp))
+
+        Text(
+            text = "⋮",
+            fontSize = 18.sp,
+            color = Color(0xFF64748B),
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier
+                .clickable { onMoreClick() }
+                .padding(horizontal = 6.dp)
+        )
     }
 }
 
@@ -352,11 +459,9 @@ fun HomeScreen(
     var activeSongFilter by remember { mutableStateOf("All Songs") }
     var showSortMenu by remember { mutableStateOf(false) }
 
-    // Multi-Selection State
     var isMultiSelectMode by remember { mutableStateOf(false) }
     val selectedSongIds = remember { mutableStateListOf<Long>() }
 
-    // Context Menu Dialog State
     var contextMenuSong by remember { mutableStateOf<Song?>(null) }
     var showAddToPlaylistModal by remember { mutableStateOf<Song?>(null) }
     var showDeleteConfirmDialog by remember { mutableStateOf<Song?>(null) }
@@ -367,7 +472,6 @@ fun HomeScreen(
             contentPadding = PaddingValues(bottom = 90.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // App Header / Multi-Select Action Bar
             item(key = "home_header") {
                 if (isMultiSelectMode) {
                     Row(
@@ -474,7 +578,6 @@ fun HomeScreen(
                 }
             }
 
-            // Quick Playlists Carousel Row
             if (!isMultiSelectMode) {
                 item(key = "quick_playlists") {
                     Column {
@@ -501,7 +604,6 @@ fun HomeScreen(
                 }
             }
 
-            // Filter Chips & Sort Order Dropdown
             item(key = "filter_chips") {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -563,7 +665,6 @@ fun HomeScreen(
                 }
             }
 
-            // Active Songs List
             val displayedSongs = when (activeSongFilter) {
                 "Favorites" -> manager.allSongs.filter { it.isFavorite }
                 "Recent" -> manager.historySongs
@@ -608,7 +709,6 @@ fun HomeScreen(
             }
         }
 
-        // Floating Action Button
         FloatingActionButton(
             onClick = {
                 if (manager.currentSong == null) {
@@ -634,7 +734,6 @@ fun HomeScreen(
         }
     }
 
-    // Song Context Menu Modal
     if (contextMenuSong != null) {
         val song = contextMenuSong!!
         SongContextMenuModal(
@@ -653,7 +752,6 @@ fun HomeScreen(
         )
     }
 
-    // Add To Playlist Modal
     if (showAddToPlaylistModal != null) {
         AddToPlaylistDialog(
             manager = manager,
@@ -662,7 +760,6 @@ fun HomeScreen(
         )
     }
 
-    // Delete Confirmation Dialog
     if (showDeleteConfirmDialog != null) {
         val s = showDeleteConfirmDialog!!
         ConfirmDeleteSongDialog(
@@ -735,7 +832,6 @@ fun LibraryScreen(
             contentPadding = PaddingValues(bottom = 90.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // Folders Header with Sorting Dropdown
             item {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -800,7 +896,6 @@ fun LibraryScreen(
                 }
             }
 
-            // Playlists Header
             item {
                 Spacer(modifier = Modifier.height(10.dp))
                 Text("Your Playlists", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = textColor)
@@ -885,7 +980,6 @@ fun LibraryScreen(
         }
     }
 
-    // Folder Color Palette Dialog (Line 835 preserved)
     if (editingFolderColor != null) {
         val fName = editingFolderColor!!
         FolderColorDialog(
@@ -1170,7 +1264,6 @@ fun FolderDetailView(
         }
     }
 
-    // Line 990 preserved
     if (editingFolderColor != null) {
         val fName = editingFolderColor!!
         FolderColorDialog(
@@ -1753,7 +1846,10 @@ fun QuickPlaylistCard(playlist: Playlist, isDark: Boolean, onClick: () -> Unit) 
     }
 }
 
-// Bottom Navigation Bar
+// -----------------------------------------------------------------------------------------
+// 10. Bottom Navigation Bar
+// -----------------------------------------------------------------------------------------
+
 @Composable
 fun BottomNavBar(manager: MusicManager, activeTab: String, onTabSelected: (String) -> Unit) {
     val isDark = manager.isDarkMode
