@@ -3,7 +3,6 @@ package com.melovish.player
 import android.content.Intent
 import android.graphics.Bitmap
 import android.net.Uri
-import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
@@ -28,6 +27,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -91,11 +91,13 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import kotlinx.coroutines.Dispatchers
@@ -543,7 +545,7 @@ fun IsolatedScrubberLeaf(
     }
 }
 
-// Full Player Sheet: 120 FPS Pager with Instant Single-Step Track Switching
+// Full Player Sheet: 120 FPS Pager with Release-Only Snap, Swipe-Up for Queue & Dynamic Material You
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @UnstableApi
 @Composable
@@ -665,16 +667,18 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
     val animTextPrimary by animateColorAsState(targetPalette.textPrimary, tween(350, easing = FastOutSlowInEasing), label = "textPrimary")
     val animTextSecondary by animateColorAsState(targetPalette.textSecondary, tween(350, easing = FastOutSlowInEasing), label = "textSecondary")
 
-    // Full Player Root Box
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(Brush.verticalGradient(listOf(animBgTop, animBgBottom)))
             .statusBarsPadding()
+            // Swipe Gestures: Down to Minimize, Up to Open Playing Queue
             .pointerInput(Unit) {
                 detectVerticalDragGestures { _, dragAmount ->
                     if (dragAmount > 38f) {
-                        onDismiss()
+                        onDismiss() // Swipe down minimizes to mini player
+                    } else if (dragAmount < -38f) {
+                        showQueueSheet = true // Swipe up opens queue seamlessly
                     }
                 }
             }
@@ -939,20 +943,13 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                         )
                     }
 
-                    // Bottom Dock: Swipe Up to open Playing Queue
+                    // Bottom Dock
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(26.dp))
                             .background(animSurface)
                             .border(1.dp, Color(0x22FFFFFF), RoundedCornerShape(26.dp))
-                            .pointerInput(Unit) {
-                                detectVerticalDragGestures { _, dragAmount ->
-                                    if (dragAmount < -24f) {
-                                        showQueueSheet = true
-                                    }
-                                }
-                            }
                             .padding(vertical = 12.dp, horizontal = 24.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
@@ -967,7 +964,6 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                             modifier = Modifier.clickable { showSleepDialog = true }
                         )
 
-                        // Reactive Glow Heart Button
                         val isTrackFavorite = manager.allSongs.find { it.id == pageSong.id }?.isFavorite
                             ?: (pageSong.id == manager.currentSong?.id && manager.currentSong?.isFavorite == true)
 
@@ -1057,22 +1053,295 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
         if (showEqualizerSheet) EqualizerSheet(manager = manager, onDismiss = { showEqualizerSheet = false })
         if (showSpeedDialog) MagneticSpeedDialog(manager = manager, onDismiss = { showSpeedDialog = false })
         if (showSleepDialog) SleepTimerDialog(manager = manager, onDismiss = { showSleepDialog = false })
-        if (showTagEditorDialog) TagEditorDialog(manager = manager, song = activeSong, onDismiss = { showTagEditorDialog = false })
-        if (showLyricsDialog) LyricsDialog(song = activeSong, isDark = isDark, onDismiss = { showLyricsDialog = false })
-        if (showAddToPlaylistDialog) AddToPlaylistDialog(manager = manager, song = activeSong, onDismiss = { showAddToPlaylistDialog = false })
 
-        // Queue Section: Material You Dynamic Themed & Smooth Swipe Down Dismiss
+        // Smooth Slide-Up Queue Sheet with Dynamic Material You Design & Touch-Hold Drag
         AnimatedVisibility(
             visible = showQueueSheet,
-            enter = slideInVertically(initialOffsetY = { it }),
-            exit = slideOutVertically(targetOffsetY = { it })
+            enter = slideInVertically(initialOffsetY = { it }, animationSpec = spring(stiffness = 500f, dampingRatio = 0.85f)),
+            exit = slideOutVertically(targetOffsetY = { it }, animationSpec = spring(stiffness = 500f, dampingRatio = 0.85f)),
+            modifier = Modifier.fillMaxSize().zIndex(20f)
         ) {
             QueueSheet(
                 manager = manager,
-                palette = targetPalette,
+                bgTop = animBgTop,
+                bgBottom = animBgBottom,
+                surfaceColor = animSurface,
+                textColor = animTextPrimary,
+                subTextColor = animTextSecondary,
+                accent = userAccent,
+                isDark = isDark,
                 onDismiss = { showQueueSheet = false }
             )
         }
+
+        if (showTagEditorDialog) TagEditorDialog(manager = manager, song = activeSong, onDismiss = { showTagEditorDialog = false })
+        if (showLyricsDialog) LyricsDialog(song = activeSong, isDark = isDark, onDismiss = { showLyricsDialog = false })
+        if (showAddToPlaylistDialog) AddToPlaylistDialog(manager = manager, song = activeSong, onDismiss = { showAddToPlaylistDialog = false })
+    }
+}
+
+// Full-Page Queue Sheet with Material You Dynamic Design, Swipe-Down-To-Dismiss, and Touch-Hold Drag Reorder
+@UnstableApi
+@Composable
+fun QueueSheet(
+    manager: MusicManager,
+    bgTop: Color,
+    bgBottom: Color,
+    surfaceColor: Color,
+    textColor: Color,
+    subTextColor: Color,
+    accent: Color,
+    isDark: Boolean,
+    onDismiss: () -> Unit
+) {
+    val density = LocalDensity.current
+
+    // Drag-and-drop state trackers
+    var draggingIndex by remember { mutableStateOf<Int?>(null) }
+    var draggingOffsetPx by remember { mutableFloatStateOf(0f) }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Brush.verticalGradient(listOf(bgTop, bgBottom)))
+            .statusBarsPadding()
+            // Swipe down on the queue background dismisses it back to the player
+            .pointerInput(Unit) {
+                detectVerticalDragGestures { _, dragAmount ->
+                    if (dragAmount > 45f && draggingIndex == null) {
+                        onDismiss()
+                    }
+                }
+            }
+            .padding(horizontal = 16.dp)
+            .padding(top = 8.dp, bottom = 14.dp)
+    ) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            // Header Bar
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 4.dp, bottom = 12.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    GlassBackButton(isDark = isDark, onClick = onDismiss)
+                    Spacer(modifier = Modifier.width(14.dp))
+                    Column {
+                        Text(
+                            text = "Playing Queue (${manager.playbackQueue.size})",
+                            fontSize = 20.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = textColor
+                        )
+                        Text(
+                            text = "Touch and hold bars to reorder tracks",
+                            fontSize = 12.sp,
+                            color = subTextColor
+                        )
+                    }
+                }
+
+                Button(
+                    onClick = onDismiss,
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = surfaceColor)
+                ) {
+                    Text("Close", color = textColor, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+
+            // Draggable List of Songs
+            val approxItemHeightPx = with(density) { 72.dp.toPx() }
+
+            LazyColumn(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                itemsIndexed(
+                    items = manager.playbackQueue,
+                    key = { _, song -> song.id },
+                    contentType = { _, _ -> "queue_item_row" }
+                ) { index, song ->
+                    val isCur = song.id == manager.currentSong?.id
+                    val isThisItemDragging = draggingIndex == index
+
+                    // Elevation and Scale transformation during touch-and-hold drag
+                    val itemElevation = if (isThisItemDragging) 18.dp else 0.dp
+                    val itemScale = if (isThisItemDragging) 1.03f else 1.0f
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .zIndex(if (isThisItemDragging) 10f else 1f)
+                            .graphicsLayer {
+                                scaleX = itemScale
+                                scaleY = itemScale
+                                if (isThisItemDragging) {
+                                    translationY = draggingOffsetPx
+                                }
+                            }
+                            .shadow(itemElevation, RoundedCornerShape(18.dp))
+                            .clip(RoundedCornerShape(18.dp))
+                            .background(
+                                if (isCur) accent.copy(alpha = 0.18f)
+                                else surfaceColor
+                            )
+                            .border(
+                                width = if (isCur || isThisItemDragging) 1.5.dp else 1.dp,
+                                color = if (isCur || isThisItemDragging) accent else Color(0x22FFFFFF),
+                                shape = RoundedCornerShape(18.dp)
+                            )
+                            .clickable {
+                                if (draggingIndex == null) {
+                                    manager.playSong(song, manager.playbackQueue, manager.currentSectionName)
+                                }
+                            }
+                            .padding(horizontal = 14.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        // Playback Status Indicator
+                        Box(
+                            modifier = Modifier
+                                .size(28.dp)
+                                .clip(CircleShape)
+                                .background(if (isCur) accent.copy(alpha = 0.25f) else Color.Transparent),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = if (isCur) "▶" else "•",
+                                color = if (isCur) accent else subTextColor,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.width(10.dp))
+
+                        // Metadata
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = song.title,
+                                color = textColor,
+                                fontSize = 15.sp,
+                                fontWeight = if (isCur) FontWeight.Bold else FontWeight.SemiBold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = "${formatFileSize(song.size)} • ${if (song.artist.isNotBlank()) song.artist else "Unknown Artist"}",
+                                color = subTextColor,
+                                fontSize = 12.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.width(12.dp))
+
+                        // Bigger, Bolder, Wider Triple-Line Drag Handle with touch-and-hold reorder
+                        Box(
+                            modifier = Modifier
+                                .size(44.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                                .pointerInput(index, manager.playbackQueue.size) {
+                                    detectDragGesturesAfterLongPress(
+                                        onDragStart = {
+                                            draggingIndex = index
+                                            draggingOffsetPx = 0f
+                                        },
+                                        onDrag = { change, dragAmount ->
+                                            change.consume()
+                                            draggingOffsetPx += dragAmount.y
+
+                                            val currentIndex = draggingIndex ?: return@detectDragGesturesAfterLongPress
+                                            val threshold = approxItemHeightPx * 0.75f
+
+                                            if (draggingOffsetPx > threshold && currentIndex < manager.playbackQueue.size - 1) {
+                                                manager.moveQueueItem(currentIndex, currentIndex + 1)
+                                                draggingIndex = currentIndex + 1
+                                                draggingOffsetPx -= approxItemHeightPx
+                                            } else if (draggingOffsetPx < -threshold && currentIndex > 0) {
+                                                manager.moveQueueItem(currentIndex, currentIndex - 1)
+                                                draggingIndex = currentIndex - 1
+                                                draggingOffsetPx += approxItemHeightPx
+                                            }
+                                        },
+                                        onDragEnd = {
+                                            draggingIndex = null
+                                            draggingOffsetPx = 0f
+                                        },
+                                        onDragCancel = {
+                                            draggingIndex = null
+                                            draggingOffsetPx = 0f
+                                        }
+                                    )
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            ReorderDragHandle(
+                                tint = if (isCur || isThisItemDragging) accent else subTextColor,
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Bottom Full-Width Close Button
+            Button(
+                onClick = onDismiss,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(50.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = surfaceColor),
+                shape = RoundedCornerShape(14.dp)
+            ) {
+                Text(
+                    text = "Close",
+                    color = textColor,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
+    }
+}
+
+// Bolder, Wider, Triple-Line Drag Handle Icon
+@Composable
+fun ReorderDragHandle(tint: Color, modifier: Modifier = Modifier) {
+    Canvas(modifier = modifier) {
+        val w = size.width
+        val h = size.height
+        val strokeW = 3.2f.dp.toPx()
+
+        // 3 bold, rounded horizontal lines
+        drawLine(
+            color = tint,
+            start = Offset(w * 0.12f, h * 0.25f),
+            end = Offset(w * 0.88f, h * 0.25f),
+            strokeWidth = strokeW,
+            cap = StrokeCap.Round
+        )
+        drawLine(
+            color = tint,
+            start = Offset(w * 0.12f, h * 0.50f),
+            end = Offset(w * 0.88f, h * 0.50f),
+            strokeWidth = strokeW,
+            cap = StrokeCap.Round
+        )
+        drawLine(
+            color = tint,
+            start = Offset(w * 0.12f, h * 0.75f),
+            end = Offset(w * 0.88f, h * 0.75f),
+            strokeWidth = strokeW,
+            cap = StrokeCap.Round
+        )
     }
 }
 
@@ -1378,182 +1647,6 @@ fun VerticalBandFader(
             color = if (isDark) Color(0xFF94A3B8) else Color(0xFF64748B),
             textAlign = TextAlign.Center
         )
-    }
-}
-
-// Bolder, Wider Touch Drag Handle Vector Icon
-@Composable
-fun BoldWideDragHandleIcon(tint: Color, modifier: Modifier = Modifier) {
-    Spacer(
-        modifier = modifier.size(32.dp).drawWithCache {
-            val w = size.width
-            val h = size.height
-            val strokeW = 3.2f.dp.toPx()
-            val startX = w * 0.15f
-            val endX = w * 0.85f
-
-            val y1 = h * 0.28f
-            val y2 = h * 0.50f
-            val y3 = h * 0.72f
-
-            onDrawBehind {
-                drawLine(color = tint, start = Offset(startX, y1), end = Offset(endX, y1), strokeWidth = strokeW, cap = StrokeCap.Round)
-                drawLine(color = tint, start = Offset(startX, y2), end = Offset(endX, y2), strokeWidth = strokeW, cap = StrokeCap.Round)
-                drawLine(color = tint, start = Offset(startX, y3), end = Offset(endX, y3), strokeWidth = strokeW, cap = StrokeCap.Round)
-            }
-        }
-    )
-}
-
-// Playing Queue Sheet: Material You Theme, 1-Step Back Handler, Swipe Down Dismiss & Bold Drag Handle
-@UnstableApi
-@Composable
-fun QueueSheet(
-    manager: MusicManager,
-    palette: MaterialYouPalette,
-    onDismiss: () -> Unit
-) {
-    val isDark = manager.isDarkMode
-
-    // One-Step System Back Handler: Closes Queue Sheet only and restores Player
-    BackHandler(enabled = true) {
-        onDismiss()
-    }
-
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Brush.verticalGradient(listOf(palette.bgTop, palette.bgBottom)))
-            .statusBarsPadding()
-            // Swipe Down on Queue Header to Dismiss back to player
-            .pointerInput(Unit) {
-                detectVerticalDragGestures { _, dragAmount ->
-                    if (dragAmount > 38f) {
-                        onDismiss()
-                    }
-                }
-            }
-            .padding(16.dp)
-    ) {
-        Column(modifier = Modifier.fillMaxSize()) {
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 12.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    GlassBackButton(isDark = isDark, onClick = onDismiss)
-                    Spacer(modifier = Modifier.width(14.dp))
-                    Column {
-                        Text(
-                            text = "Playing Queue (${manager.playbackQueue.size})",
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = palette.textPrimary
-                        )
-                        Text(
-                            text = "Hold and drag handle to reorder tracks",
-                            fontSize = 12.sp,
-                            color = palette.textSecondary
-                        )
-                    }
-                }
-
-                Button(
-                    onClick = { onDismiss() },
-                    shape = RoundedCornerShape(10.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = palette.surface)
-                ) {
-                    Text("Close", color = palette.textPrimary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                }
-            }
-
-            LazyColumn(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                itemsIndexed(
-                    items = manager.playbackQueue,
-                    key = { _, song -> song.id },
-                    contentType = { _, _ -> "queue_item_row" }
-                ) { index, song ->
-                    val isCur = song.id == manager.currentSong?.id
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(14.dp))
-                            .background(
-                                if (isCur) palette.primaryAccent.copy(alpha = 0.22f)
-                                else palette.surface
-                            )
-                            .border(
-                                width = 1.dp,
-                                color = if (isCur) palette.primaryAccent else Color(0x1AFFFFFF),
-                                shape = RoundedCornerShape(14.dp)
-                            )
-                            .clickable { manager.playSong(song, manager.playbackQueue, manager.currentSectionName) }
-                            .padding(horizontal = 14.dp, vertical = 12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = if (isCur) "▶" else "•",
-                            color = if (isCur) palette.primaryAccent else palette.textSecondary,
-                            fontSize = 14.sp
-                        )
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = song.title,
-                                color = palette.textPrimary,
-                                fontSize = 14.sp,
-                                fontWeight = if (isCur) FontWeight.Bold else FontWeight.SemiBold,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                            Text(
-                                text = "${formatFileSize(song.size)} • ${song.artist}",
-                                color = palette.textSecondary,
-                                fontSize = 11.sp
-                            )
-                        }
-
-                        // Wide, bold drag handle for smooth drag-and-drop reordering
-                        Box(
-                            modifier = Modifier
-                                .padding(start = 8.dp)
-                                .size(44.dp)
-                                .clip(RoundedCornerShape(8.dp))
-                                .pointerInput(index) {
-                                    detectDragGestures(
-                                        onDrag = { change, dragAmount ->
-                                            change.consume()
-                                            val stepThreshold = 45f
-                                            if (dragAmount.y < -stepThreshold && index > 0) {
-                                                manager.moveQueueItem(index, index - 1)
-                                            } else if (dragAmount.y > stepThreshold && index < manager.playbackQueue.size - 1) {
-                                                manager.moveQueueItem(index, index + 1)
-                                            }
-                                        }
-                                    )
-                                },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            BoldWideDragHandleIcon(tint = palette.textSecondary)
-                        }
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(12.dp))
-            Button(
-                onClick = { onDismiss() },
-                modifier = Modifier.fillMaxWidth().height(48.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = palette.surface),
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                Text("Close", color = palette.textPrimary, fontWeight = FontWeight.Bold)
-            }
-        }
     }
 }
 
@@ -1996,10 +2089,14 @@ fun HeartIconVector(isFavorite: Boolean, defaultTint: Color, modifier: Modifier 
 
             onDrawBehind {
                 if (isFavorite) {
+                    // Soft Glowing Background Aura
                     drawPath(path, color = Color(0x66FF2A55), style = Stroke(width = 5.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round))
+                    // Solid Vibrant Red Fill
                     drawPath(path, color = heartColor, style = Fill)
+                    // Sharp Foreground Border
                     drawPath(path, color = Color(0xFFFF4D79), style = Stroke(width = 1.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round))
                 } else {
+                    // Outlined Unfavorited State
                     drawPath(path, color = defaultTint, style = strokeStyle)
                 }
             }
