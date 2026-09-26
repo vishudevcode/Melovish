@@ -108,6 +108,7 @@ import kotlin.math.cos
 import kotlin.math.sin
 import kotlin.math.sqrt
 
+// Live Animated 4-Bar Equalizer
 @Composable
 fun LiveAudioWaveEqualizer(isAnimating: Boolean, accentColor: Color, modifier: Modifier = Modifier) {
     val infiniteTransition = rememberInfiniteTransition(label = "audioWave")
@@ -134,6 +135,7 @@ fun LiveAudioWaveEqualizer(isAnimating: Boolean, accentColor: Color, modifier: M
     }
 }
 
+// Vector Curved Back Arrow Icon
 @Composable
 fun CurvedBackArrowIcon(tint: Color, modifier: Modifier = Modifier) {
     Spacer(
@@ -156,6 +158,7 @@ fun CurvedBackArrowIcon(tint: Color, modifier: Modifier = Modifier) {
     )
 }
 
+// Circular Embossed Glass Back Button
 @Composable
 fun GlassBackButton(isDark: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
     Box(
@@ -172,6 +175,7 @@ fun GlassBackButton(isDark: Boolean, onClick: () -> Unit, modifier: Modifier = M
     }
 }
 
+// Glassmorphic Folder Icon
 @Composable
 fun GlassmorphicFolderIcon(folderColor: Color, modifier: Modifier = Modifier) {
     Spacer(
@@ -217,6 +221,7 @@ fun GlassmorphicFolderIcon(folderColor: Color, modifier: Modifier = Modifier) {
     )
 }
 
+// Folder Color Dialog
 @Composable
 fun FolderColorDialog(
     folderName: String,
@@ -329,6 +334,7 @@ fun FolderColorDialog(
     }
 }
 
+// Minimalist Vector Avatar
 @Composable
 fun DefaultProfileAvatar(modifier: Modifier = Modifier, backgroundColor: Color = Color(0xFF030712)) {
     Spacer(
@@ -424,6 +430,7 @@ suspend fun extractMaterialYouPaletteAsync(bitmap: Bitmap?, isDarkMode: Boolean,
     }
 }
 
+// 100% Mathematically Centered Progress Bar
 @Composable
 fun IsolatedScrubberLeaf(
     currentPositionMs: Long,
@@ -536,7 +543,7 @@ fun IsolatedScrubberLeaf(
     }
 }
 
-// Full Player Sheet: 120 FPS Pager with Instant Single-Step Track Switching & Dynamic Queue Sheet
+// Full Player Sheet: 120 FPS Pager with Instant Single-Step Track Switching
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @UnstableApi
 @Composable
@@ -586,7 +593,7 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
         }
     }
 
-    // Modal Sheet & Dialog States
+    // Dialogs
     var showMenuModal by remember { mutableStateOf(false) }
     var showSpeedDialog by remember { mutableStateOf(false) }
     var showSleepDialog by remember { mutableStateOf(false) }
@@ -596,21 +603,7 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
     var showLyricsDialog by remember { mutableStateOf(false) }
     var showAddToPlaylistDialog by remember { mutableStateOf(false) }
 
-    // Prioritized BackHandler for 1-Step Back Navigation
-    BackHandler(enabled = true) {
-        when {
-            showQueueSheet -> showQueueSheet = false
-            showEqualizerSheet -> showEqualizerSheet = false
-            showSpeedDialog -> showSpeedDialog = false
-            showSleepDialog -> showSleepDialog = false
-            showTagEditorDialog -> showTagEditorDialog = false
-            showLyricsDialog -> showLyricsDialog = false
-            showAddToPlaylistDialog -> showAddToPlaylistDialog = false
-            showMenuModal -> showMenuModal = false
-            else -> onDismiss()
-        }
-    }
-
+    // Double-tap Seek Animation State
     var showSeekLeftAnim by remember { mutableStateOf(false) }
     var showSeekRightAnim by remember { mutableStateOf(false) }
 
@@ -672,6 +665,7 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
     val animTextPrimary by animateColorAsState(targetPalette.textPrimary, tween(350, easing = FastOutSlowInEasing), label = "textPrimary")
     val animTextSecondary by animateColorAsState(targetPalette.textSecondary, tween(350, easing = FastOutSlowInEasing), label = "textSecondary")
 
+    // Full Player Root Box
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -945,7 +939,7 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                         )
                     }
 
-                    // Bottom Dock: Swipe Up anywhere on the dock to reveal Queue
+                    // Bottom Dock: Swipe Up to open Playing Queue
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -954,7 +948,7 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                             .border(1.dp, Color(0x22FFFFFF), RoundedCornerShape(26.dp))
                             .pointerInput(Unit) {
                                 detectVerticalDragGestures { _, dragAmount ->
-                                    if (dragAmount < -32f) {
+                                    if (dragAmount < -24f) {
                                         showQueueSheet = true
                                     }
                                 }
@@ -973,6 +967,7 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                             modifier = Modifier.clickable { showSleepDialog = true }
                         )
 
+                        // Reactive Glow Heart Button
                         val isTrackFavorite = manager.allSongs.find { it.id == pageSong.id }?.isFavorite
                             ?: (pageSong.id == manager.currentSong?.id && manager.currentSong?.isFavorite == true)
 
@@ -1062,12 +1057,15 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
         if (showEqualizerSheet) EqualizerSheet(manager = manager, onDismiss = { showEqualizerSheet = false })
         if (showSpeedDialog) MagneticSpeedDialog(manager = manager, onDismiss = { showSpeedDialog = false })
         if (showSleepDialog) SleepTimerDialog(manager = manager, onDismiss = { showSleepDialog = false })
+        if (showTagEditorDialog) TagEditorDialog(manager = manager, song = activeSong, onDismiss = { showTagEditorDialog = false })
+        if (showLyricsDialog) LyricsDialog(song = activeSong, isDark = isDark, onDismiss = { showLyricsDialog = false })
+        if (showAddToPlaylistDialog) AddToPlaylistDialog(manager = manager, song = activeSong, onDismiss = { showAddToPlaylistDialog = false })
 
-        // Dynamic Material You Styled Queue Sheet (Opens via Swipe Up / Button)
+        // Queue Section: Material You Dynamic Themed & Smooth Swipe Down Dismiss
         AnimatedVisibility(
             visible = showQueueSheet,
-            enter = slideInVertically(initialOffsetY = { it }, animationSpec = tween(380, easing = FastOutSlowInEasing)),
-            exit = slideOutVertically(targetOffsetY = { it }, animationSpec = tween(320, easing = FastOutSlowInEasing))
+            enter = slideInVertically(initialOffsetY = { it }),
+            exit = slideOutVertically(targetOffsetY = { it })
         ) {
             QueueSheet(
                 manager = manager,
@@ -1075,10 +1073,6 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                 onDismiss = { showQueueSheet = false }
             )
         }
-
-        if (showTagEditorDialog) TagEditorDialog(manager = manager, song = activeSong, onDismiss = { showTagEditorDialog = false })
-        if (showLyricsDialog) LyricsDialog(song = activeSong, isDark = isDark, onDismiss = { showLyricsDialog = false })
-        if (showAddToPlaylistDialog) AddToPlaylistDialog(manager = manager, song = activeSong, onDismiss = { showAddToPlaylistDialog = false })
     }
 }
 
@@ -1109,6 +1103,7 @@ fun EqualizerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                 .padding(22.dp)
         ) {
             Column(modifier = Modifier.fillMaxSize()) {
+                // Header with Preset and Save Button
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -1133,6 +1128,7 @@ fun EqualizerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                     modifier = Modifier.weight(1f),
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
+                    // Sound Presets Row
                     item {
                         Text("Sound Presets", color = textColor, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                         Spacer(modifier = Modifier.height(8.dp))
@@ -1157,6 +1153,7 @@ fun EqualizerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                         }
                     }
 
+                    // Multi-band Graphic EQ with Vertical Fader Lines
                     item {
                         Text("Frequency Response (-15dB to +15dB)", color = textColor, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                         Spacer(modifier = Modifier.height(10.dp))
@@ -1197,6 +1194,7 @@ fun EqualizerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                         }
                     }
 
+                    // Bass Boost & Virtualizer
                     item {
                         Column(
                             modifier = Modifier
@@ -1225,6 +1223,7 @@ fun EqualizerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                         }
                     }
 
+                    // Remove Vocals & Stop Bass Controls
                     item {
                         Column(
                             modifier = Modifier
@@ -1267,6 +1266,7 @@ fun EqualizerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                     }
                 }
 
+                // Bottom Close Button
                 Spacer(modifier = Modifier.height(12.dp))
                 Button(
                     onClick = onDismiss,
@@ -1281,6 +1281,7 @@ fun EqualizerSheet(manager: MusicManager, onDismiss: () -> Unit) {
     }
 }
 
+// Vertical Line Mixer Slider for Frequency Bands
 @Composable
 fun VerticalBandFader(
     level: Int,
@@ -1380,6 +1381,182 @@ fun VerticalBandFader(
     }
 }
 
+// Bolder, Wider Touch Drag Handle Vector Icon
+@Composable
+fun BoldWideDragHandleIcon(tint: Color, modifier: Modifier = Modifier) {
+    Spacer(
+        modifier = modifier.size(32.dp).drawWithCache {
+            val w = size.width
+            val h = size.height
+            val strokeW = 3.2f.dp.toPx()
+            val startX = w * 0.15f
+            val endX = w * 0.85f
+
+            val y1 = h * 0.28f
+            val y2 = h * 0.50f
+            val y3 = h * 0.72f
+
+            onDrawBehind {
+                drawLine(color = tint, start = Offset(startX, y1), end = Offset(endX, y1), strokeWidth = strokeW, cap = StrokeCap.Round)
+                drawLine(color = tint, start = Offset(startX, y2), end = Offset(endX, y2), strokeWidth = strokeW, cap = StrokeCap.Round)
+                drawLine(color = tint, start = Offset(startX, y3), end = Offset(endX, y3), strokeWidth = strokeW, cap = StrokeCap.Round)
+            }
+        }
+    )
+}
+
+// Playing Queue Sheet: Material You Theme, 1-Step Back Handler, Swipe Down Dismiss & Bold Drag Handle
+@UnstableApi
+@Composable
+fun QueueSheet(
+    manager: MusicManager,
+    palette: MaterialYouPalette,
+    onDismiss: () -> Unit
+) {
+    val isDark = manager.isDarkMode
+
+    // One-Step System Back Handler: Closes Queue Sheet only and restores Player
+    BackHandler(enabled = true) {
+        onDismiss()
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Brush.verticalGradient(listOf(palette.bgTop, palette.bgBottom)))
+            .statusBarsPadding()
+            // Swipe Down on Queue Header to Dismiss back to player
+            .pointerInput(Unit) {
+                detectVerticalDragGestures { _, dragAmount ->
+                    if (dragAmount > 38f) {
+                        onDismiss()
+                    }
+                }
+            }
+            .padding(16.dp)
+    ) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 12.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    GlassBackButton(isDark = isDark, onClick = onDismiss)
+                    Spacer(modifier = Modifier.width(14.dp))
+                    Column {
+                        Text(
+                            text = "Playing Queue (${manager.playbackQueue.size})",
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = palette.textPrimary
+                        )
+                        Text(
+                            text = "Hold and drag handle to reorder tracks",
+                            fontSize = 12.sp,
+                            color = palette.textSecondary
+                        )
+                    }
+                }
+
+                Button(
+                    onClick = { onDismiss() },
+                    shape = RoundedCornerShape(10.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = palette.surface)
+                ) {
+                    Text("Close", color = palette.textPrimary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+
+            LazyColumn(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                itemsIndexed(
+                    items = manager.playbackQueue,
+                    key = { _, song -> song.id },
+                    contentType = { _, _ -> "queue_item_row" }
+                ) { index, song ->
+                    val isCur = song.id == manager.currentSong?.id
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(
+                                if (isCur) palette.primaryAccent.copy(alpha = 0.22f)
+                                else palette.surface
+                            )
+                            .border(
+                                width = 1.dp,
+                                color = if (isCur) palette.primaryAccent else Color(0x1AFFFFFF),
+                                shape = RoundedCornerShape(14.dp)
+                            )
+                            .clickable { manager.playSong(song, manager.playbackQueue, manager.currentSectionName) }
+                            .padding(horizontal = 14.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = if (isCur) "▶" else "•",
+                            color = if (isCur) palette.primaryAccent else palette.textSecondary,
+                            fontSize = 14.sp
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = song.title,
+                                color = palette.textPrimary,
+                                fontSize = 14.sp,
+                                fontWeight = if (isCur) FontWeight.Bold else FontWeight.SemiBold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Text(
+                                text = "${formatFileSize(song.size)} • ${song.artist}",
+                                color = palette.textSecondary,
+                                fontSize = 11.sp
+                            )
+                        }
+
+                        // Wide, bold drag handle for smooth drag-and-drop reordering
+                        Box(
+                            modifier = Modifier
+                                .padding(start = 8.dp)
+                                .size(44.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .pointerInput(index) {
+                                    detectDragGestures(
+                                        onDrag = { change, dragAmount ->
+                                            change.consume()
+                                            val stepThreshold = 45f
+                                            if (dragAmount.y < -stepThreshold && index > 0) {
+                                                manager.moveQueueItem(index, index - 1)
+                                            } else if (dragAmount.y > stepThreshold && index < manager.playbackQueue.size - 1) {
+                                                manager.moveQueueItem(index, index + 1)
+                                            }
+                                        }
+                                    )
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            BoldWideDragHandleIcon(tint = palette.textSecondary)
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+            Button(
+                onClick = { onDismiss() },
+                modifier = Modifier.fillMaxWidth().height(48.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = palette.surface),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Text("Close", color = palette.textPrimary, fontWeight = FontWeight.Bold)
+            }
+        }
+    }
+}
+
 @Composable
 fun MenuRow(icon: String, text: String, isDark: Boolean, isDanger: Boolean = false, onClick: () -> Unit) {
     val textColor = when {
@@ -1397,6 +1574,7 @@ fun MenuRow(icon: String, text: String, isDark: Boolean, isDanger: Boolean = fal
     }
 }
 
+// Mini Player Dock with Smooth Swipe Up to Maximize
 @UnstableApi
 @Composable
 fun MiniPlayerDock(manager: MusicManager, onClick: () -> Unit) {
@@ -1441,207 +1619,6 @@ fun MiniPlayerDock(manager: MusicManager, onClick: () -> Unit) {
             }
             Box(modifier = Modifier.size(38.dp).clip(CircleShape).background(accent).clickable { manager.togglePlayPause() }, contentAlignment = Alignment.Center) {
                 Text(if (manager.isPlaying) "❚❚" else "▶", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
-            }
-        }
-    }
-}
-
-// Full-Page Playing Queue Sheet: Material You Design, Touch-and-Hold Drag Reorder, & Swipe-Down Dismiss
-@UnstableApi
-@Composable
-fun QueueSheet(
-    manager: MusicManager,
-    palette: MaterialYouPalette? = null,
-    onDismiss: () -> Unit
-) {
-    val isDark = manager.isDarkMode
-    val bgTop = palette?.bgTop ?: if (isDark) Color(0xFF0A0F1D) else Color(0xFFF8F9FA)
-    val bgBottom = palette?.bgBottom ?: if (isDark) Color(0xFF030712) else Color(0xFFEDEFEF)
-    val surfaceColor = palette?.surface ?: if (isDark) Color(0x22FFFFFF) else Color.White
-    val textPrimary = palette?.textPrimary ?: if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A)
-    val textSecondary = palette?.textSecondary ?: Color(0xFF64748B)
-    val accent = palette?.primaryAccent ?: manager.accentColor
-
-    var draggingIndex by remember { mutableStateOf<Int?>(null) }
-    var dragDeltaY by remember { mutableFloatStateOf(0f) }
-
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Brush.verticalGradient(listOf(bgTop, bgBottom)))
-            .statusBarsPadding()
-            // Swipe Down to Dismiss Queue
-            .pointerInput(Unit) {
-                detectVerticalDragGestures { _, dragAmount ->
-                    if (dragAmount > 36f) {
-                        onDismiss()
-                    }
-                }
-            }
-            .padding(16.dp)
-    ) {
-        Column(modifier = Modifier.fillMaxSize()) {
-            // Drag Handle Bar on top
-            Box(
-                modifier = Modifier
-                    .align(Alignment.CenterHorizontally)
-                    .width(44.dp)
-                    .height(5.dp)
-                    .clip(RoundedCornerShape(3.dp))
-                    .background(textSecondary.copy(alpha = 0.4f))
-                    .clickable { onDismiss() }
-            )
-
-            Spacer(modifier = Modifier.height(10.dp))
-
-            // Header
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    GlassBackButton(isDark = isDark, onClick = onDismiss)
-                    Spacer(modifier = Modifier.width(14.dp))
-                    Column {
-                        Text(
-                            text = "Playing Queue (${manager.playbackQueue.size})",
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = textPrimary
-                        )
-                        Text(
-                            text = "Touch and hold three lines to drag & reorder",
-                            fontSize = 12.sp,
-                            color = textSecondary
-                        )
-                    }
-                }
-
-                Button(
-                    onClick = onDismiss,
-                    shape = RoundedCornerShape(10.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = surfaceColor)
-                ) {
-                    Text("Close", color = textPrimary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                }
-            }
-
-            // Queue List with Touch-and-Hold Drag Reordering
-            LazyColumn(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                itemsIndexed(
-                    items = manager.playbackQueue,
-                    key = { _, song -> song.id },
-                    contentType = { _, _ -> "queue_item_row" }
-                ) { index, song ->
-                    val isCur = song.id == manager.currentSong?.id
-                    val isBeingDragged = draggingIndex == index
-
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .graphicsLayer {
-                                if (isBeingDragged) {
-                                    translationY = dragDeltaY
-                                    scaleX = 1.03f
-                                    scaleY = 1.03f
-                                    shadowElevation = 18.dp.toPx()
-                                }
-                            }
-                            .clip(RoundedCornerShape(16.dp))
-                            .background(
-                                if (isBeingDragged) accent.copy(alpha = 0.25f)
-                                else if (isCur) accent.copy(alpha = 0.16f)
-                                else surfaceColor
-                            )
-                            .border(
-                                width = if (isCur || isBeingDragged) 1.5.dp else 1.dp,
-                                color = if (isCur || isBeingDragged) accent else Color(0x1AFFFFFF),
-                                shape = RoundedCornerShape(16.dp)
-                            )
-                            .clickable { manager.playSong(song, manager.playbackQueue, manager.currentSectionName) }
-                            .padding(vertical = 12.dp, horizontal = 14.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(if (isCur) "▶" else "•", color = accent, fontSize = 14.sp)
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = song.title,
-                                color = textPrimary,
-                                fontSize = 14.sp,
-                                fontWeight = if (isCur) FontWeight.Bold else FontWeight.SemiBold,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                            Text(
-                                text = "${formatFileSize(song.size)} • ${if (song.artist.isNotBlank()) song.artist else "Unknown"}",
-                                color = textSecondary,
-                                fontSize = 11.sp,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
-
-                        // Wide, bold, finger-optimized drag handle
-                        Box(
-                            modifier = Modifier
-                                .size(48.dp)
-                                .clip(RoundedCornerShape(8.dp))
-                                .pointerInput(index) {
-                                    detectDragGestures(
-                                        onDragStart = {
-                                            draggingIndex = index
-                                            dragDeltaY = 0f
-                                        },
-                                        onDrag = { change, dragAmount ->
-                                            change.consume()
-                                            dragDeltaY += dragAmount.y
-                                            val threshold = 52.dp.toPx()
-                                            if (dragDeltaY > threshold && index < manager.playbackQueue.size - 1) {
-                                                manager.moveQueueItem(index, index + 1)
-                                                draggingIndex = index + 1
-                                                dragDeltaY -= threshold
-                                            } else if (dragDeltaY < -threshold && index > 0) {
-                                                manager.moveQueueItem(index, index - 1)
-                                                draggingIndex = index - 1
-                                                dragDeltaY += threshold
-                                            }
-                                        },
-                                        onDragEnd = {
-                                            draggingIndex = null
-                                            dragDeltaY = 0f
-                                        },
-                                        onDragCancel = {
-                                            draggingIndex = null
-                                            dragDeltaY = 0f
-                                        }
-                                    )
-                                },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = "≡",
-                                fontSize = 28.sp,
-                                fontWeight = FontWeight.Black,
-                                color = if (isBeingDragged) accent else textSecondary
-                            )
-                        }
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(12.dp))
-            Button(
-                onClick = onDismiss,
-                modifier = Modifier.fillMaxWidth().height(48.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = surfaceColor),
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                Text("Close", color = textPrimary, fontWeight = FontWeight.Bold)
             }
         }
     }
