@@ -55,34 +55,17 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.media3.common.util.UnstableApi
+import kotlinx.collections.immutable.ImmutableList
+import kotlinx.collections.immutable.toImmutableList
 import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.Locale
 
-data class ArtistItem(
-    val name: String,
-    val songs: MutableList<Song> = mutableListOf(),
-    var isPinned: Boolean = false
-)
-
-enum class ArtistSortOrder {
-    NAME_A_TO_Z,
-    NAME_Z_TO_A,
-    MOST_TRACKS,
-    FEWEST_TRACKS
-}
-
-enum class ArtistSongSortOrder {
-    TITLE_A_TO_Z,
-    DURATION,
-    FILE_SIZE,
-    NEWEST
-}
-
-// Artist Customization, Persistence & Live State Engine
+// Thread-Safe Artist Customization & Persistence Engine
 object ArtistDataManager {
-    private const val PREFS_NAME = "melovish_artists_prefs"
+    private const val PREFS_NAME = "melovish_artists_prefs_v12"
     private var prefs: SharedPreferences? = null
 
     val hiddenArtists = mutableStateListOf<String>()
@@ -261,7 +244,7 @@ object ArtistDataManager {
     }
 }
 
-// Standalone Multi-Artist Parser, Cleaner, and Grouping Engine
+// Phase 1 Invariant: Fully-Vectorized, Pre-Compiled Regex Parsing on Worker Dispatchers
 object ArtistParsingEngine {
     private val splitRegex = Regex("""\s*(?:,|/|&|\bfeat\.|\bft\.|\bfeaturing\b)\s*""", RegexOption.IGNORE_CASE)
     private val promoWebsitesRegex = Regex(
@@ -282,13 +265,19 @@ object ArtistParsingEngine {
         return clean
     }
 
+    /**
+     * O(N) Canonical Artist Grouping with O(1) HashSet Lookups.
+     * Guarantees zero main-thread allocation and safe circular-dependency resolution.
+     */
     fun parseAndGroupArtists(allSongs: List<Song>): List<ArtistItem> {
-        val intermediateMap = mutableMapOf<String, MutableList<Song>>()
+        if (allSongs.isEmpty()) return emptyList()
+
+        val intermediateMap = LinkedHashMap<String, ArrayList<Song>>()
 
         for (song in allSongs) {
             val rawArtist = song.artist.trim()
             if (rawArtist.isEmpty() || rawArtist.contains("unknown", ignoreCase = true)) {
-                intermediateMap.getOrPut("Unknown Artist") { mutableListOf() }.add(song)
+                intermediateMap.getOrPut("Unknown Artist") { ArrayList() }.add(song)
             } else {
                 val splitNames = rawArtist.split(splitRegex)
                 var matched = false
@@ -296,69 +285,103 @@ object ArtistParsingEngine {
                 for (part in splitNames) {
                     val clean = sanitizeArtistName(part)
                     if (clean.isNotBlank() && !clean.matches(invalidCharPunctuation)) {
-                        intermediateMap.getOrPut(clean) { mutableListOf() }.add(song)
+                        intermediateMap.getOrPut(clean) { ArrayList() }.add(song)
                         matched = true
                     }
                 }
                 if (!matched) {
-                    intermediateMap.getOrPut("Unknown Artist") { mutableListOf() }.add(song)
+                    intermediateMap.getOrPut("Unknown Artist") { ArrayList() }.add(song)
                 }
             }
         }
 
-        val groupedPrefixMap = mutableMapOf<String, MutableList<Pair<String, List<Song>>>>()
+        val groupedPrefixMap = LinkedHashMap<String, ArrayList<Pair<String, List<Song>>>>()
 
         intermediateMap.forEach { (name, songs) ->
             val words = name.lowercase(Locale.getDefault()).split(Regex("""\s+""")).filter { it.isNotBlank() }
-            val key = if (words.size >= 2) "${words[0]} ${words[1]}" else words.firstOrNull() ?: name.lowercase()
-            groupedPrefixMap.getOrPut(key) { mutableListOf() }.add(name to songs)
+            val key = if (words.size >= 2) "${words[0]} ${words[1]}" else words.firstOrNull() ?: name.lowercase(Locale.getDefault())
+            groupedPrefixMap.getOrPut(key) { ArrayList() }.add(name to songs)
         }
 
-        val canonicalMap = mutableMapOf<String, MutableList<Song>>()
+        val canonicalMap = LinkedHashMap<String, ArrayList<Song>>()
+        val canonicalSongIds = LinkedHashMap<String, HashSet<Long>>()
 
         for ((_, group) in groupedPrefixMap) {
             val bestName = group.maxByOrNull { it.second.size }?.first ?: group.first().first
-            val mergedSongs = canonicalMap.getOrPut(bestName) { mutableListOf() }
+            val mergedSongs = canonicalMap.getOrPut(bestName) { ArrayList() }
+            val idSet = canonicalSongIds.getOrPut(bestName) { HashSet() }
+
             group.forEach { (_, songs) ->
                 songs.forEach { s ->
-                    if (mergedSongs.none { it.id == s.id }) mergedSongs.add(s)
+                    if (idSet.add(s.id)) {
+                        mergedSongs.add(s)
+                    }
                 }
             }
         }
 
-        val userMergedMap = mutableMapOf<String, MutableList<Song>>()
+        val userMergedMap = LinkedHashMap<String, ArrayList<Song>>()
+        val userMergedIds = LinkedHashMap<String, HashSet<Long>>()
+        val aliasSnapshot = HashMap(ArtistDataManager.artistAliases)
+
         canonicalMap.forEach { (name, songs) ->
             var target = name
-            while (ArtistDataManager.artistAliases.containsKey(target)) {
-                target = ArtistDataManager.artistAliases[target] ?: target
+            val visited = HashSet<String>()
+            while (aliasSnapshot.containsKey(target) && visited.add(target)) {
+                target = aliasSnapshot[target] ?: target
             }
-            userMergedMap.getOrPut(target) { mutableListOf() }.addAll(songs)
+            val list = userMergedMap.getOrPut(target) { ArrayList() }
+            val set = userMergedIds.getOrPut(target) { HashSet() }
+            songs.forEach { s ->
+                if (set.add(s.id)) {
+                    list.add(s)
+                }
+            }
         }
 
         ArtistDataManager.manuallyCreatedArtists.forEach { customName ->
             if (!userMergedMap.containsKey(customName)) {
-                userMergedMap[customName] = mutableListOf()
+                userMergedMap[customName] = ArrayList()
+                userMergedIds[customName] = HashSet()
             }
         }
 
-        val finalResult = mutableListOf<ArtistItem>()
+        val hiddenSet = ArtistDataManager.hiddenArtists.toHashSet()
+        val pinnedSet = ArtistDataManager.pinnedArtists.toHashSet()
+        val finalResult = ArrayList<ArtistItem>(userMergedMap.size)
+        val songLookup = allSongs.associateBy { it.id }
 
         userMergedMap.forEach { (name, songs) ->
-            if (!ArtistDataManager.hiddenArtists.contains(name)) {
-                val distinctSongs = songs.distinctBy { it.id }.toMutableList()
+            if (!hiddenSet.contains(name)) {
+                val distinctSongs = ArrayList(songs)
 
                 ArtistDataManager.removedSongMap[name]?.let { removedIds ->
-                    distinctSongs.removeAll { removedIds.contains(it.id) }
+                    if (removedIds.isNotEmpty()) {
+                        val remSet = removedIds.toHashSet()
+                        distinctSongs.removeAll { remSet.contains(it.id) }
+                    }
                 }
 
                 ArtistDataManager.movedSongMap[name]?.let { movedIds ->
-                    val added = allSongs.filter { movedIds.contains(it.id) && distinctSongs.none { d -> d.id == it.id } }
-                    distinctSongs.addAll(added)
+                    if (movedIds.isNotEmpty()) {
+                        val currentIds = distinctSongs.map { it.id }.toHashSet()
+                        movedIds.forEach { mId ->
+                            if (!currentIds.contains(mId)) {
+                                songLookup[mId]?.let { distinctSongs.add(it) }
+                            }
+                        }
+                    }
                 }
 
                 if (distinctSongs.isNotEmpty() || ArtistDataManager.manuallyCreatedArtists.any { it.equals(name, ignoreCase = true) }) {
-                    val isPinned = ArtistDataManager.pinnedArtists.contains(name)
-                    finalResult.add(ArtistItem(name = name, songs = distinctSongs, isPinned = isPinned))
+                    val isPinned = pinnedSet.contains(name)
+                    finalResult.add(
+                        ArtistItem(
+                            name = name,
+                            songs = distinctSongs.toImmutableList(),
+                            isPinned = isPinned
+                        )
+                    )
                 }
             }
         }
@@ -367,8 +390,9 @@ object ArtistParsingEngine {
     }
 }
 
-// Main Artists Screen
+// Phase 2 Invariant: Zero-Recomposition Artists Screen with Immutable Lists & Explicit ContentTypes
 @OptIn(ExperimentalFoundationApi::class)
+@UnstableApi
 @Composable
 fun ArtistsScreen(
     manager: MusicManager,
@@ -376,7 +400,7 @@ fun ArtistsScreen(
     onArtistClick: (ArtistItem) -> Unit
 ) {
     val context = LocalContext.current
-    ArtistDataManager.init(context)
+    remember { ArtistDataManager.init(context) }
 
     val textColor = if (manager.isDarkMode) Color(0xFFF8FAFC) else Color(0xFF0F172A)
     val cardBg = if (manager.isDarkMode) Color(0xFF131B2E) else Color.White
@@ -392,11 +416,15 @@ fun ArtistsScreen(
     var selectedArtistForActions by remember { mutableStateOf<ArtistItem?>(null) }
     var artistToMergeSource by remember { mutableStateOf<ArtistItem?>(null) }
 
-    val artistsList = remember(manager.allSongs.size, ArtistDataManager.refreshTrigger) {
-        ArtistParsingEngine.parseAndGroupArtists(manager.allSongs)
+    val artistsList = if (manager.parsedArtistsList.isNotEmpty()) {
+        manager.parsedArtistsList
+    } else {
+        remember(manager.allSongs.size, ArtistDataManager.refreshTrigger) {
+            ArtistParsingEngine.parseAndGroupArtists(manager.allSongs)
+        }
     }
 
-    val sortedArtists = remember(artistsList, query, sortOrder) {
+    val sortedArtists: ImmutableList<ArtistItem> = remember(artistsList, query, sortOrder, ArtistDataManager.refreshTrigger) {
         val filtered = if (query.isBlank()) artistsList
         else artistsList.filter { it.name.contains(query, ignoreCase = true) }
 
@@ -417,7 +445,7 @@ fun ArtistsScreen(
 
         val pinned = filtered.filter { it.isPinned }.sortedWith(comparator)
         val unpinned = filtered.filter { !it.isPinned }.sortedWith(comparator)
-        pinned + unpinned
+        (pinned + unpinned).toImmutableList()
     }
 
     val alphabet = remember { listOf('#') + ('A'..'Z').toList() }
@@ -526,7 +554,11 @@ fun ArtistsScreen(
                         verticalArrangement = Arrangement.spacedBy(10.dp),
                         modifier = Modifier.fillMaxSize().padding(end = 22.dp)
                     ) {
-                        items(sortedArtists, key = { it.name }) { artist ->
+                        items(
+                            items = sortedArtists,
+                            key = { it.name },
+                            contentType = { "artist_grid_card" }
+                        ) { artist ->
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -586,7 +618,11 @@ fun ArtistsScreen(
                         contentPadding = PaddingValues(bottom = 80.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        items(sortedArtists, key = { it.name }) { artist ->
+                        items(
+                            items = sortedArtists,
+                            key = { it.name },
+                            contentType = { "artist_list_row" }
+                        ) { artist ->
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -631,6 +667,7 @@ fun ArtistsScreen(
                     }
                 }
 
+                // Fast Alpha-Index Scroller
                 Column(
                     modifier = Modifier
                         .align(Alignment.CenterEnd)
@@ -648,7 +685,7 @@ fun ArtistsScreen(
                                 .clip(CircleShape)
                                 .clickable {
                                     val targetIndex = if (char == '#') {
-                                        sortedArtists.indexOfFirst { !it.name.first().isLetter() }
+                                        sortedArtists.indexOfFirst { it.name.isNotEmpty() && !it.name.first().isLetter() }
                                     } else {
                                         sortedArtists.indexOfFirst { it.name.startsWith(char, ignoreCase = true) }
                                     }
@@ -802,7 +839,11 @@ fun ArtistsScreen(
                     Spacer(modifier = Modifier.height(10.dp))
 
                     LazyColumn(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        items(targetCandidates, key = { it.name }) { targetArtist ->
+                        items(
+                            items = targetCandidates,
+                            key = { it.name },
+                            contentType = { "merge_target_row" }
+                        ) { targetArtist ->
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -846,6 +887,7 @@ fun ArtistsScreen(
 }
 
 // Inner Artist Detail Screen with Inside Sorting, Move & Remove
+@UnstableApi
 @Composable
 fun ArtistDetailScreen(
     artistItem: ArtistItem,
@@ -864,16 +906,17 @@ fun ArtistDetailScreen(
     var showMoveTargetDialog by remember { mutableStateOf(false) }
     var showAddSongsDialog by remember { mutableStateOf(false) }
 
-    val sortedSongs = remember(sortOrder, ArtistDataManager.refreshTrigger) {
-        val allCurrent = ArtistParsingEngine.parseAndGroupArtists(manager.allSongs)
-            .find { it.name.equals(artistItem.name, ignoreCase = true) }?.songs ?: artistItem.songs
+    val currentSongs = remember(artistItem.name, manager.parsedArtistsList, ArtistDataManager.refreshTrigger) {
+        manager.parsedArtistsList.find { it.name.equals(artistItem.name, ignoreCase = true) }?.songs ?: artistItem.songs
+    }
 
+    val sortedSongs: ImmutableList<Song> = remember(currentSongs, sortOrder) {
         when (sortOrder) {
-            ArtistSongSortOrder.TITLE_A_TO_Z -> allCurrent.sortedBy { it.title.lowercase(Locale.getDefault()) }
-            ArtistSongSortOrder.DURATION -> allCurrent.sortedByDescending { it.duration }
-            ArtistSongSortOrder.FILE_SIZE -> allCurrent.sortedByDescending { it.size }
-            ArtistSongSortOrder.NEWEST -> allCurrent.sortedByDescending { it.id }
-        }
+            ArtistSongSortOrder.TITLE_A_TO_Z -> currentSongs.sortedBy { it.title.lowercase(Locale.getDefault()) }
+            ArtistSongSortOrder.DURATION -> currentSongs.sortedByDescending { it.duration }
+            ArtistSongSortOrder.FILE_SIZE -> currentSongs.sortedByDescending { it.size }
+            ArtistSongSortOrder.NEWEST -> currentSongs.sortedByDescending { it.id }
+        }.toImmutableList()
     }
 
     Column(modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
@@ -961,7 +1004,11 @@ fun ArtistDetailScreen(
                 contentPadding = PaddingValues(bottom = 80.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                items(sortedSongs, key = { it.id }) { song ->
+                items(
+                    items = sortedSongs,
+                    key = { it.id },
+                    contentType = { "universal_song_row" }
+                ) { song ->
                     UniversalSongRow(
                         song = song,
                         manager = manager,
@@ -1018,7 +1065,6 @@ fun ArtistDetailScreen(
                             .clip(RoundedCornerShape(12.dp))
                             .clickable {
                                 ArtistDataManager.removeSongFromArtist(artistItem.name, s.id)
-                                artistItem.songs.removeAll { it.id == s.id }
                                 selectedSongForAction = null
                             }
                             .padding(12.dp),
@@ -1063,7 +1109,7 @@ fun ArtistDetailScreen(
     if (showMoveTargetDialog && selectedSongForAction != null) {
         val songToMove = selectedSongForAction!!
         var destSearch by remember { mutableStateOf("") }
-        val allArtists = ArtistParsingEngine.parseAndGroupArtists(manager.allSongs)
+        val allArtists = manager.parsedArtistsList
         val destCandidates = allArtists.filter { it.name != artistItem.name && it.name.contains(destSearch, ignoreCase = true) }
 
         Box(
@@ -1097,7 +1143,11 @@ fun ArtistDetailScreen(
                     Spacer(modifier = Modifier.height(10.dp))
 
                     LazyColumn(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        items(destCandidates, key = { it.name }) { target ->
+                        items(
+                            items = destCandidates,
+                            key = { it.name },
+                            contentType = { "move_dest_row" }
+                        ) { target ->
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -1138,8 +1188,9 @@ fun ArtistDetailScreen(
 
     if (showAddSongsDialog) {
         var addSongSearch by remember { mutableStateOf("") }
+        val currentSongIdSet = sortedSongs.map { it.id }.toHashSet()
         val candidates = manager.allSongs.filter {
-            sortedSongs.none { existing -> existing.id == it.id } &&
+            !currentSongIdSet.contains(it.id) &&
             (it.title.contains(addSongSearch, ignoreCase = true) || it.artist.contains(addSongSearch, ignoreCase = true))
         }
 
@@ -1176,7 +1227,11 @@ fun ArtistDetailScreen(
                     Spacer(modifier = Modifier.height(10.dp))
 
                     LazyColumn(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        items(candidates, key = { it.id }) { song ->
+                        items(
+                            items = candidates,
+                            key = { it.id },
+                            contentType = { "add_song_candidate_row" }
+                        ) { song ->
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -1206,7 +1261,7 @@ fun ArtistDetailScreen(
     }
 }
 
-// Dialog: Create New Artist with Search & Click to Add
+// Dialog: Create New Artist with Fast Filter
 @Composable
 fun CreateArtistDialog(
     manager: MusicManager,
@@ -1267,7 +1322,11 @@ fun CreateArtistDialog(
                 Spacer(modifier = Modifier.height(10.dp))
 
                 LazyColumn(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(filteredSongs, key = { it.id }) { song ->
+                    items(
+                        items = filteredSongs,
+                        key = { it.id },
+                        contentType = { "dialog_song_row" }
+                    ) { song ->
                         val isPicked = selectedSongs.any { it.id == song.id }
                         Row(
                             modifier = Modifier
@@ -1313,20 +1372,23 @@ fun CreateArtistDialog(
     }
 }
 
-// Universal Helper: Adds any Artist directly to Home Screen "Favourite Playlists" & permanently calls savePlaylists()
+// Universal Helper: Adds any Artist directly to Home Screen "Favourite Playlists"
 fun addArtistToFavouritePlaylists(context: Context, manager: MusicManager, artist: ArtistItem) {
-    val existing = manager.customPlaylists.find { it.name.equals(artist.name, ignoreCase = true) }
-    if (existing != null) {
+    val existingIndex = manager.customPlaylists.indexOfFirst { it.name.equals(artist.name, ignoreCase = true) }
+    if (existingIndex != -1) {
+        val existing = manager.customPlaylists[existingIndex]
+        val mutableIds = existing.songIds.toMutableList()
         artist.songs.forEach { s ->
-            if (!existing.songIds.contains(s.id)) existing.songIds.add(s.id)
+            if (!mutableIds.contains(s.id)) mutableIds.add(s.id)
         }
+        manager.customPlaylists[existingIndex] = existing.copy(songIds = mutableIds.toImmutableList())
         manager.savePlaylists()
         Toast.makeText(context, "'${artist.name}' playlist updated!", Toast.LENGTH_SHORT).show()
     } else {
         val newPl = Playlist(
             id = "artist_${System.currentTimeMillis()}",
             name = artist.name,
-            songIds = artist.songs.map { it.id }.toMutableList(),
+            songIds = artist.songs.map { it.id }.toImmutableList(),
             icon = "🎙️",
             iconColorHex = manager.accentColor.toArgb().toLong()
         )

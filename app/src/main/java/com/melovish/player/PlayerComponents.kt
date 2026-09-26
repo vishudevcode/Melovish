@@ -52,6 +52,7 @@ import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -62,6 +63,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -84,7 +86,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.media3.common.Player
+import androidx.media3.common.util.UnstableApi
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import java.util.Locale
 import kotlin.math.atan2
 import kotlin.math.cos
@@ -100,31 +105,45 @@ fun LiveAudioWaveEqualizer(isAnimating: Boolean, accentColor: Color, modifier: M
     val h3 by infiniteTransition.animateFloat(0.35f, 1.0f, infiniteRepeatable(tween(420, easing = LinearEasing), RepeatMode.Reverse), label = "h3")
     val h4 by infiniteTransition.animateFloat(0.70f, 0.30f, infiniteRepeatable(tween(510, easing = LinearEasing), RepeatMode.Reverse), label = "h4")
 
-    Row(modifier = modifier.height(16.dp).width(20.dp), horizontalArrangement = Arrangement.spacedBy(2.5.dp), verticalAlignment = Alignment.Bottom) {
+    Row(
+        modifier = modifier.height(16.dp).width(20.dp),
+        horizontalArrangement = Arrangement.spacedBy(2.5.dp),
+        verticalAlignment = Alignment.Bottom
+    ) {
         val heights = if (isAnimating) listOf(h1, h2, h3, h4) else listOf(0.3f, 0.4f, 0.35f, 0.25f)
         heights.forEach { frac ->
-            Box(modifier = Modifier.weight(1f).fillMaxHeight(frac).clip(RoundedCornerShape(2.dp)).background(accentColor))
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight(frac)
+                    .clip(RoundedCornerShape(2.dp))
+                    .background(accentColor)
+            )
         }
     }
 }
 
-// Curved Back Arrow Icon
+// Vector Curved Back Arrow Icon
 @Composable
 fun CurvedBackArrowIcon(tint: Color, modifier: Modifier = Modifier) {
-    Canvas(modifier = modifier) {
-        val w = size.width
-        val h = size.height
-        val path = Path().apply {
-            moveTo(w * 0.12f, h * 0.50f)
-            lineTo(w * 0.48f, h * 0.20f)
-            lineTo(w * 0.48f, h * 0.38f)
-            cubicTo(w * 0.65f, h * 0.39f, w * 0.85f, h * 0.54f, w * 0.94f, h * 0.80f)
-            cubicTo(w * 0.74f, h * 0.63f, w * 0.58f, h * 0.62f, w * 0.48f, h * 0.62f)
-            lineTo(w * 0.48f, h * 0.80f)
-            close()
+    Spacer(
+        modifier = modifier.drawWithCache {
+            val w = size.width
+            val h = size.height
+            val path = Path().apply {
+                moveTo(w * 0.12f, h * 0.50f)
+                lineTo(w * 0.48f, h * 0.20f)
+                lineTo(w * 0.48f, h * 0.38f)
+                cubicTo(w * 0.65f, h * 0.39f, w * 0.85f, h * 0.54f, w * 0.94f, h * 0.80f)
+                cubicTo(w * 0.74f, h * 0.63f, w * 0.58f, h * 0.62f, w * 0.48f, h * 0.62f)
+                lineTo(w * 0.48f, h * 0.80f)
+                close()
+            }
+            onDrawBehind {
+                drawPath(path, color = tint)
+            }
         }
-        drawPath(path, color = tint)
-    }
+    )
 }
 
 // Circular Embossed Glass Back Button
@@ -144,45 +163,53 @@ fun GlassBackButton(isDark: Boolean, onClick: () -> Unit, modifier: Modifier = M
     }
 }
 
-// Glassmorphic Full-Color Folder Icon
+// Glassmorphic Full-Color Folder Icon with Cached Paths
 @Composable
 fun GlassmorphicFolderIcon(folderColor: Color, modifier: Modifier = Modifier) {
-    Canvas(modifier = modifier) {
-        val w = size.width
-        val h = size.height
-        val backPath = Path().apply {
-            moveTo(w * 0.12f, h * 0.22f)
-            quadraticBezierTo(w * 0.12f, h * 0.14f, w * 0.20f, h * 0.14f)
-            lineTo(w * 0.42f, h * 0.14f)
-            quadraticBezierTo(w * 0.48f, h * 0.14f, w * 0.52f, h * 0.22f)
-            lineTo(w * 0.56f, h * 0.28f)
-            lineTo(w * 0.82f, h * 0.28f)
-            quadraticBezierTo(w * 0.88f, h * 0.28f, w * 0.88f, h * 0.35f)
-            lineTo(w * 0.88f, h * 0.82f)
-            quadraticBezierTo(w * 0.88f, h * 0.88f, w * 0.80f, h * 0.88f)
-            lineTo(w * 0.18f, h * 0.88f)
-            quadraticBezierTo(w * 0.12f, h * 0.88f, w * 0.12f, h * 0.82f)
-            close()
-        }
-        drawPath(backPath, brush = Brush.verticalGradient(listOf(folderColor, folderColor.copy(alpha = 0.85f))))
+    Spacer(
+        modifier = modifier.drawWithCache {
+            val w = size.width
+            val h = size.height
+            val backPath = Path().apply {
+                moveTo(w * 0.12f, h * 0.22f)
+                quadraticBezierTo(w * 0.12f, h * 0.14f, w * 0.20f, h * 0.14f)
+                lineTo(w * 0.42f, h * 0.14f)
+                quadraticBezierTo(w * 0.48f, h * 0.14f, w * 0.52f, h * 0.22f)
+                lineTo(w * 0.56f, h * 0.28f)
+                lineTo(w * 0.82f, h * 0.28f)
+                quadraticBezierTo(w * 0.88f, h * 0.28f, w * 0.88f, h * 0.35f)
+                lineTo(w * 0.88f, h * 0.82f)
+                quadraticBezierTo(w * 0.88f, h * 0.88f, w * 0.80f, h * 0.88f)
+                lineTo(w * 0.18f, h * 0.88f)
+                quadraticBezierTo(w * 0.12f, h * 0.88f, w * 0.12f, h * 0.82f)
+                close()
+            }
+            val glassPath = Path().apply {
+                moveTo(w * 0.15f, h * 0.38f)
+                quadraticBezierTo(w * 0.13f, h * 0.38f, w * 0.18f, h * 0.38f)
+                lineTo(w * 0.87f, h * 0.38f)
+                quadraticBezierTo(w * 0.93f, h * 0.46f, w * 0.91f, h * 0.46f)
+                lineTo(w * 0.83f, h * 0.88f)
+                quadraticBezierTo(w * 0.81f, h * 0.92f, w * 0.75f, h * 0.92f)
+                lineTo(w * 0.15f, h * 0.92f)
+                quadraticBezierTo(w * 0.10f, h * 0.92f, w * 0.12f, h * 0.86f)
+                close()
+            }
+            val backBrush = Brush.verticalGradient(listOf(folderColor, folderColor.copy(alpha = 0.85f)))
+            val glassBrush = Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.50f), folderColor.copy(alpha = 0.58f)))
+            val strokeBrush = Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.85f), Color.White.copy(alpha = 0.25f)))
+            val strokeStyle = Stroke(width = 1.6f.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
 
-        val glassPath = Path().apply {
-            moveTo(w * 0.15f, h * 0.38f)
-            quadraticBezierTo(w * 0.13f, h * 0.38f, w * 0.18f, h * 0.38f)
-            lineTo(w * 0.87f, h * 0.38f)
-            quadraticBezierTo(w * 0.93f, h * 0.46f, w * 0.91f, h * 0.46f)
-            lineTo(w * 0.83f, h * 0.88f)
-            quadraticBezierTo(w * 0.81f, h * 0.92f, w * 0.75f, h * 0.92f)
-            lineTo(w * 0.15f, h * 0.92f)
-            quadraticBezierTo(w * 0.10f, h * 0.92f, w * 0.12f, h * 0.86f)
-            close()
+            onDrawBehind {
+                drawPath(backPath, brush = backBrush)
+                drawPath(glassPath, brush = glassBrush)
+                drawPath(glassPath, brush = strokeBrush, style = strokeStyle)
+            }
         }
-        drawPath(glassPath, brush = Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.50f), folderColor.copy(alpha = 0.58f))))
-        drawPath(glassPath, brush = Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.85f), Color.White.copy(alpha = 0.25f))), style = Stroke(width = 1.6f.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round))
-    }
+    )
 }
 
-// 9 Preset Colors + 10th Rainbow Wheel Dialog (Zero Darkening Scrim)
+// 9 Preset Colors + 10th Rainbow Wheel Dialog
 @Composable
 fun FolderColorDialog(
     folderName: String,
@@ -192,10 +219,12 @@ fun FolderColorDialog(
     onOpenRainbowPicker: () -> Unit,
     onDismiss: () -> Unit
 ) {
-    val preset9Colors = listOf(
-        Color(0xFFF59E0B), Color(0xFF00B4D8), Color(0xFF10B981), Color(0xFF39FF14), Color(0xFFFF2A85),
-        Color(0xFFEF4444), Color(0xFF8B5CF6), Color(0xFF3B82F6), Color(0xFFFF6B35)
-    )
+    val preset9Colors = remember {
+        listOf(
+            Color(0xFFF59E0B), Color(0xFF00B4D8), Color(0xFF10B981), Color(0xFF39FF14), Color(0xFFFF2A85),
+            Color(0xFFEF4444), Color(0xFF8B5CF6), Color(0xFF3B82F6), Color(0xFFFF6B35)
+        )
+    }
 
     Box(
         modifier = Modifier
@@ -237,27 +266,42 @@ fun FolderColorDialog(
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         preset9Colors.take(5).forEach { color ->
                             Box(
-                                modifier = Modifier.size(38.dp).clip(CircleShape).background(color).border(2.dp, if (currentColor == color) Color.White else Color.Transparent, CircleShape).clickable {
-                                    onColorSelected(color)
-                                    onDismiss()
-                                }
+                                modifier = Modifier
+                                    .size(38.dp)
+                                    .clip(CircleShape)
+                                    .background(color)
+                                    .border(2.dp, if (currentColor == color) Color.White else Color.Transparent, CircleShape)
+                                    .clickable {
+                                        onColorSelected(color)
+                                        onDismiss()
+                                    }
                             )
                         }
                     }
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                         preset9Colors.drop(5).take(4).forEach { color ->
                             Box(
-                                modifier = Modifier.size(38.dp).clip(CircleShape).background(color).border(2.dp, if (currentColor == color) Color.White else Color.Transparent, CircleShape).clickable {
-                                    onColorSelected(color)
-                                    onDismiss()
-                                }
+                                modifier = Modifier
+                                    .size(38.dp)
+                                    .clip(CircleShape)
+                                    .background(color)
+                                    .border(2.dp, if (currentColor == color) Color.White else Color.Transparent, CircleShape)
+                                    .clickable {
+                                        onColorSelected(color)
+                                        onDismiss()
+                                    }
                             )
                         }
                         Box(
-                            modifier = Modifier.size(38.dp).clip(CircleShape).background(Brush.sweepGradient(listOf(Color.Red, Color.Yellow, Color.Green, Color.Cyan, Color.Blue, Color.Magenta, Color.Red))).border(2.dp, Color.White, CircleShape).clickable {
-                                onDismiss()
-                                onOpenRainbowPicker()
-                            },
+                            modifier = Modifier
+                                .size(38.dp)
+                                .clip(CircleShape)
+                                .background(Brush.sweepGradient(listOf(Color.Red, Color.Yellow, Color.Green, Color.Cyan, Color.Blue, Color.Magenta, Color.Red)))
+                                .border(2.dp, Color.White, CircleShape)
+                                .clickable {
+                                    onDismiss()
+                                    onOpenRainbowPicker()
+                                },
                             contentAlignment = Alignment.Center
                         ) {
                             Box(modifier = Modifier.size(12.dp).clip(CircleShape).background(Color.White))
@@ -281,38 +325,50 @@ fun FolderColorDialog(
 // Minimalist Vector Avatar
 @Composable
 fun DefaultProfileAvatar(modifier: Modifier = Modifier, backgroundColor: Color = Color(0xFF030712)) {
-    Canvas(modifier = modifier) {
-        val w = size.width
-        val h = size.height
-        drawCircle(color = backgroundColor, radius = w / 2f, center = Offset(w / 2f, h / 2f))
-        val bodyBrush = Brush.verticalGradient(listOf(Color(0xFFCBD6FF), Color(0xFF5B82FC)), startY = h * 0.48f, endY = h * 0.95f)
-        val bodyPath = Path().apply {
-            moveTo(w * 0.16f, h * 0.88f)
-            cubicTo(w * 0.16f, h * 0.66f, w * 0.28f, h * 0.49f, w * 0.50f, h * 0.49f)
-            cubicTo(w * 0.72f, h * 0.49f, w * 0.84f, h * 0.66f, w * 0.84f, h * 0.88f)
-            cubicTo(w * 0.76f, h * 0.95f, w * 0.24f, h * 0.95f, w * 0.16f, h * 0.88f)
-            close()
-        }
-        drawPath(bodyPath, brush = bodyBrush)
+    Spacer(
+        modifier = modifier.drawWithCache {
+            val w = size.width
+            val h = size.height
+            val bodyBrush = Brush.verticalGradient(listOf(Color(0xFFCBD6FF), Color(0xFF5B82FC)), startY = h * 0.48f, endY = h * 0.95f)
+            val bodyPath = Path().apply {
+                moveTo(w * 0.16f, h * 0.88f)
+                cubicTo(w * 0.16f, h * 0.66f, w * 0.28f, h * 0.49f, w * 0.50f, h * 0.49f)
+                cubicTo(w * 0.72f, h * 0.49f, w * 0.84f, h * 0.66f, w * 0.84f, h * 0.88f)
+                cubicTo(w * 0.76f, h * 0.95f, w * 0.24f, h * 0.95f, w * 0.16f, h * 0.88f)
+                close()
+            }
+            val headRadius = w * 0.235f
+            val headCenter = Offset(w * 0.5f, h * 0.285f)
+            val headBrush = Brush.verticalGradient(listOf(Color(0xFFE2F1FE), Color(0xFF7FA8FE)), startY = headCenter.y - headRadius, endY = headCenter.y + headRadius)
 
-        val headRadius = w * 0.235f
-        val headCenter = Offset(w * 0.5f, h * 0.285f)
-        val headBrush = Brush.verticalGradient(listOf(Color(0xFFE2F1FE), Color(0xFF7FA8FE)), startY = headCenter.y - headRadius, endY = headCenter.y + headRadius)
-        drawCircle(brush = headBrush, radius = headRadius, center = headCenter)
-    }
+            onDrawBehind {
+                drawCircle(color = backgroundColor, radius = w / 2f, center = Offset(w / 2f, h / 2f))
+                drawPath(bodyPath, brush = bodyBrush)
+                drawCircle(brush = headBrush, radius = headRadius, center = headCenter)
+            }
+        }
+    )
 }
 
-data class MaterialYouPalette(val bgTop: Color, val bgBottom: Color, val primaryAccent: Color, val surface: Color, val textPrimary: Color, val textSecondary: Color)
+@Immutable
+data class MaterialYouPalette(
+    val bgTop: Color,
+    val bgBottom: Color,
+    val primaryAccent: Color,
+    val surface: Color,
+    val textPrimary: Color,
+    val textSecondary: Color
+)
 
-fun extractMaterialYouPalette(bitmap: Bitmap?, isDarkMode: Boolean, fallbackAccent: Color): MaterialYouPalette {
+suspend fun extractMaterialYouPaletteAsync(bitmap: Bitmap?, isDarkMode: Boolean, fallbackAccent: Color): MaterialYouPalette = withContext(Dispatchers.Default) {
     if (bitmap == null) {
-        return if (isDarkMode) {
+        return@withContext if (isDarkMode) {
             MaterialYouPalette(Color(0xFF1E1F28), Color(0xFF0B0C10), fallbackAccent, Color(0x33FFFFFF), Color(0xFFF8FAFC), Color(0xFF94A3B8))
         } else {
             MaterialYouPalette(Color(0xFFFAF7F2), Color(0xFFEBE5DB), fallbackAccent, Color(0x66FFFFFF), Color(0xFF0F172A), Color(0xFF475569))
         }
     }
-    return try {
+    try {
         val scaled = Bitmap.createScaledBitmap(bitmap, 16, 16, false)
         var totalR = 0L; var totalG = 0L; var totalB = 0L; var count = 0
         var maxSat = -1f; var vibrantColor = android.graphics.Color.WHITE
@@ -362,8 +418,105 @@ fun extractMaterialYouPalette(bitmap: Bitmap?, isDarkMode: Boolean, fallbackAcce
     }
 }
 
-// Full Player Sheet: 50/50 Split, 3D Swipe Tilt, Pierced Center Slider Ball, Edge-to-Edge Sheets
+// EXACT MATCH PROGRESS BAR: Flat solid accent dot thumb, square flat caps, neutral grey inactive track[span_1](start_span)[span_1](end_span)
 @OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun IsolatedScrubberLeaf(
+    currentPositionMs: Long,
+    durationMs: Long,
+    accentColor: Color,
+    textColor: Color,
+    isDark: Boolean,
+    onSeek: (Long) -> Unit
+) {
+    var isDragging by remember { mutableStateOf(false) }
+    var dragVal by remember { mutableFloatStateOf(0f) }
+
+    LaunchedEffect(currentPositionMs) {
+        if (!isDragging) dragVal = currentPositionMs.toFloat()
+    }
+
+    val displayPos = if (isDragging) dragVal.toLong() else currentPositionMs
+    val maxDuration = durationMs.coerceAtLeast(1L)
+    val inactiveTrackColor = if (isDark) Color(0xFF475569) else Color(0xFFD1D5DB)
+
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Slider(
+            value = dragVal.coerceIn(0f, maxDuration.toFloat()),
+            onValueChange = {
+                isDragging = true
+                dragVal = it
+            },
+            onValueChangeFinished = {
+                isDragging = false
+                onSeek(dragVal.toLong())
+            },
+            valueRange = 0f..maxDuration.toFloat(),
+            thumb = {
+                // Exact Flat Solid Accent Dot Thumb (No white border, no drop shadow)[span_2](start_span)[span_2](end_span)
+                Box(
+                    modifier = Modifier
+                        .size(10.dp)
+                        .clip(CircleShape)
+                        .background(accentColor)
+                )
+            },
+            track = { sliderState ->
+                val fraction = ((sliderState.value - sliderState.valueRange.start) /
+                    (sliderState.valueRange.endInclusive - sliderState.valueRange.start)).coerceIn(0f, 1f)
+
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(14.dp),
+                    contentAlignment = Alignment.CenterStart
+                ) {
+                    Canvas(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(3.dp)
+                    ) {
+                        val strokeWidth = 3.dp.toPx()
+                        val activeWidth = size.width * fraction
+
+                        // Left Active Segment (Accent Color with Flat Square Cap)[span_3](start_span)[span_3](end_span)
+                        drawLine(
+                            color = accentColor,
+                            start = Offset(0f, size.height / 2f),
+                            end = Offset(activeWidth, size.height / 2f),
+                            strokeWidth = strokeWidth,
+                            cap = StrokeCap.Square
+                        )
+
+                        // Right Inactive Segment (Flat Neutral Grey with Flat Square Cap)[span_4](start_span)[span_4](end_span)
+                        drawLine(
+                            color = inactiveTrackColor,
+                            start = Offset(activeWidth, size.height / 2f),
+                            end = Offset(size.width, size.height / 2f),
+                            strokeWidth = strokeWidth,
+                            cap = StrokeCap.Square
+                        )
+                    }
+                }
+            },
+            modifier = Modifier.fillMaxWidth()
+        )
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 2.dp),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(formatTime(displayPos), color = textColor, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+            Text(formatTime(durationMs), color = textColor, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+        }
+    }
+}
+
+// Full Player Sheet: Supports dynamic Colourful Player on/off toggle
+@OptIn(ExperimentalMaterial3Api::class)
+@UnstableApi
 @Composable
 fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
     val song = manager.currentSong ?: return
@@ -380,56 +533,75 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
     var showLyricsDialog by remember { mutableStateOf(false) }
     var showAddToPlaylistDialog by remember { mutableStateOf(false) }
 
-    var isDraggingSlider by remember { mutableStateOf(false) }
-    var dragProgressMs by remember { mutableFloatStateOf(0f) }
-
     var showSeekLeftAnim by remember { mutableStateOf(false) }
     var showSeekRightAnim by remember { mutableStateOf(false) }
 
     LaunchedEffect(showSeekLeftAnim) {
         if (showSeekLeftAnim) {
-            delay(550)
+            delay(500)
             showSeekLeftAnim = false
         }
     }
     LaunchedEffect(showSeekRightAnim) {
         if (showSeekRightAnim) {
-            delay(550)
+            delay(500)
             showSeekRightAnim = false
         }
     }
 
-    val leftSeekAlpha by animateFloatAsState(if (showSeekLeftAnim) 1f else 0f, tween(if (showSeekLeftAnim) 80 else 380), label = "leftAlpha")
-    val rightSeekAlpha by animateFloatAsState(if (showSeekRightAnim) 1f else 0f, tween(if (showSeekRightAnim) 80 else 380), label = "rightAlpha")
-
-    LaunchedEffect(manager.currentPosition) {
-        if (!isDraggingSlider) dragProgressMs = manager.currentPosition.toFloat()
-    }
+    val leftSeekAlpha by animateFloatAsState(if (showSeekLeftAnim) 1f else 0f, tween(if (showSeekLeftAnim) 80 else 350), label = "leftAlpha")
+    val rightSeekAlpha by animateFloatAsState(if (showSeekRightAnim) 1f else 0f, tween(if (showSeekRightAnim) 80 else 350), label = "rightAlpha")
 
     var albumArtBitmap by remember(song.id) { mutableStateOf(manager.getCachedAlbumArt(song.id)) }
     LaunchedEffect(song.id) {
         if (albumArtBitmap == null) albumArtBitmap = manager.loadAlbumArtAsync(song)
     }
 
-    val targetPalette = remember(song.id, albumArtBitmap, isDark, manager.accentColor) {
-        extractMaterialYouPalette(albumArtBitmap, isDark, manager.accentColor)
+    val defaultDarkPalette = MaterialYouPalette(
+        bgTop = Color(0xFF1E1F28),
+        bgBottom = Color(0xFF0B0C10),
+        primaryAccent = manager.accentColor,
+        surface = Color(0x33FFFFFF),
+        textPrimary = Color(0xFFF8FAFC),
+        textSecondary = Color(0xFF94A3B8)
+    )
+
+    val defaultLightPalette = MaterialYouPalette(
+        bgTop = Color(0xFFFAF7F2),
+        bgBottom = Color(0xFFEBE5DB),
+        primaryAccent = manager.accentColor,
+        surface = Color(0x66FFFFFF),
+        textPrimary = Color(0xFF0F172A),
+        textSecondary = Color(0xFF475569)
+    )
+
+    var targetPalette by remember(song.id, isDark, manager.accentColor) {
+        mutableStateOf(if (isDark) defaultDarkPalette else defaultLightPalette)
     }
 
-    val animBgTop by animateColorAsState(targetPalette.bgTop, tween(650, easing = FastOutSlowInEasing), label = "bgTop")
-    val animBgBottom by animateColorAsState(targetPalette.bgBottom, tween(650, easing = FastOutSlowInEasing), label = "bgBottom")
-    val animSurface by animateColorAsState(targetPalette.surface, tween(650, easing = FastOutSlowInEasing), label = "surface")
-    val animTextPrimary by animateColorAsState(targetPalette.textPrimary, tween(650, easing = FastOutSlowInEasing), label = "textPrimary")
-    val animTextSecondary by animateColorAsState(targetPalette.textSecondary, tween(650, easing = FastOutSlowInEasing), label = "textSecondary")
+    // Fully Functional Colourful Player toggle logic: extracts palette only when enabled
+    LaunchedEffect(song.id, albumArtBitmap, isDark, manager.accentColor, manager.isColorfulPlayer) {
+        targetPalette = if (manager.isColorfulPlayer) {
+            extractMaterialYouPaletteAsync(albumArtBitmap, isDark, manager.accentColor)
+        } else {
+            if (isDark) defaultDarkPalette else defaultLightPalette
+        }
+    }
+
+    val animBgTop by animateColorAsState(targetPalette.bgTop, tween(600, easing = FastOutSlowInEasing), label = "bgTop")
+    val animBgBottom by animateColorAsState(targetPalette.bgBottom, tween(600, easing = FastOutSlowInEasing), label = "bgBottom")
+    val animSurface by animateColorAsState(targetPalette.surface, tween(600, easing = FastOutSlowInEasing), label = "surface")
+    val animTextPrimary by animateColorAsState(targetPalette.textPrimary, tween(600, easing = FastOutSlowInEasing), label = "textPrimary")
+    val animTextSecondary by animateColorAsState(targetPalette.textSecondary, tween(600, easing = FastOutSlowInEasing), label = "textSecondary")
 
     val monoColor = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A)
     val userAccent = manager.accentColor
 
     var totalDragX by remember { mutableFloatStateOf(0f) }
-    val animatedRotationZ by animateFloatAsState((totalDragX / 25f).coerceIn(-16f, 16f), tween(150, easing = LinearEasing), label = "rotZ")
-    val animatedRotationY by animateFloatAsState((totalDragX / 28f).coerceIn(-18f, 18f), tween(150, easing = LinearEasing), label = "rotY")
-    val animatedTranslationX by animateFloatAsState(totalDragX, tween(120, easing = LinearEasing), label = "transX")
+    val animatedRotationZ by animateFloatAsState((totalDragX / 25f).coerceIn(-16f, 16f), tween(120, easing = LinearEasing), label = "rotZ")
+    val animatedRotationY by animateFloatAsState((totalDragX / 28f).coerceIn(-18f, 18f), tween(120, easing = LinearEasing), label = "rotY")
+    val animatedTranslationX by animateFloatAsState(totalDragX, tween(100, easing = LinearEasing), label = "transX")
 
-    // Root Box without horizontal padding so overlays are 100% full screen width
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -456,14 +628,13 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                 )
             }
     ) {
-        // Player UI container with 24dp horizontal margins
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(horizontal = 24.dp)
                 .padding(top = 10.dp, bottom = 14.dp)
         ) {
-            // Upper Half: Full Screen Upper Area Dedicated to Big Album Art with 3D Tilt
+            // Upper Half: 3D Album Artwork
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -533,7 +704,7 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                 }
             }
 
-            // Lower Half: Song Name -> Centered Slim Slider -> Controls -> Dock (Arrangement.SpaceEvenly)
+            // Lower Half: Recomposition-Shielded Controls
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -542,7 +713,7 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                 verticalArrangement = Arrangement.SpaceEvenly,
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                // 1. Song Title & Subtitle
+                // Song Metadata
                 Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
                     Text(
                         text = song.title,
@@ -565,70 +736,17 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                     )
                 }
 
-                // 2. Slim 3.5dp Progress Bar with Exactly Centered 12dp Circular Thumb Ball
-                Column(modifier = Modifier.fillMaxWidth()) {
-                    Slider(
-                        value = dragProgressMs.coerceIn(0f, manager.duration.toFloat().coerceAtLeast(1f)),
-                        onValueChange = {
-                            isDraggingSlider = true
-                            dragProgressMs = it
-                        },
-                        onValueChangeFinished = {
-                            isDraggingSlider = false
-                            manager.seekTo(dragProgressMs.toLong())
-                        },
-                        valueRange = 0f..(manager.duration.toFloat().coerceAtLeast(1f)),
-                        thumb = {
-                            Box(
-                                modifier = Modifier
-                                    .size(12.dp)
-                                    .shadow(4.dp, CircleShape)
-                                    .clip(CircleShape)
-                                    .background(userAccent)
-                                    .border(1.5.dp, Color.White, CircleShape)
-                            )
-                        },
-                        track = { sliderState ->
-                            val fraction = (sliderState.value - sliderState.valueRange.start) /
-                                (sliderState.valueRange.endInclusive - sliderState.valueRange.start)
-                            // 12dp bounding box perfectly aligns midpoint with the 12dp thumb
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(12.dp),
-                                contentAlignment = Alignment.CenterStart
-                            ) {
-                                // Background Track
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(3.5.dp)
-                                        .clip(RoundedCornerShape(2.dp))
-                                        .background(if (isDark) Color(0x33FFFFFF) else Color(0x22000000))
-                                )
-                                // Active Progress Track
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth(fraction.coerceIn(0f, 1f))
-                                        .height(3.5.dp)
-                                        .clip(RoundedCornerShape(2.dp))
-                                        .background(userAccent)
-                                )
-                            }
-                        },
-                        modifier = Modifier.fillMaxWidth()
-                    )
+                // Precision Progress Scrubber matching the image[span_5](start_span)[span_5](end_span)
+                IsolatedScrubberLeaf(
+                    currentPositionMs = manager.currentPosition,
+                    durationMs = manager.duration,
+                    accentColor = userAccent,
+                    textColor = animTextSecondary,
+                    isDark = isDark,
+                    onSeek = { manager.seekTo(it) }
+                )
 
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text(formatTime(dragProgressMs.toLong()), color = animTextSecondary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                        Text(formatTime(manager.duration), color = animTextSecondary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                    }
-                }
-
-                // 3. Playback Controls Row: Repeat (Left) -> Prev -> Play/Pause -> Next -> Shuffle (Right)
+                // Playback Control Buttons
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -685,7 +803,7 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                     )
                 }
 
-                // 4. Bottom Utility Dock
+                // Bottom Dock
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -719,7 +837,7 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
             }
         }
 
-        // Full-Width Edge-to-Edge Three Dots More Menu (Zero Dimming on Outside Click)
+        // Action Menu Dialog
         if (showMenuModal) {
             Box(
                 modifier = Modifier
@@ -738,7 +856,7 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                         .background(if (isDark) Color(0xFF1E293B) else Color.White)
                         .clickable(enabled = false) {}
                         .padding(22.dp)
-        ) {
+                ) {
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text(
                             text = "${song.title} - ${if (song.artist.isNotBlank()) song.artist else "Unknown"}",
@@ -794,7 +912,7 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
     }
 }
 
-// Full-Width Pro Equalizer Sheet (Zero Dimming on Outside Click)
+// Pro Equalizer Sheet
 @Composable
 fun EqualizerSheet(manager: MusicManager, onDismiss: () -> Unit) {
     val accent = manager.accentColor
@@ -820,7 +938,7 @@ fun EqualizerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                 .padding(22.dp)
         ) {
             LazyColumn(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                item {
+                item(key = "eq_header", contentType = "header") {
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                         Text("Equalizer & Audio FX", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A))
                         Button(onClick = { onDismiss() }, shape = RoundedCornerShape(10.dp), colors = ButtonDefaults.buttonColors(containerColor = accent)) {
@@ -829,7 +947,7 @@ fun EqualizerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                     }
                 }
 
-                item {
+                item(key = "master_eq", contentType = "card") {
                     Row(
                         modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(if (isDark) Color(0x14FFFFFF) else Color(0xFFF1F5F9)).padding(16.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
@@ -843,11 +961,11 @@ fun EqualizerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                     }
                 }
 
-                item {
+                item(key = "eq_presets", contentType = "presets_row") {
                     Text("Sound Presets", color = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A), fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                     Spacer(modifier = Modifier.height(8.dp))
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        items(manager.eqPresetNames) { preset ->
+                        items(manager.eqPresetNames, key = { it }) { preset ->
                             val isSel = manager.selectedEqPreset == preset
                             Box(
                                 modifier = Modifier
@@ -862,7 +980,7 @@ fun EqualizerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                     }
                 }
 
-                item {
+                item(key = "freq_bands", contentType = "bands_group") {
                     Text("Frequency Response (-15dB to +15dB)", color = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A), fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                     Spacer(modifier = Modifier.height(10.dp))
                     Column(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(if (isDark) Color(0x14FFFFFF) else Color(0xFFF8FAFC)).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -889,7 +1007,7 @@ fun EqualizerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                     }
                 }
 
-                item {
+                item(key = "bass_virtualizer", contentType = "acoustics_group") {
                     Text("Acoustics & Depth", color = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A), fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                     Spacer(modifier = Modifier.height(10.dp))
                     Column(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(if (isDark) Color(0x14FFFFFF) else Color(0xFFF8FAFC)).padding(16.dp)) {
@@ -901,7 +1019,7 @@ fun EqualizerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                     }
                 }
 
-                item {
+                item(key = "switches", contentType = "switches_group") {
                     Column(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(if (isDark) Color(0x14FFFFFF) else Color(0xFFF8FAFC)).padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                             Column {
@@ -942,6 +1060,7 @@ fun MenuRow(icon: String, text: String, isDark: Boolean, isDanger: Boolean = fal
 }
 
 // Mini Player Dock
+@UnstableApi
 @Composable
 fun MiniPlayerDock(manager: MusicManager, onClick: () -> Unit) {
     val song = manager.currentSong ?: return
@@ -983,7 +1102,8 @@ fun MiniPlayerDock(manager: MusicManager, onClick: () -> Unit) {
     }
 }
 
-// Full-Width Edge-to-Edge Sleep Timer Dialog (Zero Dimming on Outside Click)
+// Full-Width Sleep Timer Dialog
+@UnstableApi
 @Composable
 fun SleepTimerDialog(manager: MusicManager, onDismiss: () -> Unit) {
     val isDark = manager.isDarkMode
@@ -1194,37 +1314,13 @@ fun TagEditorDialog(manager: MusicManager, song: Song, onDismiss: () -> Unit) {
                     Text(if (selectedCoverUri != null) "Artwork Picked ✓" else "Change Artwork", color = Color.White, fontSize = 12.sp)
                 }
                 Spacer(modifier = Modifier.height(12.dp))
-                OutlinedTextField(
-                    value = editTitle,
-                    onValueChange = { editTitle = it },
-                    label = { Text("Song Name") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true
-                )
+                OutlinedTextField(value = editTitle, onValueChange = { editTitle = it }, label = { Text("Song Name") }, modifier = Modifier.fillMaxWidth())
                 Spacer(modifier = Modifier.height(8.dp))
-                OutlinedTextField(
-                    value = editArtist,
-                    onValueChange = { editArtist = it },
-                    label = { Text("Artist Name") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true
-                )
+                OutlinedTextField(value = editArtist, onValueChange = { editArtist = it }, label = { Text("Artist Name") }, modifier = Modifier.fillMaxWidth())
                 Spacer(modifier = Modifier.height(8.dp))
-                OutlinedTextField(
-                    value = editAlbum,
-                    onValueChange = { editAlbum = it },
-                    label = { Text("Album Name") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true
-                )
+                OutlinedTextField(value = editAlbum, onValueChange = { editAlbum = it }, label = { Text("Album Name") }, modifier = Modifier.fillMaxWidth())
                 Spacer(modifier = Modifier.height(8.dp))
-                OutlinedTextField(
-                    value = editDate,
-                    onValueChange = { editDate = it },
-                    label = { Text("Date & Time / Year") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true
-                )
+                OutlinedTextField(value = editDate, onValueChange = { editDate = it }, label = { Text("Date & Time / Year") }, modifier = Modifier.fillMaxWidth())
                 Spacer(modifier = Modifier.height(16.dp))
                 Button(onClick = { manager.updateSongMetadata(song, editTitle, editArtist, editAlbum, editDate, selectedCoverUri); onDismiss() }, modifier = Modifier.fillMaxWidth().height(48.dp), shape = RoundedCornerShape(12.dp), colors = ButtonDefaults.buttonColors(containerColor = manager.accentColor)) {
                     Text("Save Changes", color = Color.White, fontWeight = FontWeight.Bold)
@@ -1234,7 +1330,7 @@ fun TagEditorDialog(manager: MusicManager, song: Song, onDismiss: () -> Unit) {
     }
 }
 
-// Full-Width Add to Playlist Dialog (Zero Dimming on Outside Click)
+// Add to Playlist Dialog
 @Composable
 fun AddToPlaylistDialog(manager: MusicManager, song: Song, onDismiss: () -> Unit) {
     val isDark = manager.isDarkMode
@@ -1253,7 +1349,11 @@ fun AddToPlaylistDialog(manager: MusicManager, song: Song, onDismiss: () -> Unit
                 Text("Add to Playlist", color = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A), fontSize = 18.sp, fontWeight = FontWeight.Bold)
                 Spacer(modifier = Modifier.height(14.dp))
                 LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(manager.customPlaylists) { pl ->
+                    items(
+                        items = manager.customPlaylists,
+                        key = { it.id },
+                        contentType = { "playlist_picker_row" }
+                    ) { pl ->
                         Row(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(if (isDark) Color(0x1AFFFFFF) else Color(0xFFF1F5F9)).clickable { manager.addSongToPlaylist(song.id, pl); onDismiss() }.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
                             GlassmorphicFolderIcon(folderColor = Color(pl.iconColorHex), modifier = Modifier.size(24.dp))
                             Spacer(modifier = Modifier.width(10.dp))
@@ -1270,7 +1370,7 @@ fun AddToPlaylistDialog(manager: MusicManager, song: Song, onDismiss: () -> Unit
     }
 }
 
-// Full-Width Playback Speed Dialog (Zero Dimming on Outside Click)
+// Magnetic Speed Dialog
 @Composable
 fun MagneticSpeedDialog(manager: MusicManager, onDismiss: () -> Unit) {
     val haptic = LocalHapticFeedback.current
@@ -1310,7 +1410,8 @@ fun MagneticSpeedDialog(manager: MusicManager, onDismiss: () -> Unit) {
     }
 }
 
-// Full-Screen Playing Queue Sheet with Hold & Drag / Reorder Controls & Bottom Close
+// Full-Screen Playing Queue Sheet
+@UnstableApi
 @Composable
 fun QueueSheet(manager: MusicManager, onDismiss: () -> Unit) {
     val isDark = manager.isDarkMode
@@ -1352,7 +1453,11 @@ fun QueueSheet(manager: MusicManager, onDismiss: () -> Unit) {
                 modifier = Modifier.weight(1f),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                itemsIndexed(manager.playbackQueue, key = { _, song -> song.id }) { index, song ->
+                itemsIndexed(
+                    items = manager.playbackQueue,
+                    key = { _, song -> song.id },
+                    contentType = { _, _ -> "queue_item_row" }
+                ) { index, song ->
                     val isCur = song.id == manager.currentSong?.id
                     Row(
                         modifier = Modifier
@@ -1370,7 +1475,6 @@ fun QueueSheet(manager: MusicManager, onDismiss: () -> Unit) {
                             Text(song.title, color = textColor, fontSize = 14.sp, fontWeight = if (isCur) FontWeight.Bold else FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             Text("${formatFileSize(song.size)} • ${song.artist}", color = Color(0xFF64748B), fontSize = 11.sp)
                         }
-                        // Reorder Arrow Buttons + Drag Icon
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             if (index > 0) {
                                 Text("↑", fontSize = 16.sp, color = Color(0xFF64748B), modifier = Modifier.clickable { manager.moveQueueItem(index, index - 1) }.padding(horizontal = 6.dp))
@@ -1397,7 +1501,7 @@ fun QueueSheet(manager: MusicManager, onDismiss: () -> Unit) {
     }
 }
 
-// Full-Width Edge-to-Edge Lyrics Dialog (Zero Dimming on Outside Click)
+// Full-Width Lyrics Dialog
 @Composable
 fun LyricsDialog(song: Song, isDark: Boolean, onDismiss: () -> Unit) {
     val textColor = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A)
@@ -1438,70 +1542,76 @@ fun LyricsDialog(song: Song, isDark: Boolean, onDismiss: () -> Unit) {
     }
 }
 
-// Consistent Heart Vector
+// Vector Heart Icon
 @Composable
 fun HeartIconVector(isFavorite: Boolean, defaultTint: Color, modifier: Modifier = Modifier) {
-    Canvas(modifier = modifier.size(24.dp)) {
-        val w = size.width
-        val h = size.height
-        val path = Path().apply {
-            moveTo(w * 0.5f, h * 0.85f)
-            cubicTo(w * 0.15f, h * 0.60f, 0f, h * 0.38f, 0f, h * 0.22f)
-            cubicTo(0f, h * 0.08f, w * 0.18f, 0f, w * 0.36f, 0f)
-            cubicTo(w * 0.44f, 0f, w * 0.5f, h * 0.08f, w * 0.5f, h * 0.12f)
-            cubicTo(w * 0.5f, h * 0.08f, w * 0.56f, 0f, w * 0.64f, 0f)
-            cubicTo(w * 0.82f, 0f, w, h * 0.08f, w, h * 0.22f)
-            cubicTo(w, h * 0.38f, w * 0.85f, h * 0.60f, w * 0.5f, h * 0.85f)
-            close()
+    Spacer(
+        modifier = modifier.size(24.dp).drawWithCache {
+            val w = size.width
+            val h = size.height
+            val path = Path().apply {
+                moveTo(w * 0.5f, h * 0.85f)
+                cubicTo(w * 0.15f, h * 0.60f, 0f, h * 0.38f, 0f, h * 0.22f)
+                cubicTo(0f, h * 0.08f, w * 0.18f, 0f, w * 0.36f, 0f)
+                cubicTo(w * 0.44f, 0f, w * 0.5f, h * 0.08f, w * 0.5f, h * 0.12f)
+                cubicTo(w * 0.5f, h * 0.08f, w * 0.56f, 0f, w * 0.64f, 0f)
+                cubicTo(w * 0.82f, 0f, w, h * 0.08f, w, h * 0.22f)
+                cubicTo(w, h * 0.38f, w * 0.85f, h * 0.60f, w * 0.5f, h * 0.85f)
+                close()
+            }
+            val strokeStyle = Stroke(width = 2.2f.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
+            onDrawBehind {
+                if (isFavorite) {
+                    drawPath(path, color = Color(0xFFEF4444))
+                } else {
+                    drawPath(path, color = defaultTint, style = strokeStyle)
+                }
+            }
         }
-        if (isFavorite) {
-            drawPath(path, color = Color(0xFFEF4444))
-        } else {
-            drawPath(path, color = defaultTint, style = Stroke(width = 2.2f.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round))
-        }
-    }
+    )
 }
 
-// Playback Control Vectors
+// Playback Control Vectors with Cached Paths
 @Composable
 fun RepeatControlIcon(repeatMode: Int, tint: Color, modifier: Modifier = Modifier) {
     val isActive = repeatMode != Player.REPEAT_MODE_OFF
     val alpha = if (isActive) 1f else 0.4f
     Box(modifier = modifier.size(26.dp), contentAlignment = Alignment.Center) {
-        Canvas(modifier = Modifier.fillMaxSize()) {
-            val stroke = Stroke(width = 2.4f.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
-            val w = size.width
-            val h = size.height
-            val color = tint.copy(alpha = alpha)
+        Spacer(
+            modifier = Modifier.fillMaxSize().drawWithCache {
+                val stroke = Stroke(width = 2.4f.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
+                val w = size.width
+                val h = size.height
+                val color = tint.copy(alpha = alpha)
 
-            val p1 = Path().apply {
-                moveTo(w * 0.22f, h * 0.55f)
-                lineTo(w * 0.22f, h * 0.30f)
-                lineTo(w * 0.78f, h * 0.30f)
+                val p1 = Path().apply {
+                    moveTo(w * 0.22f, h * 0.55f)
+                    lineTo(w * 0.22f, h * 0.30f)
+                    lineTo(w * 0.78f, h * 0.30f)
+                }
+                val a1 = Path().apply {
+                    moveTo(w * 0.66f, h * 0.18f)
+                    lineTo(w * 0.82f, h * 0.30f)
+                    lineTo(w * 0.66f, h * 0.42f)
+                }
+                val p2 = Path().apply {
+                    moveTo(w * 0.78f, h * 0.45f)
+                    lineTo(w * 0.78f, h * 0.70f)
+                    lineTo(w * 0.22f, h * 0.70f)
+                }
+                val a2 = Path().apply {
+                    moveTo(w * 0.34f, h * 0.58f)
+                    lineTo(w * 0.18f, h * 0.70f)
+                    lineTo(w * 0.34f, h * 0.82f)
+                }
+                onDrawBehind {
+                    drawPath(p1, color, style = stroke)
+                    drawPath(a1, color, style = stroke)
+                    drawPath(p2, color, style = stroke)
+                    drawPath(a2, color, style = stroke)
+                }
             }
-            drawPath(p1, color, style = stroke)
-
-            val a1 = Path().apply {
-                moveTo(w * 0.66f, h * 0.18f)
-                lineTo(w * 0.82f, h * 0.30f)
-                lineTo(w * 0.66f, h * 0.42f)
-            }
-            drawPath(a1, color, style = stroke)
-
-            val p2 = Path().apply {
-                moveTo(w * 0.78f, h * 0.45f)
-                lineTo(w * 0.78f, h * 0.70f)
-                lineTo(w * 0.22f, h * 0.70f)
-            }
-            drawPath(p2, color, style = stroke)
-
-            val a2 = Path().apply {
-                moveTo(w * 0.34f, h * 0.58f)
-                lineTo(w * 0.18f, h * 0.70f)
-                lineTo(w * 0.34f, h * 0.82f)
-            }
-            drawPath(a2, color, style = stroke)
-        }
+        )
         if (repeatMode == Player.REPEAT_MODE_ONE) {
             Text("1", color = tint, fontSize = 10.sp, fontWeight = FontWeight.Black)
         }
@@ -1510,79 +1620,89 @@ fun RepeatControlIcon(repeatMode: Int, tint: Color, modifier: Modifier = Modifie
 
 @Composable
 fun PreviousControlIcon(tint: Color, modifier: Modifier = Modifier) {
-    Canvas(modifier = modifier.size(28.dp)) {
-        val w = size.width
-        val h = size.height
-        drawLine(color = tint, start = Offset(w * 0.22f, h * 0.20f), end = Offset(w * 0.22f, h * 0.80f), strokeWidth = 3.5f.dp.toPx(), cap = StrokeCap.Round)
-        val tri = Path().apply {
-            moveTo(w * 0.80f, h * 0.20f)
-            lineTo(w * 0.34f, h * 0.50f)
-            lineTo(w * 0.80f, h * 0.80f)
-            close()
+    Spacer(
+        modifier = modifier.size(28.dp).drawWithCache {
+            val w = size.width
+            val h = size.height
+            val tri = Path().apply {
+                moveTo(w * 0.80f, h * 0.20f)
+                lineTo(w * 0.34f, h * 0.50f)
+                lineTo(w * 0.80f, h * 0.80f)
+                close()
+            }
+            val strokeW = 3.5f.dp.toPx()
+            onDrawBehind {
+                drawLine(color = tint, start = Offset(w * 0.22f, h * 0.20f), end = Offset(w * 0.22f, h * 0.80f), strokeWidth = strokeW, cap = StrokeCap.Round)
+                drawPath(tri, color = tint)
+            }
         }
-        drawPath(tri, color = tint)
-    }
+    )
 }
 
 @Composable
 fun NextControlIcon(tint: Color, modifier: Modifier = Modifier) {
-    Canvas(modifier = modifier.size(28.dp)) {
-        val w = size.width
-        val h = size.height
-        val tri = Path().apply {
-            moveTo(w * 0.20f, h * 0.20f)
-            lineTo(w * 0.66f, h * 0.50f)
-            lineTo(w * 0.20f, h * 0.80f)
-            close()
+    Spacer(
+        modifier = modifier.size(28.dp).drawWithCache {
+            val w = size.width
+            val h = size.height
+            val tri = Path().apply {
+                moveTo(w * 0.20f, h * 0.20f)
+                lineTo(w * 0.66f, h * 0.50f)
+                lineTo(w * 0.20f, h * 0.80f)
+                close()
+            }
+            val strokeW = 3.5f.dp.toPx()
+            onDrawBehind {
+                drawPath(tri, color = tint)
+                drawLine(color = tint, start = Offset(w * 0.78f, h * 0.20f), end = Offset(w * 0.78f, h * 0.80f), strokeWidth = strokeW, cap = StrokeCap.Round)
+            }
         }
-        drawPath(tri, color = tint)
-        drawLine(color = tint, start = Offset(w * 0.78f, h * 0.20f), end = Offset(w * 0.78f, h * 0.80f), strokeWidth = 3.5f.dp.toPx(), cap = StrokeCap.Round)
-    }
+    )
 }
 
-// Clean Crossed-Arrow Shuffle Vector
 @Composable
 fun ShuffleControlIcon(isShuffleOn: Boolean, tint: Color, modifier: Modifier = Modifier) {
     val alpha = if (isShuffleOn) 1f else 0.4f
-    Canvas(modifier = modifier.size(26.dp)) {
-        val stroke = Stroke(width = 2.4f.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
-        val w = size.width
-        val h = size.height
-        val color = tint.copy(alpha = alpha)
+    Spacer(
+        modifier = modifier.size(26.dp).drawWithCache {
+            val stroke = Stroke(width = 2.4f.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
+            val w = size.width
+            val h = size.height
+            val color = tint.copy(alpha = alpha)
 
-        val p1 = Path().apply {
-            moveTo(w * 0.18f, h * 0.28f)
-            lineTo(w * 0.36f, h * 0.28f)
-            lineTo(w * 0.64f, h * 0.72f)
-            lineTo(w * 0.82f, h * 0.72f)
+            val p1 = Path().apply {
+                moveTo(w * 0.18f, h * 0.28f)
+                lineTo(w * 0.36f, h * 0.28f)
+                lineTo(w * 0.64f, h * 0.72f)
+                lineTo(w * 0.82f, h * 0.72f)
+            }
+            val a1 = Path().apply {
+                moveTo(w * 0.68f, h * 0.60f)
+                lineTo(w * 0.84f, h * 0.72f)
+                lineTo(w * 0.68f, h * 0.84f)
+            }
+            val p2 = Path().apply {
+                moveTo(w * 0.18f, h * 0.72f)
+                lineTo(w * 0.36f, h * 0.72f)
+                lineTo(w * 0.46f, h * 0.56f)
+            }
+            val p2b = Path().apply {
+                moveTo(w * 0.54f, h * 0.44f)
+                lineTo(w * 0.64f, h * 0.28f)
+                lineTo(w * 0.82f, h * 0.28f)
+            }
+            val a2 = Path().apply {
+                moveTo(w * 0.68f, h * 0.16f)
+                lineTo(w * 0.84f, h * 0.28f)
+                lineTo(w * 0.68f, h * 0.40f)
+            }
+            onDrawBehind {
+                drawPath(p1, color, style = stroke)
+                drawPath(a1, color, style = stroke)
+                drawPath(p2, color, style = stroke)
+                drawPath(p2b, color, style = stroke)
+                drawPath(a2, color, style = stroke)
+            }
         }
-        drawPath(p1, color, style = stroke)
-
-        val a1 = Path().apply {
-            moveTo(w * 0.68f, h * 0.60f)
-            lineTo(w * 0.84f, h * 0.72f)
-            lineTo(w * 0.68f, h * 0.84f)
-        }
-        drawPath(a1, color, style = stroke)
-
-        val p2 = Path().apply {
-            moveTo(w * 0.18f, h * 0.72f)
-            lineTo(w * 0.36f, h * 0.72f)
-            lineTo(w * 0.46f, h * 0.56f)
-        }
-        val p2b = Path().apply {
-            moveTo(w * 0.54f, h * 0.44f)
-            lineTo(w * 0.64f, h * 0.28f)
-            lineTo(w * 0.82f, h * 0.28f)
-        }
-        drawPath(p2, color, style = stroke)
-        drawPath(p2b, color, style = stroke)
-
-        val a2 = Path().apply {
-            moveTo(w * 0.68f, h * 0.16f)
-            lineTo(w * 0.84f, h * 0.28f)
-            lineTo(w * 0.68f, h * 0.40f)
-        }
-        drawPath(a2, color, style = stroke)
-    }
+    )
 }

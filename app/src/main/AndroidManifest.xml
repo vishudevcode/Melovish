@@ -1,14 +1,29 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
+    <!-- Scoped Audio & Legacy External Storage Permissions -->
     <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
-    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
-    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="29" />
+    <uses-permission 
+        android:name="android.permission.READ_EXTERNAL_STORAGE" 
+        android:maxSdkVersion="32" />
+    <uses-permission 
+        android:name="android.permission.WRITE_EXTERNAL_STORAGE" 
+        android:maxSdkVersion="29" 
+        tools:ignore="ScopedStorage" />
+
+    <!-- Phase 3: Android 14+ Foreground Service Runtime Declarations -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    
+    <!-- Audio Routing & Hardware Haptics -->
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <uses-permission android:name="android.permission.VIBRATE" />
+    <uses-permission 
+        android:name="android.permission.WRITE_SETTINGS" 
+        tools:ignore="ProtectedPermissions" />
 
     <application
         android:allowBackup="true"
@@ -16,12 +31,16 @@
         android:roundIcon="@drawable/app_logo"
         android:label="Melovish"
         android:supportsRtl="true"
+        android:hardwareAccelerated="true"
+        android:largeHeap="true"
         android:theme="@android:style/Theme.Material.Light.NoActionBar">
 
+        <!-- Host Activity: Protected against Configuration Destructions -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
             android:windowSoftInputMode="adjustResize"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|uiMode|smallestScreenSize"
             android:theme="@android:style/Theme.Material.Light.NoActionBar">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -29,12 +48,15 @@
             </intent-filter>
         </activity>
 
+        <!-- MediaPlaybackService: AndroidX MediaSession Lifeline -->
         <service
             android:name=".MediaPlaybackService"
             android:foregroundServiceType="mediaPlayback"
-            android:exported="false">
+            android:exported="true"
+            android:stopWithTask="false">
             <intent-filter>
                 <action android:name="androidx.media3.session.MediaSessionService" />
+                <action android:name="android.media.browse.MediaBrowserService" />
             </intent-filter>
         </service>
 

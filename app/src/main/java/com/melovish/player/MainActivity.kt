@@ -1,16 +1,19 @@
 package com.melovish.player
 
 import android.Manifest
+import android.app.Application
+import android.content.ComponentCallbacks2
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.graphics.BitmapFactory
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.viewModels
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateFloat
@@ -19,7 +22,6 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -72,6 +74,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusRequester
@@ -81,7 +84,6 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
@@ -93,23 +95,55 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.AndroidViewModel
+import androidx.media3.common.util.UnstableApi
+import coil.compose.AsyncImage
+import kotlinx.collections.immutable.ImmutableList
+import kotlinx.collections.immutable.toImmutableList
 import kotlinx.coroutines.launch
 import java.io.File
 import java.util.Locale
 import kotlin.math.cos
 import kotlin.math.sin
 
+/**
+ * Phase 3 Invariant: Android Architecture Component ViewModel.
+ * Retains the MusicManager instance across all Activity recreation events (screen rotations,
+ * foldable unfolding/folding, split-screen multi-window resizing, and system dark mode toggles).
+ */
+@UnstableApi
+class MusicViewModel(application: Application) : AndroidViewModel(application) {
+    val manager: MusicManager = MusicManager.activeInstance ?: MusicManager(application.applicationContext)
+}
+
+@UnstableApi
 class MainActivity : ComponentActivity() {
+    private val viewModel by viewModels<MusicViewModel>()
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         MediaPlaybackService.start(this)
-        val manager = MusicManager(this)
         setContent {
-            MelovishRootApp(manager)
+            MelovishRootApp(viewModel.manager)
+        }
+    }
+
+    /**
+     * Phase 3 Invariant: LMK (Low Memory Killer) Defensive Interceptor.
+     * Hooks directly into Android runtime memory trim callbacks. When OS signals memory pressure,
+     * non-essential cached bitmaps are evicted immediately to protect the process from termination.
+     */
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        if (level >= ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW) {
+            // Trim Coil image pipeline memory cache
+            coil.Coil.imageLoader(this).memoryCache?.clear()
+            System.gc()
         }
     }
 }
 
+@UnstableApi
 @Composable
 fun MelovishRootApp(manager: MusicManager) {
     val context = LocalContext.current
@@ -200,7 +234,7 @@ fun MelovishRootApp(manager: MusicManager) {
                         selectedAlbum != null -> {
                             FilteredSongsScreen(
                                 title = "Album: ${selectedAlbum!!}",
-                                songs = manager.allSongs.filter { it.album.equals(selectedAlbum, ignoreCase = true) },
+                                songs = manager.allSongs.filter { it.album.equals(selectedAlbum, ignoreCase = true) }.toImmutableList(),
                                 manager = manager,
                                 isDark = isDark,
                                 onBack = { selectedAlbum = null },
@@ -318,9 +352,8 @@ fun MelovishRootApp(manager: MusicManager) {
                         activeSongForMenu = null
                     },
                     onGoToArtist = {
-                        val matchingArtist = ArtistParsingEngine.parseAndGroupArtists(manager.allSongs)
-                            .find { it.name.equals(s.artist, ignoreCase = true) }
-                            ?: ArtistItem(name = s.artist, songs = mutableListOf(s))
+                        val matchingArtist = manager.parsedArtistsList.find { it.name.equals(s.artist, ignoreCase = true) }
+                            ?: ArtistItem(name = s.artist, songs = listOf(s).toImmutableList())
                         selectedArtist = matchingArtist
                         activeSongForMenu = null
                     },
@@ -367,6 +400,7 @@ fun MelovishRootApp(manager: MusicManager) {
     }
 }
 
+@UnstableApi
 @Composable
 fun RecentlyPlayedCard(song: Song, manager: MusicManager, onClick: () -> Unit) {
     var albumArtBitmap by remember(song.id) { mutableStateOf(manager.getCachedAlbumArt(song.id)) }
@@ -403,6 +437,7 @@ fun RecentlyPlayedCard(song: Song, manager: MusicManager, onClick: () -> Unit) {
     }
 }
 
+// Phase 2 Invariant: Zero-Allocation Rotating Vector Matrix via drawWithCache
 @Composable
 fun LiveMechanicalGearIcon(isDark: Boolean, modifier: Modifier = Modifier) {
     val infiniteTransition = rememberInfiniteTransition(label = "gearRotation")
@@ -417,48 +452,56 @@ fun LiveMechanicalGearIcon(isDark: Boolean, modifier: Modifier = Modifier) {
             .border(1.5.dp, if (isDark) Color(0x44FFFFFF) else Color(0x22000000), CircleShape),
         contentAlignment = Alignment.Center
     ) {
-        Canvas(modifier = Modifier.size(34.dp).rotate(rotation)) {
-            val center = Offset(size.width / 2f, size.height / 2f)
-            val outerRadius = size.width / 2f
-            val toothDepth = outerRadius * 0.22f
-            val innerRingRadius = outerRadius - toothDepth
-            val teethCount = 12
-            val gearColor = if (isDark) Color(0xFFE2E8F0) else Color(0xFF334155)
+        Spacer(
+            modifier = Modifier
+                .size(34.dp)
+                .rotate(rotation)
+                .drawWithCache {
+                    val center = Offset(size.width / 2f, size.height / 2f)
+                    val outerRadius = size.width / 2f
+                    val toothDepth = outerRadius * 0.22f
+                    val innerRingRadius = outerRadius - toothDepth
+                    val teethCount = 12
+                    val gearColor = if (isDark) Color(0xFFE2E8F0) else Color(0xFF334155)
 
-            val path = Path().apply {
-                for (i in 0 until teethCount) {
-                    val angleStep = (2.0 * Math.PI / teethCount).toFloat()
-                    val a1 = i * angleStep
-                    val a2 = a1 + (angleStep * 0.35f)
-                    val a3 = a1 + (angleStep * 0.65f)
-                    val a4 = (i + 1) * angleStep
+                    val path = Path().apply {
+                        for (i in 0 until teethCount) {
+                            val angleStep = (2.0 * Math.PI / teethCount).toFloat()
+                            val a1 = i * angleStep
+                            val a2 = a1 + (angleStep * 0.35f)
+                            val a3 = a1 + (angleStep * 0.65f)
+                            val a4 = (i + 1) * angleStep
 
-                    val p1 = Offset(center.x + (innerRingRadius * cos(a1)), center.y + (innerRingRadius * sin(a1)))
-                    val p2 = Offset(center.x + (outerRadius * cos(a2)), center.y + (outerRadius * sin(a2)))
-                    val p3 = Offset(center.x + (outerRadius * cos(a3)), center.y + (outerRadius * sin(a3)))
-                    val p4 = Offset(center.x + (innerRingRadius * cos(a4)), center.y + (innerRingRadius * sin(a4)))
+                            val p1 = Offset(center.x + (innerRingRadius * cos(a1)), center.y + (innerRingRadius * sin(a1)))
+                            val p2 = Offset(center.x + (outerRadius * cos(a2)), center.y + (outerRadius * sin(a2)))
+                            val p3 = Offset(center.x + (outerRadius * cos(a3)), center.y + (outerRadius * sin(a3)))
+                            val p4 = Offset(center.x + (innerRingRadius * cos(a4)), center.y + (innerRingRadius * sin(a4)))
 
-                    if (i == 0) moveTo(p1.x, p1.y) else lineTo(p1.x, p1.y)
-                    lineTo(p2.x, p2.y)
-                    lineTo(p3.x, p3.y)
-                    lineTo(p4.x, p4.y)
+                            if (i == 0) moveTo(p1.x, p1.y) else lineTo(p1.x, p1.y)
+                            lineTo(p2.x, p2.y)
+                            lineTo(p3.x, p3.y)
+                            lineTo(p4.x, p4.y)
+                        }
+                        close()
+                    }
+
+                    val cavityRadius = innerRingRadius * 0.72f
+                    val hubRadius = innerRingRadius * 0.32f
+                    val spokeStrokeWidth = 2.5f.dp.toPx()
+                    val bgColor = if (isDark) Color(0xFF0F172A) else Color(0xFFE2E8F0)
+
+                    onDrawBehind {
+                        drawPath(path, gearColor)
+                        drawCircle(color = bgColor, radius = cavityRadius, center = center)
+                        drawCircle(color = gearColor, radius = hubRadius, center = center)
+                        for (s in 0 until 3) {
+                            val spAngle = (s * 2.0 * Math.PI / 3.0).toFloat()
+                            val spokeEnd = Offset(center.x + (cavityRadius * cos(spAngle)), center.y + (cavityRadius * sin(spAngle)))
+                            drawLine(color = gearColor, start = center, end = spokeEnd, strokeWidth = spokeStrokeWidth)
+                        }
+                    }
                 }
-                close()
-            }
-            drawPath(path, gearColor)
-
-            val cavityRadius = innerRingRadius * 0.72f
-            drawCircle(color = if (isDark) Color(0xFF0F172A) else Color(0xFFE2E8F0), radius = cavityRadius, center = center)
-            val hubRadius = innerRingRadius * 0.32f
-            drawCircle(color = gearColor, radius = hubRadius, center = center)
-
-            val spokeStroke = Stroke(width = 2.5f.dp.toPx())
-            for (s in 0 until 3) {
-                val spAngle = (s * 2.0 * Math.PI / 3.0).toFloat()
-                val spokeEnd = Offset(center.x + (cavityRadius * cos(spAngle)), center.y + (cavityRadius * sin(spAngle)))
-                drawLine(color = gearColor, start = center, end = spokeEnd, strokeWidth = spokeStroke.width)
-            }
-        }
+        )
     }
 }
 
@@ -466,9 +509,7 @@ fun LiveMechanicalGearIcon(isDark: Boolean, modifier: Modifier = Modifier) {
 fun TopBar(manager: MusicManager, onProfileClick: () -> Unit, onSettingsClick: () -> Unit) {
     val isDark = manager.isDarkMode
     val textColor = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A)
-
-    val avatarFile = manager.profileImagePath?.let { File(it) }
-    val avatarBitmap = if (avatarFile != null && avatarFile.exists()) BitmapFactory.decodeFile(avatarFile.absolutePath) else null
+    val avatarPath = manager.profileImagePath
 
     Row(
         modifier = Modifier
@@ -488,8 +529,13 @@ fun TopBar(manager: MusicManager, onProfileClick: () -> Unit, onSettingsClick: (
                 .clickable { onProfileClick() },
             contentAlignment = Alignment.Center
         ) {
-            if (avatarBitmap != null) {
-                Image(bitmap = avatarBitmap.asImageBitmap(), contentDescription = "Avatar", modifier = Modifier.fillMaxSize())
+            if (!avatarPath.isNullOrBlank() && File(avatarPath).exists()) {
+                AsyncImage(
+                    model = File(avatarPath),
+                    contentDescription = "Avatar",
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize()
+                )
             } else {
                 DefaultProfileAvatar(modifier = Modifier.fillMaxSize())
             }
@@ -501,6 +547,7 @@ fun TopBar(manager: MusicManager, onProfileClick: () -> Unit, onSettingsClick: (
     }
 }
 
+@UnstableApi
 @Composable
 fun UniversalSongRow(song: Song, manager: MusicManager, isDark: Boolean, onPlay: () -> Unit, onMenuClick: () -> Unit) {
     val isPlayingThis = manager.currentSong?.id == song.id
@@ -527,7 +574,7 @@ fun UniversalSongRow(song: Song, manager: MusicManager, isDark: Boolean, onPlay:
     ) {
         Box(modifier = Modifier.size(46.dp).clip(RoundedCornerShape(10.dp)).background(Color(0xFF1E293B)), contentAlignment = Alignment.Center) {
             if (albumArtBitmap != null) {
-                Image(bitmap = albumArtBitmap!!.asImageBitmap(), contentDescription = "Art", modifier = Modifier.fillMaxSize())
+                Image(bitmap = albumArtBitmap!!.asImageBitmap(), contentDescription = "Art", modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
             } else {
                 Text("🎵", fontSize = 20.sp)
             }
@@ -552,6 +599,7 @@ fun UniversalSongRow(song: Song, manager: MusicManager, isDark: Boolean, onPlay:
     }
 }
 
+@UnstableApi
 @Composable
 fun UniversalSongCard(song: Song, manager: MusicManager, isDark: Boolean, onPlay: () -> Unit, onMenuClick: () -> Unit) {
     val isPlayingThis = manager.currentSong?.id == song.id
@@ -603,6 +651,7 @@ fun UniversalSongCard(song: Song, manager: MusicManager, isDark: Boolean, onPlay
 }
 
 @OptIn(ExperimentalFoundationApi::class)
+@UnstableApi
 @Composable
 fun HomeScreen(
     manager: MusicManager,
@@ -619,10 +668,12 @@ fun HomeScreen(
     var customizingPlaylist by remember { mutableStateOf<Playlist?>(null) }
     var showRainbowWheelForPl by remember { mutableStateOf(false) }
 
-    val sortedSongs = remember(manager.allSongs.size, manager.currentSortOrder) {
-        manager.getSortedSongs()
+    val sortedSongs: ImmutableList<Song> = remember(manager.allSongs.toList(), manager.currentSortOrder) {
+        manager.getSortedSongs().toImmutableList()
     }
-    val recents = manager.historySongs.take(30)
+    val recents: ImmutableList<Song> = remember(manager.historySongs.size, manager.historySongs.toList()) {
+        manager.historySongs.take(30).toImmutableList()
+    }
 
     val configuration = LocalConfiguration.current
     val cardWidth = ((configuration.screenWidthDp - 32 - (3 * 8)) / 4).coerceAtLeast(76).dp
@@ -634,7 +685,7 @@ fun HomeScreen(
             contentPadding = PaddingValues(bottom = 80.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            item {
+            item(key = "home_recents_section", contentType = "recents_carousel") {
                 Text(text = "Recently Played", color = textColor, fontSize = 18.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp))
                 Spacer(modifier = Modifier.height(10.dp))
 
@@ -644,7 +695,11 @@ fun HomeScreen(
                     }
                 } else {
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        items(recents, key = { it.id }) { song ->
+                        items(
+                            items = recents,
+                            key = { it.id },
+                            contentType = { "recent_song_card" }
+                        ) { song ->
                             RecentlyPlayedCard(
                                 song = song,
                                 manager = manager,
@@ -655,7 +710,7 @@ fun HomeScreen(
                 }
             }
 
-            item {
+            item(key = "home_playlists_section", contentType = "playlists_carousel") {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                     Text("Favourite Playlists", color = textColor, fontSize = 18.sp, fontWeight = FontWeight.Bold)
                     Button(onClick = { showCreatePlaylistDialog = true }, colors = ButtonDefaults.buttonColors(containerColor = manager.accentColor), shape = RoundedCornerShape(12.dp)) {
@@ -670,7 +725,11 @@ fun HomeScreen(
                     }
                 } else {
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        itemsIndexed(manager.customPlaylists, key = { _, pl -> pl.id }) { _, pl ->
+                        itemsIndexed(
+                            items = manager.customPlaylists,
+                            key = { _, pl -> pl.id },
+                            contentType = { _, _ -> "favourite_playlist_card" }
+                        ) { _, pl ->
                             Box(
                                 modifier = Modifier
                                     .size(cardWidth)
@@ -717,7 +776,7 @@ fun HomeScreen(
                 }
             }
 
-            item {
+            item(key = "home_all_songs_header", contentType = "all_songs_header") {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                     Text("All Songs", color = textColor, fontSize = 18.sp, fontWeight = FontWeight.Bold)
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -743,7 +802,11 @@ fun HomeScreen(
                 }
             }
 
-            items(sortedSongs, key = { it.id }) { song ->
+            items(
+                items = sortedSongs,
+                key = { it.id },
+                contentType = { "home_song_row" }
+            ) { song ->
                 UniversalSongRow(song = song, manager = manager, isDark = isDark, onPlay = { manager.playSong(song, sortedSongs, "All Songs") }, onMenuClick = { onSongMenuClick(song) })
             }
         }
@@ -783,6 +846,7 @@ fun HomeScreen(
 }
 
 @OptIn(ExperimentalFoundationApi::class)
+@UnstableApi
 @Composable
 fun LibraryScreen(manager: MusicManager, listState: LazyListState, onFolderClick: (String) -> Unit) {
     val isDark = manager.isDarkMode
@@ -792,8 +856,10 @@ fun LibraryScreen(manager: MusicManager, listState: LazyListState, onFolderClick
     var customizingFolder by remember { mutableStateOf<String?>(null) }
     var showRainbowWheelForFolder by remember { mutableStateOf(false) }
 
-    val sortedFolders = manager.getSortedFolders()
-    val folderMap = manager.allSongs.groupBy { it.folderName }
+    val sortedFolders: ImmutableList<String> = remember(manager.allSongs.size, manager.currentFolderSortOrder) {
+        manager.getSortedFolders().toImmutableList()
+    }
+    val folderMap = remember(manager.allSongs.size) { manager.allSongs.groupBy { it.folderName } }
 
     Column(modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
         Row(
@@ -845,9 +911,13 @@ fun LibraryScreen(manager: MusicManager, listState: LazyListState, onFolderClick
                 verticalArrangement = Arrangement.spacedBy(10.dp),
                 modifier = Modifier.fillMaxSize()
             ) {
-                items(sortedFolders, key = { it }) { folderName ->
+                items(
+                    items = sortedFolders,
+                    key = { it },
+                    contentType = { "folder_grid_card" }
+                ) { folderName ->
                     val songs = folderMap[folderName] ?: emptyList()
-                    val totalSize = songs.sumOf { it.size }
+                    val totalSize = remember(songs) { songs.sumOf { it.size } }
                     val fColor = manager.getFolderColor(folderName)
 
                     Box(
@@ -883,9 +953,13 @@ fun LibraryScreen(manager: MusicManager, listState: LazyListState, onFolderClick
                 contentPadding = PaddingValues(bottom = 80.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                items(sortedFolders, key = { it }) { folderName ->
+                items(
+                    items = sortedFolders,
+                    key = { it },
+                    contentType = { "folder_list_row" }
+                ) { folderName ->
                     val songs = folderMap[folderName] ?: emptyList()
-                    val totalSize = songs.sumOf { it.size }
+                    val totalSize = remember(songs) { songs.sumOf { it.size } }
                     val fColor = manager.getFolderColor(folderName)
 
                     Row(
@@ -926,6 +1000,7 @@ fun LibraryScreen(manager: MusicManager, listState: LazyListState, onFolderClick
     if (showRainbowWheelForFolder) CircularColorPickerDialog(manager = manager, onDismiss = { showRainbowWheelForFolder = false })
 }
 
+@UnstableApi
 @Composable
 fun SearchScreen(manager: MusicManager, listState: LazyListState, onSongMenuClick: (Song) -> Unit) {
     var query by remember { mutableStateOf("") }
@@ -937,8 +1012,15 @@ fun SearchScreen(manager: MusicManager, listState: LazyListState, onSongMenuClic
         keyboardController?.show()
     }
 
-    val filtered = manager.allSongs.filter {
-        it.title.contains(query, ignoreCase = true) || it.artist.contains(query, ignoreCase = true) || it.folderName.contains(query, ignoreCase = true)
+    val filtered: ImmutableList<Song> = remember(query, manager.allSongs.size) {
+        val q = query.trim()
+        if (q.isEmpty()) {
+            emptyList<Song>().toImmutableList()
+        } else {
+            manager.allSongs.filter {
+                it.title.contains(q, ignoreCase = true) || it.artist.contains(q, ignoreCase = true) || it.folderName.contains(q, ignoreCase = true)
+            }.toImmutableList()
+        }
     }
 
     val isDark = manager.isDarkMode
@@ -955,13 +1037,18 @@ fun SearchScreen(manager: MusicManager, listState: LazyListState, onSongMenuClic
         )
         Spacer(modifier = Modifier.height(14.dp))
         LazyColumn(state = listState, verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            items(filtered, key = { it.id }) { song ->
+            items(
+                items = filtered,
+                key = { it.id },
+                contentType = { "search_result_row" }
+            ) { song ->
                 UniversalSongRow(song = song, manager = manager, isDark = isDark, onPlay = { manager.playSong(song, filtered, "Search Results") }, onMenuClick = { onSongMenuClick(song) })
             }
         }
     }
 }
 
+@UnstableApi
 @Composable
 fun PlaylistDetailScreen(
     playlist: Playlist,
@@ -975,9 +1062,12 @@ fun PlaylistDetailScreen(
     var showAddSongsSearchPicker by remember { mutableStateOf(false) }
     var showSortMenu by remember { mutableStateOf(false) }
 
-    val rawSongsInPlaylist = playlist.songIds.mapNotNull { id -> manager.allSongs.find { it.id == id } }
+    val songLookup = remember(manager.allSongs.size) { manager.allSongs.associateBy { it.id } }
+    val rawSongsInPlaylist = remember(playlist.songIds, songLookup) {
+        playlist.songIds.mapNotNull { songLookup[it] }
+    }
 
-    val sortedSongs = remember(rawSongsInPlaylist, manager.playlistInnerSortOrder) {
+    val sortedSongs: ImmutableList<Song> = remember(rawSongsInPlaylist, manager.playlistInnerSortOrder) {
         when (manager.playlistInnerSortOrder) {
             SongSortOrder.A_TO_Z -> rawSongsInPlaylist.sortedBy { it.title.lowercase(Locale.getDefault()) }
             SongSortOrder.Z_TO_A -> rawSongsInPlaylist.sortedByDescending { it.title.lowercase(Locale.getDefault()) }
@@ -986,7 +1076,7 @@ fun PlaylistDetailScreen(
             SongSortOrder.NEWEST -> rawSongsInPlaylist.sortedByDescending { it.id }
             SongSortOrder.OLDEST -> rawSongsInPlaylist.sortedBy { it.id }
             SongSortOrder.ARTIST -> rawSongsInPlaylist.sortedBy { it.artist.lowercase(Locale.getDefault()) }
-        }
+        }.toImmutableList()
     }
 
     Column(modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
@@ -1068,13 +1158,21 @@ fun PlaylistDetailScreen(
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                     modifier = Modifier.fillMaxSize()
                 ) {
-                    items(sortedSongs, key = { it.id }) { song ->
+                    items(
+                        items = sortedSongs,
+                        key = { it.id },
+                        contentType = { "playlist_song_card" }
+                    ) { song ->
                         UniversalSongCard(song = song, manager = manager, isDark = isDark, onPlay = { manager.playSong(song, sortedSongs, playlist.name) }, onMenuClick = { onSongMenuClick(song) })
                     }
                 }
             } else {
                 LazyColumn(contentPadding = PaddingValues(bottom = 80.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    items(sortedSongs, key = { it.id }) { song ->
+                    items(
+                        items = sortedSongs,
+                        key = { it.id },
+                        contentType = { "playlist_song_row" }
+                    ) { song ->
                         UniversalSongRow(song = song, manager = manager, isDark = isDark, onPlay = { manager.playSong(song, sortedSongs, playlist.name) }, onMenuClick = { onSongMenuClick(song) })
                     }
                 }
@@ -1097,8 +1195,12 @@ fun PlaylistAddSearchDialog(playlist: Playlist, manager: MusicManager, onDismiss
     var selectedTab by remember { mutableIntStateOf(0) }
     var searchQuery by remember { mutableStateOf("") }
 
-    val filteredSongs = manager.allSongs.filter { it.title.contains(searchQuery, ignoreCase = true) || it.artist.contains(searchQuery, ignoreCase = true) }
-    val folders = manager.allSongs.map { it.folderName }.distinct()
+    val filteredSongs: ImmutableList<Song> = remember(searchQuery, manager.allSongs.size) {
+        val q = searchQuery.trim()
+        if (q.isEmpty()) manager.allSongs.toImmutableList()
+        else manager.allSongs.filter { it.title.contains(q, ignoreCase = true) || it.artist.contains(q, ignoreCase = true) }.toImmutableList()
+    }
+    val folders: ImmutableList<String> = remember(manager.allSongs.size) { manager.allSongs.map { it.folderName }.distinct().toImmutableList() }
 
     Box(
         modifier = Modifier
@@ -1132,7 +1234,11 @@ fun PlaylistAddSearchDialog(playlist: Playlist, manager: MusicManager, onDismiss
                         OutlinedTextField(value = searchQuery, onValueChange = { searchQuery = it }, placeholder = { Text("Search songs or artists...") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
                         Spacer(modifier = Modifier.height(10.dp))
                         LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            items(filteredSongs, key = { it.id }) { s ->
+                            items(
+                                items = filteredSongs,
+                                key = { it.id },
+                                contentType = { "dialog_search_row" }
+                            ) { s ->
                                 val isAdded = s.id in playlist.songIds
                                 Row(
                                     modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(if (isDark) Color(0x1AFFFFFF) else Color(0xFFF1F5F9)).clickable {
@@ -1151,8 +1257,12 @@ fun PlaylistAddSearchDialog(playlist: Playlist, manager: MusicManager, onDismiss
                     }
                     1 -> {
                         LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            items(folders, key = { it }) { folder ->
-                                val count = manager.allSongs.count { it.folderName == folder }
+                            items(
+                                items = folders,
+                                key = { it },
+                                contentType = { "dialog_folder_row" }
+                            ) { folder ->
+                                val count = remember(folder, manager.allSongs.size) { manager.allSongs.count { it.folderName == folder } }
                                 Row(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(if (isDark) Color(0x1AFFFFFF) else Color(0xFFF1F5F9)).padding(12.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                                     Column(modifier = Modifier.clickable { onNavigateToFolder(folder) }) {
                                         Text("📁 $folder", color = textColor, fontSize = 14.sp, fontWeight = FontWeight.Bold)
@@ -1169,8 +1279,15 @@ fun PlaylistAddSearchDialog(playlist: Playlist, manager: MusicManager, onDismiss
                         }
                     }
                     2 -> {
+                        val otherPlaylists: ImmutableList<Playlist> = remember(manager.customPlaylists.size) {
+                            manager.customPlaylists.filter { it.id != playlist.id }.toImmutableList()
+                        }
                         LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            items(manager.customPlaylists.filter { it.id != playlist.id }, key = { it.id }) { pl ->
+                            items(
+                                items = otherPlaylists,
+                                key = { it.id },
+                                contentType = { "dialog_copy_playlist_row" }
+                            ) { pl ->
                                 Row(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(if (isDark) Color(0x1AFFFFFF) else Color(0xFFF1F5F9)).padding(12.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                                     Text("${pl.name} (${pl.songIds.size} songs)", color = textColor, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                                     Button(onClick = { pl.songIds.forEach { manager.addSongToPlaylist(it, playlist) } }, shape = RoundedCornerShape(8.dp)) {
@@ -1186,8 +1303,9 @@ fun PlaylistAddSearchDialog(playlist: Playlist, manager: MusicManager, onDismiss
     }
 }
 
+@UnstableApi
 @Composable
-fun FilteredSongsScreen(title: String, songs: List<Song>, manager: MusicManager, isDark: Boolean, onBack: () -> Unit, onSongMenuClick: (Song) -> Unit) {
+fun FilteredSongsScreen(title: String, songs: ImmutableList<Song>, manager: MusicManager, isDark: Boolean, onBack: () -> Unit, onSongMenuClick: (Song) -> Unit) {
     val textColor = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A)
     Column(modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
         Row(modifier = Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 2.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -1200,21 +1318,26 @@ fun FilteredSongsScreen(title: String, songs: List<Song>, manager: MusicManager,
         }
         Spacer(modifier = Modifier.height(14.dp))
         LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            items(songs, key = { it.id }) { song ->
+            items(
+                items = songs,
+                key = { it.id },
+                contentType = { "filtered_song_row" }
+            ) { song ->
                 UniversalSongRow(song = song, manager = manager, isDark = isDark, onPlay = { manager.playSong(song, songs, title) }, onMenuClick = { onSongMenuClick(song) })
             }
         }
     }
 }
 
+@UnstableApi
 @Composable
 fun FolderSongsScreen(folderName: String, manager: MusicManager, isDark: Boolean, onBack: () -> Unit, onSongMenuClick: (Song) -> Unit) {
-    val rawSongs = manager.allSongs.filter { it.folderName == folderName }
+    val rawSongs = remember(folderName, manager.allSongs.size) { manager.allSongs.filter { it.folderName == folderName } }
     val textColor = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A)
     val accent = manager.accentColor
     var showSortMenu by remember { mutableStateOf(false) }
 
-    val sortedSongs = remember(rawSongs, manager.folderInnerSortOrder) {
+    val sortedSongs: ImmutableList<Song> = remember(rawSongs, manager.folderInnerSortOrder) {
         when (manager.folderInnerSortOrder) {
             SongSortOrder.A_TO_Z -> rawSongs.sortedBy { it.title.lowercase(Locale.getDefault()) }
             SongSortOrder.Z_TO_A -> rawSongs.sortedByDescending { it.title.lowercase(Locale.getDefault()) }
@@ -1223,7 +1346,7 @@ fun FolderSongsScreen(folderName: String, manager: MusicManager, isDark: Boolean
             SongSortOrder.NEWEST -> rawSongs.sortedByDescending { it.id }
             SongSortOrder.OLDEST -> rawSongs.sortedBy { it.id }
             SongSortOrder.ARTIST -> rawSongs.sortedBy { it.artist.lowercase(Locale.getDefault()) }
-        }
+        }.toImmutableList()
     }
 
     Column(modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
@@ -1306,13 +1429,21 @@ fun FolderSongsScreen(folderName: String, manager: MusicManager, isDark: Boolean
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                     modifier = Modifier.fillMaxSize()
                 ) {
-                    items(sortedSongs, key = { it.id }) { song ->
+                    items(
+                        items = sortedSongs,
+                        key = { it.id },
+                        contentType = { "folder_inner_card" }
+                    ) { song ->
                         UniversalSongCard(song = song, manager = manager, isDark = isDark, onPlay = { manager.playSong(song, sortedSongs, folderName) }, onMenuClick = { onSongMenuClick(song) })
                     }
                 }
             } else {
                 LazyColumn(contentPadding = PaddingValues(bottom = 80.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    items(sortedSongs, key = { it.id }) { song ->
+                    items(
+                        items = sortedSongs,
+                        key = { it.id },
+                        contentType = { "folder_inner_row" }
+                    ) { song ->
                         UniversalSongRow(song = song, manager = manager, isDark = isDark, onPlay = { manager.playSong(song, sortedSongs, folderName) }, onMenuClick = { onSongMenuClick(song) })
                     }
                 }
@@ -1444,7 +1575,7 @@ fun SongInfoDialog(song: Song, isDark: Boolean, onDismiss: () -> Unit) {
 @Composable
 fun CreatePlaylistDialog(manager: MusicManager, onDismiss: () -> Unit) {
     var name by remember { mutableStateOf("") }
-    val folders = manager.allSongs.map { it.folderName }.distinct()
+    val folders: ImmutableList<String> = remember(manager.allSongs.size) { manager.allSongs.map { it.folderName }.distinct().toImmutableList() }
     var selectedFolderToPin by remember { mutableStateOf<String?>(null) }
     val isDark = manager.isDarkMode
 
@@ -1467,7 +1598,11 @@ fun CreatePlaylistDialog(manager: MusicManager, onDismiss: () -> Unit) {
                 Text("Or Pin an Entire Device Folder:", color = Color(0xFF64748B), fontSize = 12.sp)
                 Spacer(modifier = Modifier.height(8.dp))
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(folders, key = { it }) { folder ->
+                    items(
+                        items = folders,
+                        key = { it },
+                        contentType = { "dialog_folder_chip" }
+                    ) { folder ->
                         val isSel = selectedFolderToPin == folder
                         val fColor = manager.getFolderColor(folder)
                         Box(

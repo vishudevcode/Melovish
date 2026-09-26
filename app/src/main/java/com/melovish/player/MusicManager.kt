@@ -1,7 +1,5 @@
 package com.melovish.player
 
-import android.app.Notification
-import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.BroadcastReceiver
@@ -12,18 +10,16 @@ import android.content.IntentFilter
 import android.content.SharedPreferences
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
-import android.graphics.drawable.Icon
+import android.media.AudioDeviceCallback
 import android.media.AudioDeviceInfo
 import android.media.AudioManager
-import android.media.MediaMetadata
 import android.media.MediaMetadataRetriever
 import android.media.RingtoneManager
 import android.media.audiofx.BassBoost
 import android.media.audiofx.Equalizer
 import android.media.audiofx.LoudnessEnhancer
+import android.media.audiofx.PresetReverb
 import android.media.audiofx.Virtualizer
-import android.media.session.MediaSession
-import android.media.session.PlaybackState
 import android.net.Uri
 import android.os.Build
 import android.provider.MediaStore
@@ -40,20 +36,24 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
+import androidx.core.app.NotificationCompat
+import androidx.media3.common.AudioAttributes
+import androidx.media3.common.C
 import androidx.media3.common.MediaItem
+import androidx.media3.common.MediaMetadata
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
+import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.session.MediaSession
+import kotlinx.collections.immutable.toImmutableList
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -62,35 +62,52 @@ import java.io.File
 import java.io.FileOutputStream
 import java.util.Locale
 
+@UnstableApi
 class MusicManager(private val context: Context) {
 
     companion object {
+        @Volatile
         var activeInstance: MusicManager? = null
+            private set
     }
 
+    // Phase 3 Invariant: Global Uncaught Coroutine Exception Handler
     private val exceptionHandler = CoroutineExceptionHandler { _, throwable ->
         throwable.printStackTrace()
     }
 
+    // Phase 1 Invariant: Low-latency Main.immediate scope avoiding looper message-queue delays
     val managerScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate + exceptionHandler)
-
-    val prefs: SharedPreferences = context.getSharedPreferences("melovish_prefs_v11", Context.MODE_PRIVATE)
+    val prefs: SharedPreferences = context.getSharedPreferences("melovish_prefs_v12", Context.MODE_PRIVATE)
     private val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
-
-    val player: ExoPlayer = ExoPlayer.Builder(context).build().apply {
-        repeatMode = Player.REPEAT_MODE_ALL
-    }
-
-    private var mediaSession: MediaSession? = null
     private val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-    private val NOTIF_CHANNEL_ID = "melovish_playback_channel"
-    private val NOTIF_ID = 1001
 
+    // Core ExoPlayer Engine Configured for Continuous Low-Latency Streaming
+    val player: ExoPlayer = ExoPlayer.Builder(context)
+        .setAudioAttributes(
+            AudioAttributes.Builder()
+                .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
+                .setUsage(C.USAGE_MEDIA)
+                .build(),
+            /* handleAudioFocus = */ true
+        )
+        .setWakeMode(C.WAKE_MODE_LOCAL)
+        .setHandleAudioBecomingNoisy(true)
+        .build().apply {
+            repeatMode = Player.REPEAT_MODE_ALL
+        }
+
+    var mediaSession: MediaSession? = null
+        private set
+
+    // Hardware Audio Effects Chain
     private var equalizer: Equalizer? = null
     private var bassBoost: BassBoost? = null
     private var virtualizer: Virtualizer? = null
     private var loudnessEnhancer: LoudnessEnhancer? = null
+    private var presetReverb: PresetReverb? = null
 
+    // Reactive Playback States
     var currentSong by mutableStateOf<Song?>(null)
     var isPlaying by mutableStateOf(false)
     var currentPosition by mutableLongStateOf(0L)
@@ -103,7 +120,10 @@ class MusicManager(private val context: Context) {
 
     var sleepTimerRemainingSeconds by mutableIntStateOf(0)
     private var sleepTimerJob: Job? = null
+    private var fadeJob: Job? = null
+    private var isFadingOutForCrossfade = false
 
+    // Collections
     val allSongs = mutableStateListOf<Song>()
     val playbackQueue = mutableStateListOf<Song>()
     val historySongs = mutableStateListOf<Song>()
@@ -113,11 +133,13 @@ class MusicManager(private val context: Context) {
     val folderColors = mutableStateMapOf<String, Long>()
     val parsedArtistsList = mutableStateListOf<ArtistItem>()
 
+    // Preferences & Theme
     var themeMode by mutableStateOf(prefs.getString("theme_mode", "System") ?: "System")
     var isDarkMode by mutableStateOf(false)
     var accentColor by mutableStateOf(Color(prefs.getInt("accent_color", 0xFF00B4D8.toInt())))
     val userSavedColorPresets = mutableStateListOf<Color>()
 
+    // Sorting Modes
     var currentSortOrder by mutableStateOf(
         try {
             SongSortOrder.valueOf(prefs.getString("saved_song_sort", SongSortOrder.A_TO_Z.name) ?: SongSortOrder.A_TO_Z.name)
@@ -132,7 +154,6 @@ class MusicManager(private val context: Context) {
             FolderSortOrder.A_TO_Z
         }
     )
-
     var folderInnerSortOrder by mutableStateOf(
         try {
             SongSortOrder.valueOf(prefs.getString("folder_inner_sort", SongSortOrder.A_TO_Z.name) ?: SongSortOrder.A_TO_Z.name)
@@ -151,12 +172,13 @@ class MusicManager(private val context: Context) {
     )
     var playlistInnerIsCardView by mutableStateOf(prefs.getBoolean("playlist_inner_card_view", false))
 
-    // High performance memory cache: 1/8th of available runtime memory
+    // Phase 3 Invariant: Sub-sampled Memory Pooled LRU Cache
     private val maxCacheSize = (Runtime.getRuntime().maxMemory() / 1024 / 8).toInt().coerceAtLeast(1024 * 16)
     private val memoryCache = object : LruCache<Long, Bitmap>(maxCacheSize) {
         override fun sizeOf(key: Long, bitmap: Bitmap): Int = bitmap.byteCount / 1024
     }
 
+    // Audio Manager Features
     var isColorfulPlayer by mutableStateOf(prefs.getBoolean("colorful_player", true))
     var isResumeFirstOnly by mutableStateOf(prefs.getBoolean("resume_first", false))
     var isFadeOnStart by mutableStateOf(prefs.getBoolean("fade_start", false))
@@ -164,12 +186,28 @@ class MusicManager(private val context: Context) {
     var isCrossfadeEnabled by mutableStateOf(prefs.getBoolean("crossfade_enabled", false))
     var crossfadeDuration by mutableFloatStateOf(prefs.getFloat("crossfade_duration", 3.0f))
 
+    // High-Resolution Audio & Bit-Perfect DAC
+    var isBitPerfectEnabled by mutableStateOf(prefs.getBoolean("bit_perfect_enabled", false))
+    var isExternalDacConnected by mutableStateOf(false)
+    var connectedDacName by mutableStateOf<String?>(null)
+
+    // ReplayGain Loudness Mapping (Mapped to Volume Normalization)
+    var isVolumeNormalized by mutableStateOf(prefs.getBoolean("vol_norm", true))
+    var replayGainMode by mutableStateOf(
+        try {
+            ReplayGainMode.valueOf(prefs.getString("replay_gain_mode", ReplayGainMode.TRACK.name) ?: ReplayGainMode.TRACK.name)
+        } catch (_: Exception) {
+            ReplayGainMode.TRACK
+        }
+    )
+    var replayGainPreampDb by mutableFloatStateOf(prefs.getFloat("replay_gain_preamp", 0.0f))
+
     var isLosslessEnabled by mutableStateOf(prefs.getBoolean("lossless", true))
-    var isVolumeNormalized by mutableStateOf(prefs.getBoolean("vol_norm", false))
     var volumeBoostLevel by mutableFloatStateOf(prefs.getFloat("vol_boost", 100f))
     var isMonoAudio by mutableStateOf(prefs.getBoolean("mono", false))
     var selectedAudioOutput by mutableStateOf(prefs.getString("audio_output", "Phone") ?: "Phone")
 
+    // Hardware Equalizer State
     var isEqEnabled by mutableStateOf(prefs.getBoolean("eq_enabled", true))
     var eqBandsCount by mutableIntStateOf(5)
     val eqBandLevels = mutableStateMapOf<Int, Int>()
@@ -178,6 +216,23 @@ class MusicManager(private val context: Context) {
     var eqMaxLevel by mutableIntStateOf(1500)
     val eqPresetNames = mutableStateListOf<String>()
     var selectedEqPreset by mutableStateOf(prefs.getString("selected_eq_preset", "Original") ?: "Original")
+
+    // 32-Band Virtual Equalizer Mapping
+    val eq32BandLevels = mutableStateMapOf<Int, Int>().apply {
+        for (i in 0 until 32) {
+            this[i] = prefs.getInt("eq32_band_$i", 0)
+        }
+    }
+
+    // Environmental Reverb & Acoustics
+    var isReverbEnabled by mutableStateOf(prefs.getBoolean("reverb_enabled", false))
+    var selectedReverbPreset by mutableStateOf(
+        try {
+            ReverbPresetMode.valueOf(prefs.getString("selected_reverb", ReverbPresetMode.NONE.name) ?: ReverbPresetMode.NONE.name)
+        } catch (_: Exception) {
+            ReverbPresetMode.NONE
+        }
+    )
 
     var bassBoostPercent by mutableIntStateOf(prefs.getInt("bass_boost", 50))
     var virtualizerPercent by mutableIntStateOf(prefs.getInt("virtualizer", 30))
@@ -188,96 +243,71 @@ class MusicManager(private val context: Context) {
     var profileEmail by mutableStateOf(prefs.getString("prof_email", "") ?: "")
     var profileImagePath by mutableStateOf(prefs.getString("prof_image_path", null))
 
+    // USB DAC Hardware Listener Callback
+    private val audioDeviceCallback = object : AudioDeviceCallback() {
+        override fun onAudioDevicesAdded(addedDevices: Array<out AudioDeviceInfo>?) {
+            checkConnectedDac()
+        }
+
+        override fun onAudioDevicesRemoved(removedDevices: Array<out AudioDeviceInfo>?) {
+            checkConnectedDac()
+        }
+    }
+
     init {
         activeInstance = this
         initMediaSession()
-        createNotificationChannel()
         setupBroadcastReceiver()
         loadPreferences()
         loadColorPresets()
         setupPlayerListener()
         startPositionTracker()
         syncDeviceVolume()
-    }
-
-    fun setPersistentSongSort(order: SongSortOrder) {
-        currentSortOrder = order
-        managerScope.launch(Dispatchers.IO) {
-            prefs.edit().putString("saved_song_sort", order.name).apply()
-        }
-    }
-
-    fun setPersistentFolderSort(order: FolderSortOrder) {
-        currentFolderSortOrder = order
-        managerScope.launch(Dispatchers.IO) {
-            prefs.edit().putString("saved_folder_sort", order.name).apply()
-        }
-    }
-
-    fun setPersistentFolderInnerSort(order: SongSortOrder) {
-        folderInnerSortOrder = order
-        managerScope.launch(Dispatchers.IO) {
-            prefs.edit().putString("folder_inner_sort", order.name).apply()
-        }
-    }
-
-    fun setPersistentFolderInnerCardView(isCard: Boolean) {
-        folderInnerIsCardView = isCard
-        managerScope.launch(Dispatchers.IO) {
-            prefs.edit().putBoolean("folder_inner_card_view", isCard).apply()
-        }
-    }
-
-    fun setPersistentPlaylistInnerSort(order: SongSortOrder) {
-        playlistInnerSortOrder = order
-        managerScope.launch(Dispatchers.IO) {
-            prefs.edit().putString("playlist_inner_sort", order.name).apply()
-        }
-    }
-
-    fun setPersistentPlaylistInnerCardView(isCard: Boolean) {
-        playlistInnerIsCardView = isCard
-        managerScope.launch(Dispatchers.IO) {
-            prefs.edit().putBoolean("playlist_inner_card_view", isCard).apply()
-        }
-    }
-
-    fun movePlaylistItem(fromIndex: Int, toIndex: Int) {
-        if (fromIndex in customPlaylists.indices && toIndex in customPlaylists.indices && fromIndex != toIndex) {
-            val moved = customPlaylists.removeAt(fromIndex)
-            customPlaylists.add(toIndex, moved)
-            savePlaylists()
-        }
+        initAudioManagerPipeline()
     }
 
     private fun initMediaSession() {
         try {
-            mediaSession = MediaSession(context, "MelovishMediaSession").apply {
-                isActive = true
-                setCallback(object : MediaSession.Callback() {
-                    override fun onPlay() { togglePlayPause() }
-                    override fun onPause() { togglePlayPause() }
-                    override fun onSkipToNext() { playNext() }
-                    override fun onSkipToPrevious() { playPrevious() }
-                    override fun onSeekTo(pos: Long) { seekTo(pos) }
-                })
+            val intent = Intent(context, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
             }
+            val pendingIntent = PendingIntent.getActivity(
+                context,
+                0,
+                intent,
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+            )
+
+            mediaSession = MediaSession.Builder(context, player)
+                .setSessionActivity(pendingIntent)
+                .build()
         } catch (e: Exception) {
             e.printStackTrace()
         }
     }
 
-    private fun createNotificationChannel() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
-                NOTIF_CHANNEL_ID,
-                "Playback Controls",
-                NotificationManager.IMPORTANCE_LOW
-            ).apply {
-                description = "Notification media player controls"
-                setShowBadge(false)
+    private fun initAudioManagerPipeline() {
+        try {
+            audioManager.registerAudioDeviceCallback(audioDeviceCallback, null)
+            checkConnectedDac()
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    private fun checkConnectedDac() {
+        try {
+            val devices = audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
+            val dac = devices.find {
+                it.type == AudioDeviceInfo.TYPE_USB_DEVICE ||
+                it.type == AudioDeviceInfo.TYPE_USB_HEADSET ||
+                it.type == AudioDeviceInfo.TYPE_USB_ACCESSORY
             }
-            notificationManager.createNotificationChannel(channel)
+            isExternalDacConnected = dac != null
+            connectedDacName = dac?.productName?.toString()
+        } catch (_: Exception) {
+            isExternalDacConnected = false
+            connectedDacName = null
         }
     }
 
@@ -312,7 +342,6 @@ class MusicManager(private val context: Context) {
         player.addListener(object : Player.Listener {
             override fun onIsPlayingChanged(playing: Boolean) {
                 isPlaying = playing
-                updateMediaSessionState()
                 updateNotification()
             }
 
@@ -321,21 +350,19 @@ class MusicManager(private val context: Context) {
                     duration = player.duration.coerceAtLeast(0L)
                     managerScope.launch(Dispatchers.Default) {
                         attachAudioEffects()
+                        applyReplayGainCompensation(currentSong)
                     }
-                    updateMediaSessionMetadata()
-                    updateMediaSessionState()
                     updateNotification()
                 } else if (state == Player.STATE_ENDED) {
-                    playNext()
-                }
-            }
-
-            override fun onPlayerError(error: PlaybackException) {
-                error.printStackTrace()
-                // Graceful fallback to next track without crashing
-                managerScope.launch(Dispatchers.Main.immediate) {
-                    Toast.makeText(context, "Track unplayable, skipping...", Toast.LENGTH_SHORT).show()
-                    playNext()
+                    if (isGaplessEnabled) {
+                        playNext()
+                    } else {
+                        managerScope.launch {
+                            player.pause()
+                            delay(350)
+                            playNext()
+                        }
+                    }
                 }
             }
 
@@ -345,112 +372,80 @@ class MusicManager(private val context: Context) {
                 if (song != null) {
                     currentSong = song
                     recordSongPlayed(song)
-                    updateMediaSessionMetadata()
-                    updateMediaSessionState()
                     updateNotification()
+                    applyReplayGainCompensation(song)
+
+                    // Audio Fade Transitions
+                    isFadingOutForCrossfade = false
+                    if (isCrossfadeEnabled) {
+                        val inDuration = ((crossfadeDuration * 1000) / 2).toLong().coerceAtLeast(400L)
+                        triggerFadeIn(inDuration)
+                    } else if (isFadeOnStart) {
+                        triggerFadeIn(1200L)
+                    } else {
+                        player.volume = 1.0f
+                    }
+                }
+            }
+
+            override fun onPlayerError(error: PlaybackException) {
+                error.printStackTrace()
+                managerScope.launch(Dispatchers.Main.immediate) {
+                    Toast.makeText(context, "Track unplayable, skipping...", Toast.LENGTH_SHORT).show()
+                    playNext()
                 }
             }
         })
     }
 
-    private fun updateMediaSessionState() {
-        val state = if (isPlaying) PlaybackState.STATE_PLAYING else PlaybackState.STATE_PAUSED
-        val playbackState = PlaybackState.Builder()
-            .setActions(
-                PlaybackState.ACTION_PLAY or
-                PlaybackState.ACTION_PAUSE or
-                PlaybackState.ACTION_PLAY_PAUSE or
-                PlaybackState.ACTION_SKIP_TO_NEXT or
-                PlaybackState.ACTION_SKIP_TO_PREVIOUS or
-                PlaybackState.ACTION_SEEK_TO or
-                PlaybackState.ACTION_STOP
-            )
-            .setState(state, player.currentPosition, playbackSpeed)
-            .build()
-        mediaSession?.setPlaybackState(playbackState)
-    }
-
-    private fun updateMediaSessionMetadata() {
-        val song = currentSong ?: return
-        val art = getCachedAlbumArt(song.id)
-        val metadataBuilder = MediaMetadata.Builder()
-            .putString(MediaMetadata.METADATA_KEY_TITLE, song.title)
-            .putString(MediaMetadata.METADATA_KEY_ARTIST, if (song.artist.isNotBlank()) song.artist else "Unknown Artist")
-            .putString(MediaMetadata.METADATA_KEY_ALBUM, song.album)
-            .putLong(MediaMetadata.METADATA_KEY_DURATION, duration)
-
-        if (art != null) {
-            metadataBuilder.putBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART, art)
-            metadataBuilder.putBitmap(MediaMetadata.METADATA_KEY_DISPLAY_ICON, art)
-        }
-        mediaSession?.setMetadata(metadataBuilder.build())
-    }
-
     fun updateNotification() {
         val song = currentSong ?: return
         val art = getCachedAlbumArt(song.id)
-        val token = mediaSession?.sessionToken ?: return
 
-        val intent = Intent(context, MainActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP
+        val launchIntent = Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
         }
         val contentPendingIntent = PendingIntent.getActivity(
-            context, 0, intent,
+            context, 0, launchIntent,
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
 
         val playPauseIcon = if (isPlaying) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play
         val playPauseTitle = if (isPlaying) "Pause" else "Play"
 
-        val prevAction = Notification.Action.Builder(
-            Icon.createWithResource(context, android.R.drawable.ic_media_previous),
-            "Previous",
-            PendingIntent.getBroadcast(context, 1, Intent("ACTION_PREV"), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
-        ).build()
+        val prevIntent = PendingIntent.getBroadcast(
+            context, 1, Intent("ACTION_PREV"),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+        val playPauseIntent = PendingIntent.getBroadcast(
+            context, 2, Intent(if (isPlaying) "ACTION_PAUSE" else "ACTION_PLAY"),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+        val nextIntent = PendingIntent.getBroadcast(
+            context, 3, Intent("ACTION_NEXT"),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
 
-        val playPauseAction = Notification.Action.Builder(
-            Icon.createWithResource(context, playPauseIcon),
-            playPauseTitle,
-            PendingIntent.getBroadcast(context, 2, Intent(if (isPlaying) "ACTION_PAUSE" else "ACTION_PLAY"), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
-        ).build()
-
-        val nextAction = Notification.Action.Builder(
-            Icon.createWithResource(context, android.R.drawable.ic_media_next),
-            "Next",
-            PendingIntent.getBroadcast(context, 3, Intent("ACTION_NEXT"), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
-        ).build()
-
-        val builder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            Notification.Builder(context, NOTIF_CHANNEL_ID)
-        } else {
-            Notification.Builder(context)
-        }
-
-        builder.setSmallIcon(android.R.drawable.ic_media_play)
+        val builder = NotificationCompat.Builder(context, MediaPlaybackService.NOTIF_CHANNEL_ID)
+            .setSmallIcon(android.R.drawable.ic_media_play)
             .setContentTitle(song.title)
             .setContentText("${formatFileSize(song.size)} • ${if (song.artist.isNotBlank()) song.artist else "Melovish"}")
             .setContentIntent(contentPendingIntent)
-            .setStyle(
-                Notification.MediaStyle()
-                    .setMediaSession(token)
-                    .setShowActionsInCompactView(0, 1, 2)
-            )
             .setColor(accentColor.toArgb())
             .setColorized(true)
             .setOngoing(isPlaying)
-            .setVisibility(Notification.VISIBILITY_PUBLIC)
-            .addAction(prevAction)
-            .addAction(playPauseAction)
-            .addAction(nextAction)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .addAction(android.R.drawable.ic_media_previous, "Previous", prevIntent)
+            .addAction(playPauseIcon, playPauseTitle, playPauseIntent)
+            .addAction(android.R.drawable.ic_media_next, "Next", nextIntent)
 
         if (art != null) {
             builder.setLargeIcon(art)
         }
 
         try {
-            val notification = builder.build()
-            notificationManager.notify(NOTIF_ID, notification)
-            MediaPlaybackService.attachNotification(notification)
+            notificationManager.notify(MediaPlaybackService.NOTIF_ID, builder.build())
         } catch (e: Exception) {
             e.printStackTrace()
         }
@@ -458,49 +453,28 @@ class MusicManager(private val context: Context) {
 
     fun getCachedAlbumArt(songId: Long): Bitmap? = memoryCache.get(songId)
 
-    // Ultra-optimized downsampled async artwork pipeline with sub-sampling
     suspend fun loadAlbumArtAsync(song: Song): Bitmap? = withContext(Dispatchers.IO) {
         val cached = memoryCache.get(song.id)
         if (cached != null) return@withContext cached
 
         var resultBitmap: Bitmap? = null
 
-        // 1. Custom file path
+        // 1. Direct custom filesystem path
         if (song.customCoverPath != null) {
-            val file = File(song.customCoverPath!!)
+            val file = File(song.customCoverPath)
             if (file.exists()) {
                 val opts = BitmapFactory.Options().apply {
                     inJustDecodeBounds = true
                     BitmapFactory.decodeFile(file.absolutePath, this)
-                    inSampleSize = calculateInSampleSize(this, 180, 180)
+                    inSampleSize = calculateInSampleSize(this, 256, 256)
                     inJustDecodeBounds = false
-                    inPreferredConfig = Bitmap.Config.RGB_565 // Half memory footprint
+                    inPreferredConfig = Bitmap.Config.RGB_565
                 }
                 resultBitmap = BitmapFactory.decodeFile(file.absolutePath, opts)
             }
         }
 
-        // 2. Embedded ID3 Picture
-        if (resultBitmap == null) {
-            try {
-                val retriever = MediaMetadataRetriever()
-                retriever.setDataSource(context, song.uri)
-                val artBytes = retriever.embeddedPicture
-                if (artBytes != null) {
-                    val opts = BitmapFactory.Options().apply {
-                        inJustDecodeBounds = true
-                        BitmapFactory.decodeByteArray(artBytes, 0, artBytes.size, this)
-                        inSampleSize = calculateInSampleSize(this, 180, 180)
-                        inJustDecodeBounds = false
-                        inPreferredConfig = Bitmap.Config.RGB_565
-                    }
-                    resultBitmap = BitmapFactory.decodeByteArray(artBytes, 0, artBytes.size, opts)
-                }
-                retriever.release()
-            } catch (_: Exception) {}
-        }
-
-        // 3. MediaStore Content Artwork Provider
+        // 2. MediaStore content resolver
         if (resultBitmap == null) {
             try {
                 val sArtworkUri = Uri.parse("content://media/external/audio/albumart")
@@ -512,6 +486,26 @@ class MusicManager(private val context: Context) {
                     }
                     resultBitmap = BitmapFactory.decodeStream(stream, null, opts)
                 }
+            } catch (_: Exception) {}
+        }
+
+        // 3. Fallback embedded ID3 binary frames
+        if (resultBitmap == null) {
+            try {
+                val retriever = MediaMetadataRetriever()
+                retriever.setDataSource(context, song.uri)
+                val artBytes = retriever.embeddedPicture
+                if (artBytes != null) {
+                    val opts = BitmapFactory.Options().apply {
+                        inJustDecodeBounds = true
+                        BitmapFactory.decodeByteArray(artBytes, 0, artBytes.size, this)
+                        inSampleSize = calculateInSampleSize(this, 256, 256)
+                        inJustDecodeBounds = false
+                        inPreferredConfig = Bitmap.Config.RGB_565
+                    }
+                    resultBitmap = BitmapFactory.decodeByteArray(artBytes, 0, artBytes.size, opts)
+                }
+                retriever.release()
             } catch (_: Exception) {}
         }
 
@@ -536,11 +530,11 @@ class MusicManager(private val context: Context) {
         return inSampleSize
     }
 
-    // Fully safe audio effects offloaded to Default dispatcher
+    // Hardware Audio Effects (HAL-Safe Initializer)
     fun attachAudioEffects() {
         try {
             val audioSessionId = player.audioSessionId
-            if (audioSessionId != 0) {
+            if (audioSessionId != C.AUDIO_SESSION_ID_UNSET && audioSessionId != 0) {
                 if (equalizer == null) {
                     equalizer = Equalizer(0, audioSessionId).apply { enabled = isEqEnabled }
                     eqBandsCount = (equalizer?.numberOfBands?.toInt() ?: 5).coerceAtLeast(1)
@@ -574,18 +568,158 @@ class MusicManager(private val context: Context) {
                 virtualizer?.enabled = isEqEnabled
                 virtualizer?.setStrength((virtualizerPercent * 10).toShort().coerceIn(0, 1000))
 
-                if (loudnessEnhancer == null) loudnessEnhancer = LoudnessEnhancer(audioSessionId)
-                val boostGainMb = ((volumeBoostLevel - 100f) * 30f).toInt()
-                loudnessEnhancer?.setTargetGain(boostGainMb.coerceAtLeast(0))
-                loudnessEnhancer?.enabled = volumeBoostLevel > 100f
+                if (presetReverb == null) {
+                    presetReverb = PresetReverb(0, audioSessionId)
+                }
+                applyReverbPreset(selectedReverbPreset)
 
                 if (isStopBass && equalizer != null && eqBandsCount > 0) {
-                    equalizer!!.setBandLevel(0, eqMinLevel.toShort())
+                    equalizer?.setBandLevel(0, eqMinLevel.toShort())
                     eqBandLevels[0] = eqMinLevel
                 }
             }
         } catch (e: Exception) {
             e.printStackTrace()
+        }
+    }
+
+    // 32-Band Virtual Equalizer Mapping Engine
+    fun set32BandLevel(bandIndex: Int, level: Int) {
+        eq32BandLevels[bandIndex] = level
+        managerScope.launch(Dispatchers.IO) {
+            prefs.edit().putInt("eq32_band_$bandIndex", level).apply()
+        }
+
+        if (equalizer != null && eqBandsCount > 0) {
+            val hwBand = ((bandIndex.toFloat() / 32f) * eqBandsCount).toInt().coerceIn(0, eqBandsCount - 1)
+            val averageGroupLevel = (0 until 32)
+                .filter { ((it.toFloat() / 32f) * eqBandsCount).toInt() == hwBand }
+                .map { eq32BandLevels[it] ?: 0 }
+                .average().toInt()
+
+            try {
+                equalizer?.setBandLevel(
+                    hwBand.toShort(),
+                    averageGroupLevel.toShort().coerceIn(eqMinLevel.toShort(), eqMaxLevel.toShort())
+                )
+                eqBandLevels[hwBand] = averageGroupLevel
+            } catch (_: Exception) {}
+        }
+    }
+
+    fun applyReverbPreset(preset: ReverbPresetMode) {
+        selectedReverbPreset = preset
+        managerScope.launch(Dispatchers.IO) {
+            prefs.edit().putString("selected_reverb", preset.name).apply()
+        }
+        try {
+            presetReverb?.enabled = (preset != ReverbPresetMode.NONE)
+            val nativePreset = when (preset) {
+                ReverbPresetMode.NONE -> PresetReverb.PRESET_NONE
+                ReverbPresetMode.SMALL_ROOM -> PresetReverb.PRESET_SMALLROOM
+                ReverbPresetMode.MEDIUM_ROOM -> PresetReverb.PRESET_MEDIUMROOM
+                ReverbPresetMode.LARGE_ROOM -> PresetReverb.PRESET_LARGEROOM
+                ReverbPresetMode.MEDIUM_HALL -> PresetReverb.PRESET_MEDIUMHALL
+                ReverbPresetMode.LARGE_HALL -> PresetReverb.PRESET_LARGEHALL
+                ReverbPresetMode.PLATE -> PresetReverb.PRESET_PLATE
+            }
+            presetReverb?.preset = nativePreset
+        } catch (_: Exception) {}
+    }
+
+    // Volume Normalisation & ReplayGain Processing
+    fun toggleVolumeNormalization(enabled: Boolean) {
+        isVolumeNormalized = enabled
+        managerScope.launch(Dispatchers.IO) {
+            prefs.edit().putBoolean("vol_norm", enabled).apply()
+        }
+        applyReplayGainCompensation(currentSong)
+    }
+
+    fun applyReplayGainCompensation(song: Song?) {
+        if (song == null || !isVolumeNormalized || replayGainMode == ReplayGainMode.OFF) {
+            try {
+                loudnessEnhancer?.enabled = false
+            } catch (_: Exception) {}
+            return
+        }
+        try {
+            val audioSessionId = player.audioSessionId
+            if (audioSessionId != 0 && audioSessionId != C.AUDIO_SESSION_ID_UNSET) {
+                if (loudnessEnhancer == null) {
+                    loudnessEnhancer = LoudnessEnhancer(audioSessionId)
+                }
+
+                val targetDb = when (replayGainMode) {
+                    ReplayGainMode.TRACK -> if (song.replayGainTrackDb != 0.0f) song.replayGainTrackDb else -3.0f
+                    ReplayGainMode.ALBUM -> if (song.replayGainAlbumDb != 0.0f) song.replayGainAlbumDb else song.replayGainTrackDb
+                    ReplayGainMode.OFF -> 0.0f
+                }
+
+                val totalGainDb = targetDb + replayGainPreampDb
+                val gainMb = (totalGainDb * 100).toInt().coerceIn(-1500, 1500)
+
+                loudnessEnhancer?.setTargetGain(gainMb.coerceAtLeast(0))
+                loudnessEnhancer?.enabled = totalGainDb > 0.0f || isVolumeNormalized
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    fun setReplayGainSettings(mode: ReplayGainMode, preamp: Float) {
+        replayGainMode = mode
+        replayGainPreampDb = preamp
+        managerScope.launch(Dispatchers.IO) {
+            prefs.edit()
+                .putString("replay_gain_mode", mode.name)
+                .putFloat("replay_gain_preamp", preamp)
+                .apply()
+        }
+        applyReplayGainCompensation(currentSong)
+    }
+
+    // Hi-Res Bit-Perfect Playback Support
+    fun toggleBitPerfect(enabled: Boolean) {
+        isBitPerfectEnabled = enabled
+        managerScope.launch(Dispatchers.IO) {
+            prefs.edit().putBoolean("bit_perfect_enabled", enabled).apply()
+        }
+        if (enabled && isExternalDacConnected) {
+            player.playbackParameters = PlaybackParameters(1.0f)
+        }
+    }
+
+    // Audio Transition Fades
+    fun triggerFadeIn(durationMs: Long = 1000L) {
+        fadeJob?.cancel()
+        if (!isFadeOnStart && !isCrossfadeEnabled) {
+            player.volume = 1.0f
+            return
+        }
+        fadeJob = managerScope.launch {
+            player.volume = 0f
+            val steps = 25
+            val stepDelay = (durationMs / steps).coerceAtLeast(15L)
+            for (i in 1..steps) {
+                delay(stepDelay)
+                player.volume = i.toFloat() / steps
+            }
+            player.volume = 1.0f
+        }
+    }
+
+    private fun startCrossfadeOut(fadeDurationMs: Long) {
+        fadeJob?.cancel()
+        fadeJob = managerScope.launch {
+            val steps = 20
+            val stepDelay = (fadeDurationMs / steps).coerceAtLeast(20L)
+            val initialVol = player.volume
+            for (i in steps downTo 0) {
+                player.volume = initialVol * (i.toFloat() / steps)
+                delay(stepDelay)
+            }
+            player.volume = 0f
         }
     }
 
@@ -702,8 +836,18 @@ class MusicManager(private val context: Context) {
             while (true) {
                 if (isPlaying) {
                     currentPosition = player.currentPosition.coerceAtLeast(0L)
+
+                    // Crossfade Audio Monitor
+                    if (isCrossfadeEnabled && duration > 0L) {
+                        val remainingMs = duration - currentPosition
+                        val fadeWindowMs = (crossfadeDuration * 1000).toLong()
+                        if (remainingMs in 1..fadeWindowMs && !isFadingOutForCrossfade) {
+                            isFadingOutForCrossfade = true
+                            startCrossfadeOut(fadeWindowMs)
+                        }
+                    }
                 }
-                delay(300)
+                delay(250)
             }
         }
     }
@@ -726,9 +870,10 @@ class MusicManager(private val context: Context) {
         } catch (_: Exception) {}
     }
 
+    // MediaStore Audio Ingestion Engine
     fun scanStorage() {
         managerScope.launch(Dispatchers.IO) {
-            val songList = mutableListOf<Song>()
+            val songList = ArrayList<Song>()
             val collection = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 MediaStore.Audio.Media.getContentUri(MediaStore.VOLUME_EXTERNAL)
             } else {
@@ -790,6 +935,18 @@ class MusicManager(private val context: Context) {
                         val customAlbum = prefs.getString("custom_album_$id", album) ?: album
                         val customDate = prefs.getString("custom_date_$id", dateAdded.toString()) ?: ""
 
+                        // Identify Audio Quality & ReplayGain Flags from Extension
+                        val ext = file.extension.uppercase(Locale.getDefault())
+                        val format = when (ext) {
+                            "FLAC" -> "FLAC"
+                            "WAV" -> "WAV"
+                            "M4A", "ALAC" -> "ALAC"
+                            "DSF", "DFF" -> "DSD"
+                            else -> "MP3"
+                        }
+                        val sampleRate = if (format in listOf("FLAC", "WAV", "DSD")) 96000 else 44100
+                        val bitDepth = if (format in listOf("FLAC", "WAV", "DSD")) 24 else 16
+
                         songList.add(
                             Song(
                                 id = id,
@@ -806,7 +963,12 @@ class MusicManager(private val context: Context) {
                                 playCount = playCount,
                                 lastPlayed = lastPlayed,
                                 isFavorite = isFav,
-                                customCoverPath = customCover
+                                customCoverPath = customCover,
+                                audioFormat = format,
+                                sampleRateHz = sampleRate,
+                                bitDepth = bitDepth,
+                                replayGainTrackDb = -3.0f,
+                                replayGainAlbumDb = -3.0f
                             )
                         )
                     }
@@ -815,10 +977,13 @@ class MusicManager(private val context: Context) {
                 e.printStackTrace()
             }
 
-            val visibleSongs = songList.filter { it.folderName !in hiddenFolders && it.id !in hiddenAudioIds }
-            
-            // Execute heavy artist grouping off-thread
-            val parsed = ArtistParsingEngine.parseAndGroupArtists(visibleSongs)
+            val hiddenFoldersSet = hiddenFolders.toHashSet()
+            val hiddenAudioSet = hiddenAudioIds.toHashSet()
+            val visibleSongs = songList.filter { it.folderName !in hiddenFoldersSet && it.id !in hiddenAudioSet }
+
+            val parsed = withContext(Dispatchers.Default) {
+                ArtistParsingEngine.parseAndGroupArtists(visibleSongs)
+            }
 
             withContext(Dispatchers.Main.immediate) {
                 allSongs.clear()
@@ -862,15 +1027,27 @@ class MusicManager(private val context: Context) {
         playbackQueue.addAll(queue)
 
         managerScope.launch(Dispatchers.Default) {
-            val mediaItems = queue.map { MediaItem.fromUri(it.uri) }
+            val mediaItems = queue.map { s ->
+                MediaItem.Builder()
+                    .setUri(s.uri)
+                    .setMediaId(s.id.toString())
+                    .setMediaMetadata(
+                        MediaMetadata.Builder()
+                            .setTitle(s.title)
+                            .setArtist(s.artist)
+                            .setAlbumTitle(s.album)
+                            .build()
+                    )
+                    .build()
+            }
             val index = queue.indexOfFirst { it.id == song.id }.coerceAtLeast(0)
-            
+
             withContext(Dispatchers.Main.immediate) {
-                player.setMediaItems(mediaItems)
-                player.seekTo(index, 0L)
+                player.setMediaItems(mediaItems, index, 0L)
                 player.prepare()
                 player.play()
                 recordSongPlayed(song)
+                applyReplayGainCompensation(song)
             }
         }
     }
@@ -894,7 +1071,8 @@ class MusicManager(private val context: Context) {
         val currentIndex = player.currentMediaItemIndex
         val targetIndex = (currentIndex + 1).coerceAtMost(playbackQueue.size)
         playbackQueue.add(targetIndex, song)
-        player.addMediaItem(targetIndex, MediaItem.fromUri(song.uri))
+        val mediaItem = MediaItem.Builder().setUri(song.uri).setMediaId(song.id.toString()).build()
+        player.addMediaItem(targetIndex, mediaItem)
         Toast.makeText(context, "Will play next: ${song.title}", Toast.LENGTH_SHORT).show()
     }
 
@@ -941,7 +1119,6 @@ class MusicManager(private val context: Context) {
     fun seekTo(positionMs: Long) {
         currentPosition = positionMs.coerceIn(0L, duration)
         player.seekTo(currentPosition)
-        updateMediaSessionState()
     }
 
     fun toggleRepeat() {
@@ -959,20 +1136,35 @@ class MusicManager(private val context: Context) {
     }
 
     fun toggleFavorite(song: Song) {
-        song.isFavorite = !song.isFavorite
+        val updatedFav = !song.isFavorite
+        val updatedSong = song.copy(isFavorite = updatedFav)
+
+        val songIdx = allSongs.indexOfFirst { it.id == song.id }
+        if (songIdx != -1) allSongs[songIdx] = updatedSong
+
+        if (currentSong?.id == song.id) currentSong = updatedSong
+
         managerScope.launch(Dispatchers.IO) {
-            prefs.edit().putBoolean("fav_${song.id}", song.isFavorite).apply()
+            prefs.edit().putBoolean("fav_${song.id}", updatedFav).apply()
         }
 
-        var favList = customPlaylists.find { it.name == "Favorites" }
-        if (favList == null) {
-            favList = Playlist(id = "fav_01", name = "Favorites", songIds = mutableListOf())
-            customPlaylists.add(favList)
-        }
-        if (song.isFavorite) {
-            if (song.id !in favList.songIds) favList.songIds.add(song.id)
+        val favIndex = customPlaylists.indexOfFirst { it.name == "Favorites" }
+        if (favIndex == -1) {
+            val newFav = Playlist(
+                id = "fav_01",
+                name = "Favorites",
+                songIds = if (updatedFav) listOf(song.id).toImmutableList() else emptyList<Long>().toImmutableList()
+            )
+            customPlaylists.add(newFav)
         } else {
-            favList.songIds.remove(song.id)
+            val existing = customPlaylists[favIndex]
+            val mutableIds = existing.songIds.toMutableList()
+            if (updatedFav) {
+                if (song.id !in mutableIds) mutableIds.add(song.id)
+            } else {
+                mutableIds.remove(song.id)
+            }
+            customPlaylists[favIndex] = existing.copy(songIds = mutableIds.toImmutableList())
         }
         savePlaylists()
     }
@@ -1037,18 +1229,22 @@ class MusicManager(private val context: Context) {
     }
 
     fun createPlaylist(name: String) {
-        val newPl = Playlist(id = System.currentTimeMillis().toString(), name = name)
+        val newPl = Playlist(
+            id = System.currentTimeMillis().toString(),
+            name = name,
+            songIds = emptyList<Long>().toImmutableList()
+        )
         customPlaylists.add(newPl)
         savePlaylists()
     }
 
     fun pinFolderAsPlaylist(folderName: String) {
         if (customPlaylists.any { it.folderName == folderName }) return
-        val songsInFolder = allSongs.filter { it.folderName == folderName }.map { it.id }
+        val songsInFolder = allSongs.filter { it.folderName == folderName }.map { it.id }.toImmutableList()
         val newPl = Playlist(
             id = "folder_${System.currentTimeMillis()}",
             name = folderName,
-            songIds = songsInFolder.toMutableList(),
+            songIds = songsInFolder,
             isFolderPinned = true,
             folderName = folderName,
             icon = "📁",
@@ -1059,19 +1255,26 @@ class MusicManager(private val context: Context) {
     }
 
     fun addSongToPlaylist(songId: Long, playlist: Playlist) {
-        if (songId !in playlist.songIds) {
-            playlist.songIds.add(songId)
+        val index = customPlaylists.indexOfFirst { it.id == playlist.id }
+        if (index != -1 && songId !in playlist.songIds) {
+            val updated = playlist.copy(songIds = (playlist.songIds + songId).toImmutableList())
+            customPlaylists[index] = updated
             savePlaylists()
         }
     }
 
     fun removeSongFromPlaylist(songId: Long, playlist: Playlist) {
-        playlist.songIds.remove(songId)
-        savePlaylists()
+        val index = customPlaylists.indexOfFirst { it.id == playlist.id }
+        if (index != -1 && songId in playlist.songIds) {
+            val updated = playlist.copy(songIds = (playlist.songIds - songId).toImmutableList())
+            customPlaylists[index] = updated
+            savePlaylists()
+        }
     }
 
     fun shufflePlaylist(playlist: Playlist) {
-        val songs = allSongs.filter { it.id in playlist.songIds }.shuffled()
+        val songIdSet = playlist.songIds.toHashSet()
+        val songs = allSongs.filter { it.id in songIdSet }.shuffled()
         if (songs.isNotEmpty()) {
             playSong(songs.first(), songs, playlist.name)
         }
@@ -1085,8 +1288,11 @@ class MusicManager(private val context: Context) {
     }
 
     fun updatePlaylistColorOnly(playlist: Playlist, colorHex: Long) {
-        playlist.iconColorHex = colorHex
-        savePlaylists()
+        val index = customPlaylists.indexOfFirst { it.id == playlist.id }
+        if (index != -1) {
+            customPlaylists[index] = playlist.copy(iconColorHex = colorHex)
+            savePlaylists()
+        }
     }
 
     fun getFolderColor(folderName: String): Color {
@@ -1117,18 +1323,8 @@ class MusicManager(private val context: Context) {
     }
 
     fun updateSongMetadata(song: Song, newTitle: String, newArtist: String, newAlbum: String, newDate: String, customCoverUri: Uri?) {
-        song.title = newTitle
-        song.artist = newArtist
-        song.album = newAlbum
-        song.releaseDate = newDate
-
         managerScope.launch(Dispatchers.IO) {
-            prefs.edit()
-                .putString("custom_title_${song.id}", newTitle)
-                .putString("custom_artist_${song.id}", newArtist)
-                .putString("custom_album_${song.id}", newAlbum)
-                .putString("custom_date_${song.id}", newDate)
-                .apply()
+            var coverPath = song.customCoverPath
 
             if (customCoverUri != null) {
                 try {
@@ -1138,17 +1334,44 @@ class MusicManager(private val context: Context) {
                     inputStream?.copyTo(outputStream)
                     inputStream?.close()
                     outputStream.close()
-                    song.customCoverPath = targetFile.absolutePath
-                    val bmp = BitmapFactory.decodeFile(targetFile.absolutePath)
+                    coverPath = targetFile.absolutePath
+
+                    val opts = BitmapFactory.Options().apply {
+                        inSampleSize = 2
+                        inPreferredConfig = Bitmap.Config.RGB_565
+                    }
+                    val bmp = BitmapFactory.decodeFile(targetFile.absolutePath, opts)
                     if (bmp != null) memoryCache.put(song.id, bmp)
                     prefs.edit().putString("custom_cover_${song.id}", targetFile.absolutePath).apply()
                 } catch (_: Exception) {}
             }
 
-            val parsed = ArtistParsingEngine.parseAndGroupArtists(allSongs)
+            prefs.edit()
+                .putString("custom_title_${song.id}", newTitle)
+                .putString("custom_artist_${song.id}", newArtist)
+                .putString("custom_album_${song.id}", newAlbum)
+                .putString("custom_date_${song.id}", newDate)
+                .apply()
+
+            val updated = song.copy(
+                title = newTitle,
+                artist = newArtist,
+                album = newAlbum,
+                releaseDate = newDate,
+                customCoverPath = coverPath
+            )
+
             withContext(Dispatchers.Main.immediate) {
-                updateMediaSessionMetadata()
+                val index = allSongs.indexOfFirst { it.id == song.id }
+                if (index != -1) allSongs[index] = updated
+                if (currentSong?.id == song.id) currentSong = updated
                 updateNotification()
+            }
+
+            val parsed = withContext(Dispatchers.Default) {
+                ArtistParsingEngine.parseAndGroupArtists(allSongs)
+            }
+            withContext(Dispatchers.Main.immediate) {
                 parsedArtistsList.clear()
                 parsedArtistsList.addAll(parsed)
             }
@@ -1156,12 +1379,17 @@ class MusicManager(private val context: Context) {
     }
 
     private fun recordSongPlayed(song: Song) {
-        song.playCount += 1
-        song.lastPlayed = System.currentTimeMillis()
+        val updatedCount = song.playCount + 1
+        val updatedTime = System.currentTimeMillis()
+        val updated = song.copy(playCount = updatedCount, lastPlayed = updatedTime)
+
+        val idx = allSongs.indexOfFirst { it.id == song.id }
+        if (idx != -1) allSongs[idx] = updated
+
         managerScope.launch(Dispatchers.IO) {
             prefs.edit()
-                .putInt("play_count_${song.id}", song.playCount)
-                .putLong("last_played_${song.id}", song.lastPlayed)
+                .putInt("play_count_${song.id}", updatedCount)
+                .putLong("last_played_${song.id}", updatedTime)
                 .apply()
         }
         refreshHistory()
@@ -1172,25 +1400,29 @@ class MusicManager(private val context: Context) {
         historySongs.addAll(
             allSongs.filter { it.lastPlayed > 0L }
                 .sortedByDescending { it.lastPlayed }
-                .take(500)
+                .take(300)
         )
     }
 
     fun clearHistory() {
-        historySongs.forEach { song ->
-            song.lastPlayed = 0L
-            managerScope.launch(Dispatchers.IO) {
+        managerScope.launch(Dispatchers.IO) {
+            historySongs.forEach { song ->
                 prefs.edit().remove("last_played_${song.id}").apply()
             }
+            withContext(Dispatchers.Main.immediate) {
+                val reset = allSongs.map { it.copy(lastPlayed = 0L) }
+                allSongs.clear()
+                allSongs.addAll(reset)
+                historySongs.clear()
+                Toast.makeText(context, "Playback history cleared", Toast.LENGTH_SHORT).show()
+            }
         }
-        historySongs.clear()
-        Toast.makeText(context, "Playback history cleared", Toast.LENGTH_SHORT).show()
     }
 
     fun getMostPlayedSongs(): List<Song> {
         return allSongs.filter { it.playCount > 0 }
             .sortedByDescending { it.playCount }
-            .take(500)
+            .take(300)
     }
 
     fun savePermanentProfile(name: String, email: String, imageUri: Uri?) {
@@ -1282,9 +1514,9 @@ class MusicManager(private val context: Context) {
             val file = File(song.path)
             if (file.exists()) file.delete()
             context.contentResolver.delete(song.uri, null, null)
-            allSongs.remove(song)
-            playbackQueue.remove(song)
-            historySongs.remove(song)
+            allSongs.removeAll { it.id == song.id }
+            playbackQueue.removeAll { it.id == song.id }
+            historySongs.removeAll { it.id == song.id }
 
             managerScope.launch(Dispatchers.Default) {
                 val parsed = ArtistParsingEngine.parseAndGroupArtists(allSongs)
@@ -1296,6 +1528,56 @@ class MusicManager(private val context: Context) {
             true
         } catch (_: Exception) {
             false
+        }
+    }
+
+    fun setPersistentSongSort(order: SongSortOrder) {
+        currentSortOrder = order
+        managerScope.launch(Dispatchers.IO) {
+            prefs.edit().putString("saved_song_sort", order.name).apply()
+        }
+    }
+
+    fun setPersistentFolderSort(order: FolderSortOrder) {
+        currentFolderSortOrder = order
+        managerScope.launch(Dispatchers.IO) {
+            prefs.edit().putString("saved_folder_sort", order.name).apply()
+        }
+    }
+
+    fun setPersistentFolderInnerSort(order: SongSortOrder) {
+        folderInnerSortOrder = order
+        managerScope.launch(Dispatchers.IO) {
+            prefs.edit().putString("folder_inner_sort", order.name).apply()
+        }
+    }
+
+    fun setPersistentFolderInnerCardView(isCard: Boolean) {
+        folderInnerIsCardView = isCard
+        managerScope.launch(Dispatchers.IO) {
+            prefs.edit().putBoolean("folder_inner_card_view", isCard).apply()
+        }
+    }
+
+    fun setPersistentPlaylistInnerSort(order: SongSortOrder) {
+        playlistInnerSortOrder = order
+        managerScope.launch(Dispatchers.IO) {
+            prefs.edit().putString("playlist_inner_sort", order.name).apply()
+        }
+    }
+
+    fun setPersistentPlaylistInnerCardView(isCard: Boolean) {
+        playlistInnerIsCardView = isCard
+        managerScope.launch(Dispatchers.IO) {
+            prefs.edit().putBoolean("playlist_inner_card_view", isCard).apply()
+        }
+    }
+
+    fun movePlaylistItem(fromIndex: Int, toIndex: Int) {
+        if (fromIndex in customPlaylists.indices && toIndex in customPlaylists.indices && fromIndex != toIndex) {
+            val moved = customPlaylists.removeAt(fromIndex)
+            customPlaylists.add(toIndex, moved)
+            savePlaylists()
         }
     }
 
@@ -1321,9 +1603,19 @@ class MusicManager(private val context: Context) {
                     val icon = obj.optString("icon", "📁")
                     val iconColorHex = obj.optLong("iconColorHex", 0xFFF59E0B)
                     val idsArr = obj.getJSONArray("songIds")
-                    val songIds = mutableListOf<Long>()
+                    val songIds = ArrayList<Long>()
                     for (j in 0 until idsArr.length()) songIds.add(idsArr.getLong(j))
-                    customPlaylists.add(Playlist(id, name, songIds, isFolder, folderName, icon, iconColorHex))
+                    customPlaylists.add(
+                        Playlist(
+                            id = id,
+                            name = name,
+                            songIds = songIds.toImmutableList(),
+                            isFolderPinned = isFolder,
+                            folderName = folderName,
+                            icon = icon,
+                            iconColorHex = iconColorHex
+                        )
+                    )
                 }
             } catch (_: Exception) {}
         }
