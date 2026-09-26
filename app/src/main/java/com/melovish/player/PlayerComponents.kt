@@ -49,6 +49,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.PagerDefaults
 import androidx.compose.foundation.pager.rememberPagerState
@@ -70,6 +71,7 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
@@ -102,6 +104,7 @@ import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.Locale
 import kotlin.math.abs
@@ -191,7 +194,7 @@ fun GlassmorphicFolderIcon(folderColor: Color, modifier: Modifier = Modifier) {
                 quadraticBezierTo(w * 0.48f, h * 0.14f, w * 0.52f, h * 0.22f)
                 lineTo(w * 0.56f, h * 0.28f)
                 lineTo(w * 0.82f, h * 0.28f)
-                quadraticBezierTo(w * 0.88f, h * 0.28f, w * 0.88f, h * 0.35f)
+                quadraticBezierTo(w * 0.88f, h * 0.82f, w * 0.88f, h * 0.35f)
                 lineTo(w * 0.88f, h * 0.82f)
                 quadraticBezierTo(w * 0.88f, h * 0.88f, w * 0.80f, h * 0.88f)
                 lineTo(w * 0.18f, h * 0.88f)
@@ -545,7 +548,7 @@ fun IsolatedScrubberLeaf(
     }
 }
 
-// Full Player Sheet: 120 FPS Pager with Release-Only Snap, Swipe-Up for Queue & Dynamic Material You
+// Full Player Sheet: 120 FPS Pager with Instant Single-Step Track Switching & Vertical Swipe-Up for Queue
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @UnstableApi
 @Composable
@@ -595,7 +598,7 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
         }
     }
 
-    // Dialogs
+    // Dialogs & Sheets
     var showMenuModal by remember { mutableStateOf(false) }
     var showSpeedDialog by remember { mutableStateOf(false) }
     var showSleepDialog by remember { mutableStateOf(false) }
@@ -672,13 +675,13 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
             .fillMaxSize()
             .background(Brush.verticalGradient(listOf(animBgTop, animBgBottom)))
             .statusBarsPadding()
-            // Swipe Gestures: Down to Minimize, Up to Open Playing Queue
+            // Gestures: Swipe down to minimize player; swipe up to open Queue
             .pointerInput(Unit) {
                 detectVerticalDragGestures { _, dragAmount ->
                     if (dragAmount > 38f) {
-                        onDismiss() // Swipe down minimizes to mini player
+                        onDismiss()
                     } else if (dragAmount < -38f) {
-                        showQueueSheet = true // Swipe up opens queue seamlessly
+                        showQueueSheet = true
                     }
                 }
             }
@@ -1054,7 +1057,7 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
         if (showSpeedDialog) MagneticSpeedDialog(manager = manager, onDismiss = { showSpeedDialog = false })
         if (showSleepDialog) SleepTimerDialog(manager = manager, onDismiss = { showSleepDialog = false })
 
-        // Smooth Slide-Up Queue Sheet with Dynamic Material You Design & Touch-Hold Drag
+        // Full Page Queue Sheet with Continuous Touch-Hold Drag & Edge Auto-Scroll
         AnimatedVisibility(
             visible = showQueueSheet,
             enter = slideInVertically(initialOffsetY = { it }, animationSpec = spring(stiffness = 500f, dampingRatio = 0.85f)),
@@ -1080,7 +1083,8 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
     }
 }
 
-// Full-Page Queue Sheet with Material You Dynamic Design, Swipe-Down-To-Dismiss, and Touch-Hold Drag Reorder
+// Queue Sheet: Continuous Multi-Item Drag & Drop, Edge Auto-Scroll & Swipe-Down to Dismiss
+@OptIn(ExperimentalFoundationApi::class)
 @UnstableApi
 @Composable
 fun QueueSheet(
@@ -1095,20 +1099,55 @@ fun QueueSheet(
     onDismiss: () -> Unit
 ) {
     val density = LocalDensity.current
+    val listState = rememberLazyListState()
+    val coroutineScope = rememberCoroutineScope()
 
-    // Drag-and-drop state trackers
+    val itemHeightPx = with(density) { 72.dp.toPx() }
+    val edgeScrollThresholdPx = with(density) { 96.dp.toPx() }
+
     var draggingIndex by remember { mutableStateOf<Int?>(null) }
     var draggingOffsetPx by remember { mutableFloatStateOf(0f) }
+
+    // Edge Auto-Scroll Engine: Scrolls continuously while holding near top/bottom edges
+    LaunchedEffect(draggingIndex) {
+        if (draggingIndex != null) {
+            while (draggingIndex != null) {
+                val currentIdx = draggingIndex ?: break
+                val visibleItems = listState.layoutInfo.visibleItemsInfo
+                val draggedItemInfo = visibleItems.find { it.index == currentIdx }
+
+                if (draggedItemInfo != null) {
+                    val currentVisualTop = draggedItemInfo.offset + draggingOffsetPx
+                    val viewportHeight = listState.layoutInfo.viewportSize.height
+
+                    if (currentVisualTop < edgeScrollThresholdPx && currentIdx > 0) {
+                        // Near Top Edge -> Auto-scroll UP and shift song up
+                        listState.scrollBy(-18f)
+                        manager.moveQueueItem(currentIdx, currentIdx - 1)
+                        draggingIndex = currentIdx - 1
+                        draggingOffsetPx += itemHeightPx
+                    } else if (currentVisualTop + itemHeightPx > viewportHeight - edgeScrollThresholdPx && currentIdx < manager.playbackQueue.size - 1) {
+                        // Near Bottom Edge -> Auto-scroll DOWN and shift song down
+                        listState.scrollBy(18f)
+                        manager.moveQueueItem(currentIdx, currentIdx + 1)
+                        draggingIndex = currentIdx + 1
+                        draggingOffsetPx -= itemHeightPx
+                    }
+                }
+                delay(30)
+            }
+        }
+    }
 
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(Brush.verticalGradient(listOf(bgTop, bgBottom)))
             .statusBarsPadding()
-            // Swipe down on the queue background dismisses it back to the player
+            // Swipe Down to Dismiss Queue Section
             .pointerInput(Unit) {
                 detectVerticalDragGestures { _, dragAmount ->
-                    if (dragAmount > 45f && draggingIndex == null) {
+                    if (dragAmount > 38f && draggingIndex == null) {
                         onDismiss()
                     }
                 }
@@ -1136,7 +1175,7 @@ fun QueueSheet(
                             color = textColor
                         )
                         Text(
-                            text = "Touch and hold bars to reorder tracks",
+                            text = "Hold and drag bars to reorder tracks",
                             fontSize = 12.sp,
                             color = subTextColor
                         )
@@ -1152,10 +1191,9 @@ fun QueueSheet(
                 }
             }
 
-            // Draggable List of Songs
-            val approxItemHeightPx = with(density) { 72.dp.toPx() }
-
+            // Continuous Draggable List with Smooth Item Reordering
             LazyColumn(
+                state = listState,
                 modifier = Modifier.weight(1f),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
@@ -1165,32 +1203,37 @@ fun QueueSheet(
                     contentType = { _, _ -> "queue_item_row" }
                 ) { index, song ->
                     val isCur = song.id == manager.currentSong?.id
-                    val isThisItemDragging = draggingIndex == index
+                    val isDraggingThis = draggingIndex == index
 
-                    // Elevation and Scale transformation during touch-and-hold drag
-                    val itemElevation = if (isThisItemDragging) 18.dp else 0.dp
-                    val itemScale = if (isThisItemDragging) 1.03f else 1.0f
+                    val itemElevation = if (isDraggingThis) 24.dp else 0.dp
+                    val itemScale = if (isDraggingThis) 1.04f else 1.0f
 
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .zIndex(if (isThisItemDragging) 10f else 1f)
+                            .animateItemPlacement(
+                                animationSpec = spring(
+                                    stiffness = 500f,
+                                    dampingRatio = 0.85f
+                                )
+                            )
+                            .zIndex(if (isDraggingThis) 10f else 1f)
                             .graphicsLayer {
                                 scaleX = itemScale
                                 scaleY = itemScale
-                                if (isThisItemDragging) {
+                                if (isDraggingThis) {
                                     translationY = draggingOffsetPx
                                 }
                             }
                             .shadow(itemElevation, RoundedCornerShape(18.dp))
                             .clip(RoundedCornerShape(18.dp))
                             .background(
-                                if (isCur) accent.copy(alpha = 0.18f)
+                                if (isCur) accent.copy(alpha = 0.20f)
                                 else surfaceColor
                             )
                             .border(
-                                width = if (isCur || isThisItemDragging) 1.5.dp else 1.dp,
-                                color = if (isCur || isThisItemDragging) accent else Color(0x22FFFFFF),
+                                width = if (isCur || isDraggingThis) 1.5.dp else 1.dp,
+                                color = if (isCur || isDraggingThis) accent else Color(0x22FFFFFF),
                                 shape = RoundedCornerShape(18.dp)
                             )
                             .clickable {
@@ -1201,7 +1244,6 @@ fun QueueSheet(
                             .padding(horizontal = 14.dp, vertical = 12.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        // Playback Status Indicator
                         Box(
                             modifier = Modifier
                                 .size(28.dp)
@@ -1219,7 +1261,6 @@ fun QueueSheet(
 
                         Spacer(modifier = Modifier.width(10.dp))
 
-                        // Metadata
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
                                 text = song.title,
@@ -1241,12 +1282,12 @@ fun QueueSheet(
 
                         Spacer(modifier = Modifier.width(12.dp))
 
-                        // Bigger, Bolder, Wider Triple-Line Drag Handle with touch-and-hold reorder
+                        // Large Bolder Touch Handle with Continuous Drag Across Any Distance
                         Box(
                             modifier = Modifier
-                                .size(44.dp)
-                                .clip(RoundedCornerShape(10.dp))
-                                .pointerInput(index, manager.playbackQueue.size) {
+                                .size(48.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .pointerInput(Unit) {
                                     detectDragGesturesAfterLongPress(
                                         onDragStart = {
                                             draggingIndex = index
@@ -1257,16 +1298,18 @@ fun QueueSheet(
                                             draggingOffsetPx += dragAmount.y
 
                                             val currentIndex = draggingIndex ?: return@detectDragGesturesAfterLongPress
-                                            val threshold = approxItemHeightPx * 0.75f
+                                            val threshold = itemHeightPx * 0.70f
 
-                                            if (draggingOffsetPx > threshold && currentIndex < manager.playbackQueue.size - 1) {
+                                            // Continuous swapping: traverses through items as long as finger keeps moving
+                                            while (draggingOffsetPx > threshold && currentIndex < manager.playbackQueue.size - 1) {
                                                 manager.moveQueueItem(currentIndex, currentIndex + 1)
                                                 draggingIndex = currentIndex + 1
-                                                draggingOffsetPx -= approxItemHeightPx
-                                            } else if (draggingOffsetPx < -threshold && currentIndex > 0) {
+                                                draggingOffsetPx -= itemHeightPx
+                                            }
+                                            while (draggingOffsetPx < -threshold && currentIndex > 0) {
                                                 manager.moveQueueItem(currentIndex, currentIndex - 1)
                                                 draggingIndex = currentIndex - 1
-                                                draggingOffsetPx += approxItemHeightPx
+                                                draggingOffsetPx += itemHeightPx
                                             }
                                         },
                                         onDragEnd = {
@@ -1282,7 +1325,7 @@ fun QueueSheet(
                             contentAlignment = Alignment.Center
                         ) {
                             ReorderDragHandle(
-                                tint = if (isCur || isThisItemDragging) accent else subTextColor,
+                                tint = if (isCur || isDraggingThis) accent else subTextColor,
                                 modifier = Modifier.size(24.dp)
                             )
                         }
@@ -1312,7 +1355,7 @@ fun QueueSheet(
     }
 }
 
-// Bolder, Wider, Triple-Line Drag Handle Icon
+// Bolder, Wider Triple-Line Drag Handle Icon
 @Composable
 fun ReorderDragHandle(tint: Color, modifier: Modifier = Modifier) {
     Canvas(modifier = modifier) {
@@ -1320,25 +1363,24 @@ fun ReorderDragHandle(tint: Color, modifier: Modifier = Modifier) {
         val h = size.height
         val strokeW = 3.2f.dp.toPx()
 
-        // 3 bold, rounded horizontal lines
         drawLine(
             color = tint,
-            start = Offset(w * 0.12f, h * 0.25f),
-            end = Offset(w * 0.88f, h * 0.25f),
+            start = Offset(w * 0.10f, h * 0.25f),
+            end = Offset(w * 0.90f, h * 0.25f),
             strokeWidth = strokeW,
             cap = StrokeCap.Round
         )
         drawLine(
             color = tint,
-            start = Offset(w * 0.12f, h * 0.50f),
-            end = Offset(w * 0.88f, h * 0.50f),
+            start = Offset(w * 0.10f, h * 0.50f),
+            end = Offset(w * 0.90f, h * 0.50f),
             strokeWidth = strokeW,
             cap = StrokeCap.Round
         )
         drawLine(
             color = tint,
-            start = Offset(w * 0.12f, h * 0.75f),
-            end = Offset(w * 0.88f, h * 0.75f),
+            start = Offset(w * 0.10f, h * 0.75f),
+            end = Offset(w * 0.90f, h * 0.75f),
             strokeWidth = strokeW,
             cap = StrokeCap.Round
         )
@@ -2089,14 +2131,10 @@ fun HeartIconVector(isFavorite: Boolean, defaultTint: Color, modifier: Modifier 
 
             onDrawBehind {
                 if (isFavorite) {
-                    // Soft Glowing Background Aura
                     drawPath(path, color = Color(0x66FF2A55), style = Stroke(width = 5.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round))
-                    // Solid Vibrant Red Fill
                     drawPath(path, color = heartColor, style = Fill)
-                    // Sharp Foreground Border
                     drawPath(path, color = Color(0xFFFF4D79), style = Stroke(width = 1.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round))
                 } else {
-                    // Outlined Unfavorited State
                     drawPath(path, color = defaultTint, style = strokeStyle)
                 }
             }
