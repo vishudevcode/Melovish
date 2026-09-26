@@ -668,7 +668,6 @@ fun AudioManagerSubScreen(
                     Text("Automatically adjusts playback volume so all songs play at consistent loudness.", color = Color(0xFF64748B), fontSize = 11.sp)
                     Spacer(modifier = Modifier.height(14.dp))
 
-                    // ReplayGain mapped directly into Volume Normalisation toggle
                     SettingSwitchRow(
                         icon = "🔉",
                         title = "Volume Normalisation",
@@ -915,6 +914,7 @@ fun ManageHiddenFoldersFullScreen(manager: MusicManager, isDark: Boolean, onBack
     }
 }
 
+// Fixed Destructuring Syntax in ManageHiddenAudioFullScreen
 @UnstableApi
 @Composable
 fun ManageHiddenAudioFullScreen(manager: MusicManager, isDark: Boolean, onBack: () -> Unit) {
@@ -926,7 +926,7 @@ fun ManageHiddenAudioFullScreen(manager: MusicManager, isDark: Boolean, onBack: 
         manager.hiddenAudioIds.toHashSet()
     }
 
-    val (hiddenSongs, visibleSongs): Pair<ImmutableList<Song>, ImmutableList<Song>> = remember(
+    val (hiddenSongs, visibleSongs) = remember(
         searchQuery,
         manager.allSongs.size,
         hiddenSet
