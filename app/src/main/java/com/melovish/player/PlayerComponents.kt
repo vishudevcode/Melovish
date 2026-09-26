@@ -211,6 +211,119 @@ fun GlassmorphicFolderIcon(folderColor: Color, modifier: Modifier = Modifier) {
     )
 }
 
+// Folder Color Dialog (Used by MainActivity)
+@Composable
+fun FolderColorDialog(
+    folderName: String,
+    currentColor: Color,
+    isDark: Boolean,
+    onColorSelected: (Color) -> Unit,
+    onOpenRainbowPicker: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    val preset9Colors = remember {
+        listOf(
+            Color(0xFFF59E0B), Color(0xFF00B4D8), Color(0xFF10B981), Color(0xFF39FF14), Color(0xFFFF2A85),
+            Color(0xFFEF4444), Color(0xFF8B5CF6), Color(0xFF3B82F6), Color(0xFFFF6B35)
+        )
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Transparent)
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null
+            ) { onDismiss() },
+        contentAlignment = Alignment.BottomCenter
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
+                .background(if (isDark) Color(0xFF1E293B) else Color.White)
+                .clickable(enabled = false) {}
+                .padding(22.dp)
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(
+                    text = "Folder Color: $folderName",
+                    color = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A),
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Spacer(modifier = Modifier.height(14.dp))
+                Box(
+                    modifier = Modifier.size(68.dp).clip(RoundedCornerShape(16.dp)).background(if (isDark) Color(0x14FFFFFF) else Color(0xFFF8FAFC)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    GlassmorphicFolderIcon(folderColor = currentColor, modifier = Modifier.size(52.dp))
+                }
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        preset9Colors.take(5).forEach { color ->
+                            Box(
+                                modifier = Modifier
+                                    .size(38.dp)
+                                    .clip(CircleShape)
+                                    .background(color)
+                                    .border(2.dp, if (currentColor == color) Color.White else Color.Transparent, CircleShape)
+                                    .clickable {
+                                        onColorSelected(color)
+                                        onDismiss()
+                                    }
+                            )
+                        }
+                    }
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                        preset9Colors.drop(5).take(4).forEach { color ->
+                            Box(
+                                modifier = Modifier
+                                    .size(38.dp)
+                                    .clip(CircleShape)
+                                    .background(color)
+                                    .border(2.dp, if (currentColor == color) Color.White else Color.Transparent, CircleShape)
+                                    .clickable {
+                                        onColorSelected(color)
+                                        onDismiss()
+                                    }
+                            )
+                        }
+                        Box(
+                            modifier = Modifier
+                                .size(38.dp)
+                                .clip(CircleShape)
+                                .background(Brush.sweepGradient(listOf(Color.Red, Color.Yellow, Color.Green, Color.Cyan, Color.Blue, Color.Magenta, Color.Red)))
+                            .border(2.dp, Color.White, CircleShape)
+                            .clickable {
+                                onDismiss()
+                                onOpenRainbowPicker()
+                            },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Box(modifier = Modifier.size(12.dp).clip(CircleShape).background(Color.White))
+                        }
+                    }
+                }
+                Spacer(modifier = Modifier.height(20.dp))
+                Button(
+                    onClick = { onDismiss() },
+                    colors = ButtonDefaults.buttonColors(containerColor = if (isDark) Color(0x22FFFFFF) else Color(0xFFF1F5F9)),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth().height(48.dp)
+                ) {
+                    Text("Cancel", color = if (isDark) Color.White else Color(0xFF0F172A), fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+    }
+}
+
 // Minimalist Vector Avatar
 @Composable
 fun DefaultProfileAvatar(modifier: Modifier = Modifier, backgroundColor: Color = Color(0xFF030712)) {
@@ -1276,7 +1389,7 @@ fun SleepTimerDialog(manager: MusicManager, onDismiss: () -> Unit) {
 
                 Spacer(modifier = Modifier.height(18.dp))
                 Button(
-                    onClick = { onDismiss() },
+                    onClick = onDismiss,
                     modifier = Modifier.fillMaxWidth().height(48.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = if (isDark) Color(0x22FFFFFF) else Color(0xFFF1F5F9)),
                     shape = RoundedCornerShape(12.dp)
@@ -1480,7 +1593,7 @@ fun MagneticSpeedDialog(manager: MusicManager, onDismiss: () -> Unit) {
                         speed = snapped
                     },
                     valueRange = 0.25f..3.0f,
-                    colors = SliderDefaults.colors(thumbColor = manager.accentColor, activeTrackColor = manager.accentColor)
+                    colors = SliderDefaults.colors(thumbColor = manager.accentColor, activeTrackColor = accentColor)
                 )
                 Spacer(modifier = Modifier.height(18.dp))
                 Button(onClick = { onDismiss() }, modifier = Modifier.fillMaxWidth().height(48.dp), shape = RoundedCornerShape(12.dp), colors = ButtonDefaults.buttonColors(containerColor = manager.accentColor)) {
