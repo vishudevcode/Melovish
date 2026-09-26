@@ -30,6 +30,7 @@ import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -71,7 +72,6 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
@@ -104,7 +104,6 @@ import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.Locale
 import kotlin.math.abs
@@ -194,7 +193,7 @@ fun GlassmorphicFolderIcon(folderColor: Color, modifier: Modifier = Modifier) {
                 quadraticBezierTo(w * 0.48f, h * 0.14f, w * 0.52f, h * 0.22f)
                 lineTo(w * 0.56f, h * 0.28f)
                 lineTo(w * 0.82f, h * 0.28f)
-                quadraticBezierTo(w * 0.88f, h * 0.82f, w * 0.88f, h * 0.35f)
+                quadraticBezierTo(w * 0.88f, h * 0.28f, w * 0.88f, h * 0.35f)
                 lineTo(w * 0.88f, h * 0.82f)
                 quadraticBezierTo(w * 0.88f, h * 0.88f, w * 0.80f, h * 0.88f)
                 lineTo(w * 0.18f, h * 0.88f)
@@ -862,7 +861,7 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                         )
                         Spacer(modifier = Modifier.height(3.dp))
                         Text(
-                            text = "${formatFileSize(pageSong.size)} • ${if (pageSong.artist.isNotBlank()) pageSong.artist else "Unknown Artist"}",
+                            text = "${formatFileSize(pageSong.size)} • ${if (pageSong.artist.isNotBlank()) song.artist else "Unknown Artist"}",
                             color = animTextSecondary,
                             fontSize = 13.sp,
                             fontWeight = FontWeight.Medium,
@@ -1100,7 +1099,6 @@ fun QueueSheet(
 ) {
     val density = LocalDensity.current
     val listState = rememberLazyListState()
-    val coroutineScope = rememberCoroutineScope()
 
     val itemHeightPx = with(density) { 72.dp.toPx() }
     val edgeScrollThresholdPx = with(density) { 96.dp.toPx() }
@@ -1121,14 +1119,16 @@ fun QueueSheet(
                     val viewportHeight = listState.layoutInfo.viewportSize.height
 
                     if (currentVisualTop < edgeScrollThresholdPx && currentIdx > 0) {
-                        // Near Top Edge -> Auto-scroll UP and shift song up
-                        listState.scrollBy(-18f)
+                        try {
+                            listState.scrollBy(-18f)
+                        } catch (_: Exception) {}
                         manager.moveQueueItem(currentIdx, currentIdx - 1)
                         draggingIndex = currentIdx - 1
                         draggingOffsetPx += itemHeightPx
                     } else if (currentVisualTop + itemHeightPx > viewportHeight - edgeScrollThresholdPx && currentIdx < manager.playbackQueue.size - 1) {
-                        // Near Bottom Edge -> Auto-scroll DOWN and shift song down
-                        listState.scrollBy(18f)
+                        try {
+                            listState.scrollBy(18f)
+                        } catch (_: Exception) {}
                         manager.moveQueueItem(currentIdx, currentIdx + 1)
                         draggingIndex = currentIdx + 1
                         draggingOffsetPx -= itemHeightPx
@@ -1300,7 +1300,6 @@ fun QueueSheet(
                                             val currentIndex = draggingIndex ?: return@detectDragGesturesAfterLongPress
                                             val threshold = itemHeightPx * 0.70f
 
-                                            // Continuous swapping: traverses through items as long as finger keeps moving
                                             while (draggingOffsetPx > threshold && currentIndex < manager.playbackQueue.size - 1) {
                                                 manager.moveQueueItem(currentIndex, currentIndex + 1)
                                                 draggingIndex = currentIndex + 1
@@ -2061,47 +2060,6 @@ fun MagneticSpeedDialog(manager: MusicManager, onDismiss: () -> Unit) {
                 Spacer(modifier = Modifier.height(18.dp))
                 Button(onClick = { onDismiss() }, modifier = Modifier.fillMaxWidth().height(48.dp), shape = RoundedCornerShape(12.dp), colors = ButtonDefaults.buttonColors(containerColor = accent)) {
                     Text("Done", color = Color.White, fontWeight = FontWeight.Bold)
-                }
-            }
-        }
-    }
-}
-
-// Lyrics Dialog
-@Composable
-fun LyricsDialog(song: Song, isDark: Boolean, onDismiss: () -> Unit) {
-    val textColor = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A)
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color.Transparent)
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null
-            ) { onDismiss() },
-        contentAlignment = Alignment.BottomCenter
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .fillMaxHeight(0.6f)
-                .clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
-                .background(if (isDark) Color(0xFF1E293B) else Color.White)
-                .clickable(enabled = false) {}
-                .padding(22.dp)
-        ) {
-            Column {
-                Text("Lyrics", color = textColor, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                Spacer(modifier = Modifier.height(14.dp))
-                Text("No synchronized lyrics found for \"${song.title}\".", color = Color(0xFF64748B), fontSize = 14.sp)
-                Spacer(modifier = Modifier.weight(1f))
-                Button(
-                    onClick = { onDismiss() },
-                    modifier = Modifier.fillMaxWidth().height(48.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = if (isDark) Color(0x22FFFFFF) else Color(0xFFF1F5F9)),
-                    shape = RoundedCornerShape(12.dp)
-                ) {
-                    Text("Close", color = textColor, fontWeight = FontWeight.Bold)
                 }
             }
         }
