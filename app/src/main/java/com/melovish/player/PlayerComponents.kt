@@ -19,6 +19,8 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -418,8 +420,8 @@ suspend fun extractMaterialYouPaletteAsync(bitmap: Bitmap?, isDarkMode: Boolean,
     }
 }
 
-// EXACT MATCH PROGRESS BAR: Flat solid accent dot thumb, square flat caps, neutral grey inactive track[span_1](start_span)[span_1](end_span)
-@OptIn(ExperimentalMaterial3Api::class)
+// 100% MATHEMATICALLY CENTERED PROGRESS BAR
+// Eliminates Material3 Slider thumb-offset. Line and ball share the exact same centerY coordinates.
 @Composable
 fun IsolatedScrubberLeaf(
     currentPositionMs: Long,
@@ -430,77 +432,89 @@ fun IsolatedScrubberLeaf(
     onSeek: (Long) -> Unit
 ) {
     var isDragging by remember { mutableStateOf(false) }
-    var dragVal by remember { mutableFloatStateOf(0f) }
+    var dragFraction by remember { mutableFloatStateOf(0f) }
 
-    LaunchedEffect(currentPositionMs) {
-        if (!isDragging) dragVal = currentPositionMs.toFloat()
-    }
-
-    val displayPos = if (isDragging) dragVal.toLong() else currentPositionMs
     val maxDuration = durationMs.coerceAtLeast(1L)
+    val playbackFraction = (currentPositionMs.toFloat() / maxDuration.toFloat()).coerceIn(0f, 1f)
+    val currentFraction = if (isDragging) dragFraction else playbackFraction
+    val displayPos = if (isDragging) (dragFraction * maxDuration).toLong() else currentPositionMs
     val inactiveTrackColor = if (isDark) Color(0xFF475569) else Color(0xFFD1D5DB)
 
     Column(modifier = Modifier.fillMaxWidth()) {
-        Slider(
-            value = dragVal.coerceIn(0f, maxDuration.toFloat()),
-            onValueChange = {
-                isDragging = true
-                dragVal = it
-            },
-            onValueChangeFinished = {
-                isDragging = false
-                onSeek(dragVal.toLong())
-            },
-            valueRange = 0f..maxDuration.toFloat(),
-            thumb = {
-                // Exact Flat Solid Accent Dot Thumb (No white border, no drop shadow)[span_2](start_span)[span_2](end_span)
-                Box(
-                    modifier = Modifier
-                        .size(10.dp)
-                        .clip(CircleShape)
-                        .background(accentColor)
-                )
-            },
-            track = { sliderState ->
-                val fraction = ((sliderState.value - sliderState.valueRange.start) /
-                    (sliderState.valueRange.endInclusive - sliderState.valueRange.start)).coerceIn(0f, 1f)
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(32.dp)
+                .pointerInput(maxDuration) {
+                    awaitEachGesture {
+                        val down = awaitFirstDown(requireUnconsumed = false)
+                        isDragging = true
+                        val thumbRadiusPx = 5.dp.toPx()
+                        val trackStart = thumbRadiusPx
+                        val trackEnd = size.width - thumbRadiusPx
+                        val trackWidth = (trackEnd - trackStart).coerceAtLeast(1f)
 
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(14.dp),
-                    contentAlignment = Alignment.CenterStart
-                ) {
-                    Canvas(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(3.dp)
-                    ) {
-                        val strokeWidth = 3.dp.toPx()
-                        val activeWidth = size.width * fraction
+                        dragFraction = ((down.position.x - trackStart) / trackWidth).coerceIn(0f, 1f)
 
-                        // Left Active Segment (Accent Color with Flat Square Cap)[span_3](start_span)[span_3](end_span)
-                        drawLine(
-                            color = accentColor,
-                            start = Offset(0f, size.height / 2f),
-                            end = Offset(activeWidth, size.height / 2f),
-                            strokeWidth = strokeWidth,
-                            cap = StrokeCap.Square
-                        )
-
-                        // Right Inactive Segment (Flat Neutral Grey with Flat Square Cap)[span_4](start_span)[span_4](end_span)
-                        drawLine(
-                            color = inactiveTrackColor,
-                            start = Offset(activeWidth, size.height / 2f),
-                            end = Offset(size.width, size.height / 2f),
-                            strokeWidth = strokeWidth,
-                            cap = StrokeCap.Square
-                        )
+                        while (true) {
+                            val event = awaitPointerEvent()
+                            val change = event.changes.firstOrNull() ?: break
+                            if (change.pressed) {
+                                change.consume()
+                                dragFraction = ((change.position.x - trackStart) / trackWidth).coerceIn(0f, 1f)
+                            } else {
+                                isDragging = false
+                                onSeek((dragFraction * maxDuration).toLong())
+                                break
+                            }
+                        }
                     }
+                },
+            contentAlignment = Alignment.Center
+        ) {
+            Canvas(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(32.dp)
+            ) {
+                // Guaranteed 100% mathematical vertical and horizontal center
+                val centerY = size.height / 2f
+                val strokeWidthPx = 3.dp.toPx()
+                val thumbRadiusPx = 5.dp.toPx()
+
+                val trackStart = thumbRadiusPx
+                val trackEnd = size.width - thumbRadiusPx
+                val trackWidth = (trackEnd - trackStart).coerceAtLeast(1f)
+                val thumbX = trackStart + currentFraction * trackWidth
+
+                // 1. Inactive Track (Full-length Neutral Grey)
+                drawLine(
+                    color = inactiveTrackColor,
+                    start = Offset(trackStart, centerY),
+                    end = Offset(trackEnd, centerY),
+                    strokeWidth = strokeWidthPx,
+                    cap = StrokeCap.Round
+                )
+
+                // 2. Active Track (Accent Color from trackStart to thumbX)
+                if (thumbX > trackStart) {
+                    drawLine(
+                        color = accentColor,
+                        start = Offset(trackStart, centerY),
+                        end = Offset(thumbX, centerY),
+                        strokeWidth = strokeWidthPx,
+                        cap = StrokeCap.Round
+                    )
                 }
-            },
-            modifier = Modifier.fillMaxWidth()
-        )
+
+                // 3. Thumb Ball (Drawn on the exact same centerY center point)
+                drawCircle(
+                    color = accentColor,
+                    radius = thumbRadiusPx,
+                    center = Offset(thumbX, centerY)
+                )
+            }
+        }
 
         Row(
             modifier = Modifier
@@ -508,13 +522,23 @@ fun IsolatedScrubberLeaf(
                 .padding(horizontal = 2.dp),
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Text(formatTime(displayPos), color = textColor, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-            Text(formatTime(durationMs), color = textColor, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+            Text(
+                text = formatTime(displayPos),
+                color = textColor,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+            Text(
+                text = formatTime(durationMs),
+                color = textColor,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold
+            )
         }
     }
 }
 
-// Full Player Sheet: Supports dynamic Colourful Player on/off toggle
+// Full Player Sheet: 50/50 Split, 3D Tilt, Recomposition Protected
 @OptIn(ExperimentalMaterial3Api::class)
 @UnstableApi
 @Composable
@@ -579,7 +603,6 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
         mutableStateOf(if (isDark) defaultDarkPalette else defaultLightPalette)
     }
 
-    // Fully Functional Colourful Player toggle logic: extracts palette only when enabled
     LaunchedEffect(song.id, albumArtBitmap, isDark, manager.accentColor, manager.isColorfulPlayer) {
         targetPalette = if (manager.isColorfulPlayer) {
             extractMaterialYouPaletteAsync(albumArtBitmap, isDark, manager.accentColor)
@@ -634,7 +657,7 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                 .padding(horizontal = 24.dp)
                 .padding(top = 10.dp, bottom = 14.dp)
         ) {
-            // Upper Half: 3D Album Artwork
+            // Upper Half: 3D Tilt Art View
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -736,7 +759,7 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                     )
                 }
 
-                // Precision Progress Scrubber matching the image[span_5](start_span)[span_5](end_span)
+                // Centered Scrubber
                 IsolatedScrubberLeaf(
                     currentPositionMs = manager.currentPosition,
                     durationMs = manager.duration,

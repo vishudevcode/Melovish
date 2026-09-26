@@ -1,15 +1,20 @@
 package com.melovish.player
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -17,14 +22,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
@@ -41,10 +44,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -53,7 +60,6 @@ import coil.compose.AsyncImage
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.toImmutableList
 import java.io.File
-import java.util.Locale
 
 @UnstableApi
 @Composable
@@ -69,34 +75,25 @@ fun SettingsScreen(
     val accent = manager.accentColor
 
     var showCircularPicker by remember { mutableStateOf(false) }
+    var showEqualizerModal by remember { mutableStateOf(false) }
     var activeSubScreen by remember { mutableStateOf<String?>(null) }
 
-    BackHandler(enabled = activeSubScreen != null) {
-        activeSubScreen = null
+    BackHandler(enabled = activeSubScreen != null || showEqualizerModal) {
+        if (showEqualizerModal) {
+            showEqualizerModal = false
+        } else {
+            activeSubScreen = null
+        }
     }
 
-    when (activeSubScreen) {
-        "audio_manager" -> {
-            AudioManagerSubScreen(
-                manager = manager,
-                isDark = isDark,
-                onBack = { activeSubScreen = null },
-                onOpen32BandEq = { activeSubScreen = "eq_32_band" }
-            )
-            return
-        }
-        "eq_32_band" -> {
-            Equalizer32BandScreen(manager = manager, isDark = isDark, onBack = { activeSubScreen = "audio_manager" })
-            return
-        }
-        "hide_folders" -> {
-            ManageHiddenFoldersFullScreen(manager = manager, isDark = isDark, onBack = { activeSubScreen = null })
-            return
-        }
-        "hide_audio" -> {
-            ManageHiddenAudioFullScreen(manager = manager, isDark = isDark, onBack = { activeSubScreen = null })
-            return
-        }
+    if (activeSubScreen == "hide_folders") {
+        ManageHiddenFoldersFullScreen(manager = manager, isDark = isDark, onBack = { activeSubScreen = null })
+        return
+    }
+
+    if (activeSubScreen == "hide_audio") {
+        ManageHiddenAudioFullScreen(manager = manager, isDark = isDark, onBack = { activeSubScreen = null })
+        return
     }
 
     val avatarPath = manager.profileImagePath
@@ -117,7 +114,7 @@ fun SettingsScreen(
             }
         }
 
-        // Profile Section
+        // 1. Profile Section
         item(key = "profile_section", contentType = "profile_card") {
             Column(
                 modifier = Modifier
@@ -171,38 +168,7 @@ fun SettingsScreen(
             }
         }
 
-        // Dedicated Audio Manager Hub Card
-        item(key = "audio_manager_section", contentType = "hub_card") {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(22.dp))
-                    .background(cardBg)
-                    .border(1.2.dp, accent.copy(alpha = 0.5f), RoundedCornerShape(22.dp))
-                    .clickable { activeSubScreen = "audio_manager" }
-                    .padding(18.dp)
-            ) {
-                Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Box(
-                        modifier = Modifier
-                            .size(46.dp)
-                            .clip(CircleShape)
-                            .background(accent.copy(alpha = 0.15f)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text("🎛️", fontSize = 22.sp)
-                    }
-                    Spacer(modifier = Modifier.width(14.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text("Audio Manager", color = textColor, fontSize = 17.sp, fontWeight = FontWeight.Bold)
-                        Text("32-Band EQ, Bit-Perfect DAC, Gapless & ReplayGain Normalisation", color = Color(0xFF64748B), fontSize = 12.sp)
-                    }
-                    Text("›", fontSize = 24.sp, color = accent, fontWeight = FontWeight.Bold)
-                }
-            }
-        }
-
-        // Appearance Section
+        // 2. Appearance Section
         item(key = "appearance_section", contentType = "appearance_card") {
             Column(
                 modifier = Modifier
@@ -273,7 +239,7 @@ fun SettingsScreen(
             }
         }
 
-        // Fully Functional Player Settings Card
+        // 3. Player Settings Section (With Gapless Playback & Crossfade)
         item(key = "player_settings_section", contentType = "player_settings_card") {
             Column(
                 modifier = Modifier
@@ -287,7 +253,6 @@ fun SettingsScreen(
                 Text("Configure playback and transition behaviors.", color = Color(0xFF64748B), fontSize = 12.sp)
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // 1. Colourful Player Toggle
                 SettingSwitchRow(
                     icon = "🎨",
                     title = "Colourful Player",
@@ -314,7 +279,6 @@ fun SettingsScreen(
 
                 Spacer(modifier = Modifier.height(14.dp))
 
-                // 2. Fade on start Toggle
                 SettingSwitchRow(
                     icon = "🔊",
                     title = "Fade on start",
@@ -328,7 +292,6 @@ fun SettingsScreen(
 
                 Spacer(modifier = Modifier.height(14.dp))
 
-                // 3. Gapless Playback Toggle
                 SettingSwitchRow(
                     icon = "♾️",
                     title = "Gapless Playback",
@@ -342,7 +305,6 @@ fun SettingsScreen(
 
                 Spacer(modifier = Modifier.height(14.dp))
 
-                // 4. Crossfade Card: Toggle on Right Side, Duration Slider & Track Below
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -400,7 +362,140 @@ fun SettingsScreen(
             }
         }
 
-        // Content Manager Section
+        // 4. Audio Section Directly On Page (Matching 2nd Photo exactly)
+        item(key = "audio_section_direct", contentType = "audio_card") {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(22.dp))
+                    .background(cardBg)
+                    .border(1.dp, if (isDark) Color(0x22FFFFFF) else Color(0xFFE2E8F0), RoundedCornerShape(22.dp))
+                    .padding(18.dp)
+            ) {
+                Text("Audio", color = textColor, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                Text("Adjust audio playback settings.", color = Color(0xFF64748B), fontSize = 12.sp)
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Lossless Audio Toggle
+                SettingSwitchRow(
+                    icon = "📶",
+                    title = "Lossless Audio",
+                    subtitle = "Use Dolby Atmos and Hi-Res Audio.",
+                    checked = manager.isLosslessEnabled,
+                    textColor = textColor
+                ) {
+                    manager.isLosslessEnabled = it
+                    manager.prefs.edit().putBoolean("lossless", it).apply()
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // Volume Normalization (Mapped to ReplayGain)
+                SettingSwitchRow(
+                    icon = "🔉",
+                    title = "Volume Normalization",
+                    subtitle = "Set the same loudness level for all tracks.",
+                    checked = manager.isVolumeNormalized,
+                    textColor = textColor
+                ) {
+                    manager.toggleVolumeNormalization(it)
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // Volume Boost Slider
+                Text("Volume Boost", color = textColor, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                Text("Increase the maximum volume (${manager.volumeBoostLevel.toInt()}%).", color = Color(0xFF64748B), fontSize = 12.sp)
+
+                var boostSliderVal by remember(manager.volumeBoostLevel) { mutableFloatStateOf(manager.volumeBoostLevel) }
+                Slider(
+                    value = boostSliderVal,
+                    onValueChange = { boostSliderVal = it },
+                    onValueChangeFinished = {
+                        manager.volumeBoostLevel = boostSliderVal
+                        manager.attachAudioEffects()
+                    },
+                    valueRange = 100f..200f,
+                    colors = SliderDefaults.colors(thumbColor = accent, activeTrackColor = accent)
+                )
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // Mono Audio Toggle
+                SettingSwitchRow(
+                    icon = "🎚️",
+                    title = "Mono Audio",
+                    subtitle = "Combine left and right channels.",
+                    checked = manager.isMonoAudio,
+                    textColor = textColor
+                ) {
+                    manager.isMonoAudio = it
+                    manager.prefs.edit().putBoolean("mono", it).apply()
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Audio Output Routing (Phone, Speaker, Buds)
+                Text("Audio Output", color = textColor, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                Spacer(modifier = Modifier.height(10.dp))
+
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    listOf(
+                        Triple("Phone", "📱", "Phone"),
+                        Triple("Speaker", "🔊", "Speaker"),
+                        Triple("Buds", "🎧", "Buds")
+                    ).forEach { (key, icon, label) ->
+                        val isSel = manager.selectedAudioOutput == key
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(52.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(if (isSel) Color(0x1A00B4D8) else if (isDark) Color(0x14FFFFFF) else Color(0xFFF1F5F9))
+                                .border(1.5.dp, if (isSel) accent else Color.Transparent, RoundedCornerShape(12.dp))
+                                .clickable { manager.setAudioOutputRouting(key) },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(icon, fontSize = 16.sp)
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(label, color = if (isSel) accent else textColor, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(18.dp))
+
+                // Equalizer Row with Adjust Button and Switch Toggle
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text("Equalizer", color = textColor, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                        Text(manager.selectedEqPreset, color = accent, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Button(
+                            onClick = { showEqualizerModal = true },
+                            colors = ButtonDefaults.buttonColors(containerColor = if (isDark) Color(0x22FFFFFF) else Color(0xFFF1F5F9)),
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Text("Adjust", color = textColor, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Switch(
+                            checked = manager.isEqEnabled,
+                            onCheckedChange = { manager.toggleEqualizer(it) }
+                        )
+                    }
+                }
+            }
+        }
+
+        // 5. Content Manager Section
         item(key = "content_manager_section", contentType = "content_manager_card") {
             Column(
                 modifier = Modifier
@@ -448,103 +543,127 @@ fun SettingsScreen(
     }
 
     if (showCircularPicker) CircularColorPickerDialog(manager = manager, onDismiss = { showCircularPicker = false })
+
+    // Equalizer Sheet with Vertical Sliders and Save Button
+    if (showEqualizerModal) {
+        VerticalLinesEqualizerSheet(manager = manager, onDismiss = { showEqualizerModal = false })
+    }
 }
 
 // -----------------------------------------------------------------------------------------
-// Sub-Screen: Audio Manager (32-Band EQ, Hi-Res DAC, ReplayGain Normalisation, Reverb)
+// Equalizer Modal Sheet: Vertical Faders, Sound Presets, Bass Boost, 3D Virtualizer & Save
 // -----------------------------------------------------------------------------------------
 
-@UnstableApi
 @Composable
-fun AudioManagerSubScreen(
-    manager: MusicManager,
-    isDark: Boolean,
-    onBack: () -> Unit,
-    onOpen32BandEq: () -> Unit
-) {
+fun VerticalLinesEqualizerSheet(manager: MusicManager, onDismiss: () -> Unit) {
+    val isDark = manager.isDarkMode
     val textColor = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A)
-    val cardBg = if (isDark) Color(0xFF131B2E) else Color.White
     val accent = manager.accentColor
-    var showReverbMenu by remember { mutableStateOf(false) }
 
-    Column(modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 4.dp),
-            verticalAlignment = Alignment.CenterVertically
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Transparent)
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null
+            ) { onDismiss() },
+        contentAlignment = Alignment.BottomCenter
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .fillMaxHeight(0.85f)
+                .clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
+                .background(if (isDark) Color(0xFF1E293B) else Color.White)
+                .clickable(enabled = false) {}
+                .padding(22.dp)
         ) {
-            GlassBackButton(isDark = isDark, onClick = onBack)
-            Spacer(modifier = Modifier.width(14.dp))
-            Column {
-                Text("Audio Manager", fontSize = 20.sp, fontWeight = FontWeight.ExtraBold, color = textColor)
-                Text("32-Band EQ, External DAC & ReplayGain Normalisation", fontSize = 12.sp, color = Color(0xFF64748B))
-            }
-        }
-
-        Spacer(modifier = Modifier.height(14.dp))
-
-        LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(bottom = 80.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
-        ) {
-            // 1. Equalizer and Sound Effects
-            item(key = "eq_and_sound_fx") {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(20.dp))
-                        .background(cardBg)
-                        .border(1.dp, if (isDark) Color(0x22FFFFFF) else Color(0xFFECEFF3), RoundedCornerShape(20.dp))
-                        .padding(16.dp)
+            Column(modifier = Modifier.fillMaxSize()) {
+                // Header with Save Button
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("Equalizer and Sound Effects", color = textColor, fontSize = 15.sp, fontWeight = FontWeight.Bold)
-                    Text("Multi-band graphic EQ (32-band EQ), bass boost, virtualizer, and reverb.", color = Color(0xFF64748B), fontSize = 11.sp)
-                    Spacer(modifier = Modifier.height(14.dp))
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                    Column {
+                        Text("Equalizer", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = textColor)
+                        Text(manager.selectedEqPreset, fontSize = 12.sp, color = accent, fontWeight = FontWeight.Bold)
+                    }
+                    Button(
+                        onClick = onDismiss,
+                        shape = RoundedCornerShape(10.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = accent)
                     ) {
-                        Column {
-                            Text("32-Band Equalizer", color = textColor, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                            Text("20 Hz to 20 kHz ISO 1/3 Octave precision", color = Color(0xFF64748B), fontSize = 11.sp)
-                        }
-                        Button(
-                            onClick = onOpen32BandEq,
-                            shape = RoundedCornerShape(10.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = accent)
-                        ) {
-                            Text("Open 32-Band EQ", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        Text("Save", color = Color.White, fontWeight = FontWeight.Bold)
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                LazyColumn(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    // Sound Presets Row
+                    item {
+                        Text("Sound Presets", color = textColor, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                        Spacer(modifier = Modifier.height(8.dp))
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            items(manager.eqPresetNames, key = { it }) { preset ->
+                                val isSel = manager.selectedEqPreset == preset
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .background(if (isSel) accent else if (isDark) Color(0x22FFFFFF) else Color(0xFFF1F5F9))
+                                        .clickable { manager.applyEqPreset(preset) }
+                                        .padding(horizontal = 14.dp, vertical = 8.dp)
+                                ) {
+                                    Text(
+                                        text = preset,
+                                        color = if (isSel) Color.White else textColor,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(14.dp))
+                    // Multi-band Graphic EQ in Vertical Lines
+                    item {
+                        Text("Frequency Response (-15dB to +15dB)", color = textColor, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                        Spacer(modifier = Modifier.height(10.dp))
 
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column {
-                            Text("Environmental Reverb", color = textColor, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                            Text("Acoustic simulation: ${manager.selectedReverbPreset.label}", color = accent, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                        }
-                        Box {
-                            Button(
-                                onClick = { showReverbMenu = true },
-                                colors = ButtonDefaults.buttonColors(containerColor = if (isDark) Color(0x22FFFFFF) else Color(0xFFF1F5F9)),
-                                shape = RoundedCornerShape(10.dp)
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(210.dp)
+                                .clip(RoundedCornerShape(18.dp))
+                                .background(if (isDark) Color(0x14FFFFFF) else Color(0xFFF8FAFC))
+                                .padding(horizontal = 12.dp, vertical = 10.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxSize(),
+                                horizontalArrangement = Arrangement.SpaceEvenly,
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text("Preset ▾", color = textColor, fontSize = 12.sp)
-                            }
-                            DropdownMenu(expanded = showReverbMenu, onDismissRequest = { showReverbMenu = false }) {
-                                ReverbPresetMode.values().forEach { preset ->
-                                    DropdownMenuItem(
-                                        text = { Text(preset.label) },
-                                        onClick = {
-                                            manager.applyReverbPreset(preset)
-                                            showReverbMenu = false
+                                for (i in 0 until manager.eqBandsCount) {
+                                    val freq = manager.eqCenterFreqs[i] ?: (60 * (i + 1) * (i + 1))
+                                    val freqLabel = if (freq >= 1000) "${freq / 1000}k" else "$freq"
+                                    val level = manager.eqBandLevels[i] ?: 0
+                                    val levelDb = level / 100
+
+                                    VerticalBandFader(
+                                        level = level,
+                                        minLevel = manager.eqMinLevel,
+                                        maxLevel = manager.eqMaxLevel,
+                                        dbLabel = if (levelDb > 0) "+$levelDb" else "$levelDb",
+                                        freqLabel = freqLabel,
+                                        accentColor = accent,
+                                        isDark = isDark,
+                                        onLevelChange = { newLevel ->
+                                            manager.setEqBandLevel(i, newLevel)
                                         }
                                     )
                                 }
@@ -552,169 +671,33 @@ fun AudioManagerSubScreen(
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(14.dp))
-
-                    Text("Bass Boost: ${manager.bassBoostPercent}%", color = textColor, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                    Slider(
-                        value = manager.bassBoostPercent.toFloat(),
-                        onValueChange = { manager.setBassBoost(it.toInt()) },
-                        valueRange = 0f..100f,
-                        colors = SliderDefaults.colors(thumbColor = accent, activeTrackColor = accent)
-                    )
-
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    Text("3D Virtualizer: ${manager.virtualizerPercent}%", color = textColor, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                    Slider(
-                        value = manager.virtualizerPercent.toFloat(),
-                        onValueChange = { manager.setVirtualizer(it.toInt()) },
-                        valueRange = 0f..100f,
-                        colors = SliderDefaults.colors(thumbColor = accent, activeTrackColor = accent)
-                    )
-                }
-            }
-
-            // 2. High-Resolution Audio Support & External DAC
-            item(key = "hi_res_dac_section") {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(20.dp))
-                        .background(cardBg)
-                        .border(1.dp, if (isDark) Color(0x22FFFFFF) else Color(0xFFECEFF3), RoundedCornerShape(20.dp))
-                        .padding(16.dp)
-                ) {
-                    Text("High-Resolution Audio Support", color = textColor, fontSize = 15.sp, fontWeight = FontWeight.Bold)
-                    Text("Bit-perfect playback, external DAC integration, and support for FLAC, ALAC, WAV, and DSD.", color = Color(0xFF64748B), fontSize = 11.sp)
-                    Spacer(modifier = Modifier.height(14.dp))
-
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(if (manager.isExternalDacConnected) Color(0x1A10B981) else if (isDark) Color(0x14FFFFFF) else Color(0xFFF1F5F9))
-                            .padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(if (manager.isExternalDacConnected) "🔌" else "🎧", fontSize = 20.sp)
-                        Spacer(modifier = Modifier.width(10.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = if (manager.isExternalDacConnected) "External DAC Connected" else "Internal Output Device",
-                                color = if (manager.isExternalDacConnected) Color(0xFF10B981) else textColor,
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.Bold
+                    // Bass Boost & Virtualizer
+                    item {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(18.dp))
+                                .background(if (isDark) Color(0x14FFFFFF) else Color(0xFFF8FAFC))
+                                .padding(16.dp)
+                        ) {
+                            Text("Bass Boost: ${manager.bassBoostPercent}%", color = textColor, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                            Slider(
+                                value = manager.bassBoostPercent.toFloat(),
+                                onValueChange = { manager.setBassBoost(it.toInt()) },
+                                valueRange = 0f..100f,
+                                colors = SliderDefaults.colors(thumbColor = accent, activeTrackColor = accent)
                             )
-                            Text(
-                                text = manager.connectedDacName ?: "Standard Hardware Audio Subsystem",
-                                color = Color(0xFF64748B),
-                                fontSize = 11.sp
+
+                            Spacer(modifier = Modifier.height(10.dp))
+
+                            Text("3D Surround (Virtualizer): ${manager.virtualizerPercent}%", color = textColor, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                            Slider(
+                                value = manager.virtualizerPercent.toFloat(),
+                                onValueChange = { manager.setVirtualizer(it.toInt()) },
+                                valueRange = 0f..100f,
+                                colors = SliderDefaults.colors(thumbColor = accent, activeTrackColor = accent)
                             )
                         }
-                    }
-
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    SettingSwitchRow(
-                        icon = "⚡",
-                        title = "Bit-Perfect Playback",
-                        subtitle = "Bypasses system float resampling directly to external USB DACs.",
-                        checked = manager.isBitPerfectEnabled,
-                        textColor = textColor
-                    ) {
-                        manager.toggleBitPerfect(it)
-                    }
-                }
-            }
-
-            // 3. Gapless Playback
-            item(key = "audio_manager_gapless") {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(20.dp))
-                        .background(cardBg)
-                        .border(1.dp, if (isDark) Color(0x22FFFFFF) else Color(0xFFECEFF3), RoundedCornerShape(20.dp))
-                        .padding(16.dp)
-                ) {
-                    Text("Gapless Playback", color = textColor, fontSize = 15.sp, fontWeight = FontWeight.Bold)
-                    Text("Eliminates silent gaps between consecutive tracks for live albums and mixes.", color = Color(0xFF64748B), fontSize = 11.sp)
-                    Spacer(modifier = Modifier.height(14.dp))
-
-                    SettingSwitchRow(
-                        icon = "♾️",
-                        title = "Gapless Playback",
-                        subtitle = "Seamless contiguous track stitching without pauses.",
-                        checked = manager.isGaplessEnabled,
-                        textColor = textColor
-                    ) {
-                        manager.isGaplessEnabled = it
-                        manager.prefs.edit().putBoolean("gapless", it).apply()
-                    }
-                }
-            }
-
-            // 4. Volume Normalisation (ReplayGain Loudness Mapping)
-            item(key = "replay_gain_volume_norm") {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(20.dp))
-                        .background(cardBg)
-                        .border(1.dp, if (isDark) Color(0x22FFFFFF) else Color(0xFFECEFF3), RoundedCornerShape(20.dp))
-                        .padding(16.dp)
-                ) {
-                    Text("ReplayGain Loudness Mapping", color = textColor, fontSize = 15.sp, fontWeight = FontWeight.Bold)
-                    Text("Automatically adjusts playback volume so all songs play at consistent loudness.", color = Color(0xFF64748B), fontSize = 11.sp)
-                    Spacer(modifier = Modifier.height(14.dp))
-
-                    SettingSwitchRow(
-                        icon = "🔉",
-                        title = "Volume Normalisation",
-                        subtitle = "Enable ReplayGain target loudness matching across all songs.",
-                        checked = manager.isVolumeNormalized,
-                        textColor = textColor
-                    ) {
-                        manager.toggleVolumeNormalization(it)
-                    }
-
-                    if (manager.isVolumeNormalized) {
-                        Spacer(modifier = Modifier.height(14.dp))
-
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            listOf(
-                                ReplayGainMode.OFF to "Off",
-                                ReplayGainMode.TRACK to "Track Gain",
-                                ReplayGainMode.ALBUM to "Album Gain"
-                            ).forEach { (mode, label) ->
-                                val isSel = manager.replayGainMode == mode
-                                Box(
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .height(40.dp)
-                                        .clip(RoundedCornerShape(10.dp))
-                                        .background(if (isSel) accent.copy(alpha = 0.15f) else if (isDark) Color(0x14FFFFFF) else Color(0xFFF1F5F9))
-                                        .border(1.2.dp, if (isSel) accent else Color.Transparent, RoundedCornerShape(10.dp))
-                                        .clickable { manager.setReplayGainSettings(mode, manager.replayGainPreampDb) },
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text(label, color = if (isSel) accent else textColor, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                                }
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(12.dp))
-
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text("Preamp Gain Adjustment", color = textColor, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                            Text(String.format(Locale.US, "%.1f dB", manager.replayGainPreampDb), color = accent, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                        }
-                        Slider(
-                            value = manager.replayGainPreampDb,
-                            onValueChange = { manager.setReplayGainSettings(manager.replayGainMode, it) },
-                            valueRange = -6.0f..6.0f,
-                            colors = SliderDefaults.colors(thumbColor = accent, activeTrackColor = accent)
-                        )
                     }
                 }
             }
@@ -722,79 +705,103 @@ fun AudioManagerSubScreen(
     }
 }
 
-// -----------------------------------------------------------------------------------------
-// Sub-Screen: 32-Band Equalizer Frequency Editor
-// -----------------------------------------------------------------------------------------
-
+// Vertical Line Mixer Slider for Hardware Frequency Bands
 @Composable
-fun Equalizer32BandScreen(manager: MusicManager, isDark: Boolean, onBack: () -> Unit) {
-    val textColor = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A)
-    val accent = manager.accentColor
+fun VerticalBandFader(
+    level: Int,
+    minLevel: Int,
+    maxLevel: Int,
+    dbLabel: String,
+    freqLabel: String,
+    accentColor: Color,
+    isDark: Boolean,
+    onLevelChange: (Int) -> Unit
+) {
+    val totalRange = (maxLevel - minLevel).coerceAtLeast(1)
+    val fraction = ((level - minLevel).toFloat() / totalRange.toFloat()).coerceIn(0f, 1f)
 
-    Column(modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 4.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                GlassBackButton(isDark = isDark, onClick = onBack)
-                Spacer(modifier = Modifier.width(14.dp))
-                Column {
-                    Text("32-Band Equalizer", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = textColor)
-                    Text("20 Hz to 20 kHz Precision Response", fontSize = 12.sp, color = Color(0xFF64748B))
-                }
-            }
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier.width(42.dp)
+    ) {
+        Text(
+            text = dbLabel,
+            fontSize = 10.sp,
+            fontWeight = FontWeight.Bold,
+            color = accentColor
+        )
 
-            Button(
-                onClick = {
-                    for (i in 0 until 32) {
-                        manager.set32BandLevel(i, 0)
+        Spacer(modifier = Modifier.height(4.dp))
+
+        Box(
+            modifier = Modifier
+                .width(36.dp)
+                .height(140.dp)
+                .pointerInput(minLevel, maxLevel) {
+                    awaitEachGesture {
+                        val down = awaitFirstDown(requireUnconsumed = false)
+                        val trackHeight = size.height.toFloat()
+                        val newFraction = 1f - (down.position.y / trackHeight).coerceIn(0f, 1f)
+                        onLevelChange((minLevel + newFraction * totalRange).toInt())
+
+                        while (true) {
+                            val event = awaitPointerEvent()
+                            val change = event.changes.firstOrNull() ?: break
+                            if (change.pressed) {
+                                change.consume()
+                                val moveFraction = 1f - (change.position.y / trackHeight).coerceIn(0f, 1f)
+                                onLevelChange((minLevel + moveFraction * totalRange).toInt())
+                            } else {
+                                break
+                            }
+                        }
                     }
                 },
-                colors = ButtonDefaults.buttonColors(containerColor = if (isDark) Color(0x22FFFFFF) else Color(0xFFF1F5F9)),
-                shape = RoundedCornerShape(10.dp)
-            ) {
-                Text("Reset", color = textColor, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-            }
-        }
-
-        Spacer(modifier = Modifier.height(14.dp))
-
-        LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(bottom = 80.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+            contentAlignment = Alignment.Center
         ) {
-            itemsIndexed(
-                items = EQUALIZER_32_BANDS,
-                key = { index, _ -> index },
-                contentType = { _, _ -> "eq_32_band_row" }
-            ) { index, bandFreq ->
-                val level = manager.eq32BandLevels[index] ?: 0
-                val levelDb = level / 100
-                val levelText = if (levelDb > 0) "+$levelDb dB" else "$levelDb dB"
+            Canvas(modifier = Modifier.fillMaxSize()) {
+                val centerX = size.width / 2f
+                val topY = 8.dp.toPx()
+                val bottomY = size.height - 8.dp.toPx()
+                val trackHeight = bottomY - topY
+                val knobY = bottomY - (fraction * trackHeight)
 
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(if (isDark) Color(0xFF131B2E) else Color.White)
-                        .padding(horizontal = 14.dp, vertical = 6.dp)
-                ) {
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text(bandFreq, color = textColor, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                        Text(levelText, color = accent, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                    }
-                    Slider(
-                        value = level.toFloat(),
-                        onValueChange = { manager.set32BandLevel(index, it.toInt()) },
-                        valueRange = -1500f..1500f,
-                        colors = SliderDefaults.colors(thumbColor = accent, activeTrackColor = accent)
-                    )
-                }
+                // Background Vertical Track Line
+                drawLine(
+                    color = if (isDark) Color(0xFF334155) else Color(0xFFCBD5E1),
+                    start = Offset(centerX, topY),
+                    end = Offset(centerX, bottomY),
+                    strokeWidth = 3.dp.toPx(),
+                    cap = StrokeCap.Round
+                )
+
+                // Active Vertical Track Line (From bottom up to knob)
+                drawLine(
+                    color = accentColor,
+                    start = Offset(centerX, bottomY),
+                    end = Offset(centerX, knobY),
+                    strokeWidth = 3.dp.toPx(),
+                    cap = StrokeCap.Round
+                )
+
+                // Fader Knob Ball
+                drawCircle(
+                    color = accentColor,
+                    radius = 6.dp.toPx(),
+                    center = Offset(centerX, knobY)
+                )
             }
         }
+
+        Spacer(modifier = Modifier.height(4.dp))
+
+        Text(
+            text = freqLabel,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = if (isDark) Color(0xFF94A3B8) else Color(0xFF64748B),
+            textAlign = TextAlign.Center
+        )
     }
 }
 
@@ -914,7 +921,6 @@ fun ManageHiddenFoldersFullScreen(manager: MusicManager, isDark: Boolean, onBack
     }
 }
 
-// Fixed Destructuring Syntax in ManageHiddenAudioFullScreen
 @UnstableApi
 @Composable
 fun ManageHiddenAudioFullScreen(manager: MusicManager, isDark: Boolean, onBack: () -> Unit) {
