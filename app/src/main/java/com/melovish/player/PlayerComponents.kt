@@ -61,7 +61,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
@@ -677,7 +676,6 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
         HorizontalPager(
             state = pagerState,
             pageSpacing = 16.dp,
-            beyondBoundsPageCount = 1, // Pre-caches adjacent pages to eliminate image pop-in
             flingBehavior = PagerDefaults.flingBehavior(
                 state = pagerState,
                 snapAnimationSpec = spring(stiffness = 500f, dampingRatio = 0.85f)
@@ -685,13 +683,6 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
             modifier = Modifier.fillMaxSize()
         ) { pageIndex ->
             val pageSong = currentQueue[pageIndex]
-
-            // 120 FPS Native Hardware-Accelerated Graphics Transform
-            val pageOffset by remember(pagerState) {
-                derivedStateOf {
-                    (pagerState.currentPage - pageIndex) + pagerState.currentPageOffsetFraction
-                }
-            }
 
             var pageBmp by remember(pageSong.id) { mutableStateOf(manager.getCachedAlbumArt(pageSong.id)) }
             LaunchedEffect(pageSong.id) {
@@ -702,36 +693,38 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                 modifier = Modifier
                     .fillMaxSize()
                     .graphicsLayer {
+                        // Computed purely on RenderNode without invoking composable functions inside lambda
+                        val offset = (pagerState.currentPage - pageIndex) + pagerState.currentPageOffsetFraction
                         when (manager.pagerTransitionEffect) {
                             PagerTransitionEffect.SLIDE -> {
                                 alpha = 1f
                                 translationX = 0f
                             }
                             PagerTransitionEffect.CASCADE -> {
-                                val scale = (1f - (abs(pageOffset) * 0.08f)).coerceIn(0.92f, 1f)
+                                val scale = (1f - (abs(offset) * 0.08f)).coerceIn(0.92f, 1f)
                                 scaleX = scale
                                 scaleY = scale
-                                alpha = (1f - (abs(pageOffset) * 0.35f)).coerceIn(0.65f, 1f)
-                                translationX = pageOffset * -size.width * 0.12f
+                                alpha = (1f - (abs(offset) * 0.35f)).coerceIn(0.65f, 1f)
+                                translationX = offset * -size.width * 0.12f
                             }
                             PagerTransitionEffect.CROSSFADE -> {
-                                alpha = (1f - abs(pageOffset)).coerceIn(0f, 1f)
+                                alpha = (1f - abs(offset)).coerceIn(0f, 1f)
                             }
                             PagerTransitionEffect.ROTATE -> {
-                                rotationY = (pageOffset * 18f).coerceIn(-30f, 30f)
+                                rotationY = (offset * 18f).coerceIn(-30f, 30f)
                                 cameraDistance = 14f * density
-                                alpha = (1f - (abs(pageOffset) * 0.3f)).coerceIn(0.7f, 1f)
+                                alpha = (1f - (abs(offset) * 0.3f)).coerceIn(0.7f, 1f)
                             }
                             PagerTransitionEffect.TUMBLE -> {
-                                rotationZ = (pageOffset * -12f).coerceIn(-18f, 18f)
-                                val scale = (1f - (abs(pageOffset) * 0.10f)).coerceIn(0.90f, 1f)
+                                rotationZ = (offset * -12f).coerceIn(-18f, 18f)
+                                val scale = (1f - (abs(offset) * 0.10f)).coerceIn(0.90f, 1f)
                                 scaleX = scale
                                 scaleY = scale
                             }
                             PagerTransitionEffect.PAGE -> {
-                                if (pageOffset < 0) {
-                                    translationX = -pageOffset * size.width * 0.45f
-                                    val scale = (1f + pageOffset * 0.12f).coerceIn(0.88f, 1f)
+                                if (offset < 0) {
+                                    translationX = -offset * size.width * 0.45f
+                                    val scale = (1f + offset * 0.12f).coerceIn(0.88f, 1f)
                                     scaleX = scale
                                     scaleY = scale
                                 }
@@ -786,8 +779,8 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                             .border(1.5.dp, Color(0x33FFFFFF), RoundedCornerShape(32.dp))
                             .pointerInput(pageSong.id) {
                                 detectTapGestures(
-                                    onDoubleTap = { offset ->
-                                        if (offset.x < size.width / 2f) {
+                                    onDoubleTap = { tapOffset ->
+                                        if (tapOffset.x < size.width / 2f) {
                                             showSeekLeftAnim = true
                                             manager.seekTo((manager.currentPosition - 10000L).coerceAtLeast(0L))
                                         } else {
@@ -1894,7 +1887,7 @@ fun HeartIconVector(isFavorite: Boolean, defaultTint: Color, modifier: Modifier 
     )
 }
 
-// Playback Control Vectors with Cached Paths
+// Repeat Control Icon
 @Composable
 fun RepeatControlIcon(repeatMode: Int, tint: Color, modifier: Modifier = Modifier) {
     val isActive = repeatMode != Player.REPEAT_MODE_OFF
@@ -1941,6 +1934,7 @@ fun RepeatControlIcon(repeatMode: Int, tint: Color, modifier: Modifier = Modifie
     }
 }
 
+// Previous Control Icon
 @Composable
 fun PreviousControlIcon(tint: Color, modifier: Modifier = Modifier) {
     Spacer(
@@ -1962,6 +1956,7 @@ fun PreviousControlIcon(tint: Color, modifier: Modifier = Modifier) {
     )
 }
 
+// Next Control Icon
 @Composable
 fun NextControlIcon(tint: Color, modifier: Modifier = Modifier) {
     Spacer(
@@ -1983,6 +1978,7 @@ fun NextControlIcon(tint: Color, modifier: Modifier = Modifier) {
     )
 }
 
+// Shuffle Control Icon
 @Composable
 fun ShuffleControlIcon(isShuffleOn: Boolean, tint: Color, modifier: Modifier = Modifier) {
     val alpha = if (isShuffleOn) 1f else 0.4f
