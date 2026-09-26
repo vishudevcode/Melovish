@@ -157,6 +157,18 @@ class MusicManager(private val context: Context) {
     var accentColor by mutableStateOf(Color(prefs.getInt("accent_color", 0xFF00B4D8.toInt())))
     val userSavedColorPresets = mutableStateListOf<Color>()
 
+    // Selected Transition Effect for Full Screen Gesture Pager
+    var pagerTransitionEffect by mutableStateOf(
+        try {
+            PagerTransitionEffect.valueOf(
+                prefs.getString("pager_transition_effect", PagerTransitionEffect.CASCADE.name)
+                    ?: PagerTransitionEffect.CASCADE.name
+            )
+        } catch (_: Exception) {
+            PagerTransitionEffect.CASCADE
+        }
+    )
+
     // Sorting
     var currentSortOrder by mutableStateOf(
         try {
@@ -701,23 +713,16 @@ class MusicManager(private val context: Context) {
         applyChannelMixing()
     }
 
-    /**
-     * Applies real-time channel mixing to ExoPlayer's hardware sink.
-     * When Remove Vocals is enabled, out-of-phase center cancellation strips vocals to leave the instrumental.
-     */
     private fun applyChannelMixing() {
         try {
             val matrix = when {
                 isRemoveVocals -> {
-                    // Out-of-phase center-channel cancellation (L - R)
                     ChannelMixingMatrix(2, 2, floatArrayOf(0.707f, -0.707f, -0.707f, 0.707f))
                 }
                 isMonoAudio -> {
-                    // Mono audio channel summing (L + R) / 2
                     ChannelMixingMatrix(2, 2, floatArrayOf(0.5f, 0.5f, 0.5f, 0.5f))
                 }
                 else -> {
-                    // Standard Stereo
                     ChannelMixingMatrix(2, 2, floatArrayOf(1.0f, 0.0f, 0.0f, 1.0f))
                 }
             }
@@ -748,6 +753,13 @@ class MusicManager(private val context: Context) {
                 }
             }
         } catch (_: Exception) {}
+    }
+
+    fun setPagerTransition(effect: PagerTransitionEffect) {
+        pagerTransitionEffect = effect
+        managerScope.launch(Dispatchers.IO) {
+            prefs.edit().putString("pager_transition_effect", effect.name).apply()
+        }
     }
 
     fun triggerFadeIn(durationMs: Long = 1000L) {

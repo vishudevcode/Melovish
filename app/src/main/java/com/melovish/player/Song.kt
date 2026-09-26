@@ -109,6 +109,16 @@ enum class ReverbPresetMode(val label: String) {
     PLATE("Plate")
 }
 
+// 6 Preset Pager Horizontal Transitions
+enum class PagerTransitionEffect(val label: String) {
+    SLIDE("Slide"),
+    CASCADE("Cascade"),
+    CROSSFADE("Crossfade"),
+    ROTATE("Rotate"),
+    TUMBLE("Tumble"),
+    PAGE("Page")
+}
+
 val EQUALIZER_32_BANDS = listOf(
     "20 Hz", "25 Hz", "31.5 Hz", "40 Hz", "50 Hz", "63 Hz", "80 Hz", "100 Hz",
     "125 Hz", "160 Hz", "200 Hz", "250 Hz", "315 Hz", "400 Hz", "500 Hz", "630 Hz",
@@ -117,8 +127,7 @@ val EQUALIZER_32_BANDS = listOf(
 )
 
 /**
- * Zero-allocation scrubber formatter. Eliminates vararg allocations
- * and boxing churn on the 120 FPS render pipeline.
+ * Zero-allocation scrubber time formatter.
  */
 fun formatTime(ms: Long): String {
     val totalSeconds = (ms / 1000).coerceAtLeast(0)
