@@ -434,7 +434,6 @@ class MusicManager(private val context: Context) {
             releaseAudioEffects()
             boundAudioSessionId = sessionId
 
-            // Hardware Equalizer
             equalizer = Equalizer(0, sessionId).apply {
                 enabled = isEqEnabled
                 val range = bandLevelRange
@@ -451,19 +450,16 @@ class MusicManager(private val context: Context) {
                 }
             }
 
-            // Hardware Bass Boost
             bassBoost = BassBoost(0, sessionId).apply {
                 enabled = !isStopBass && isEqEnabled
                 setStrength((bassBoostPercent * 10).toShort().coerceIn(0, 1000))
             }
 
-            // Hardware 3D Virtualizer
             virtualizer = Virtualizer(0, sessionId).apply {
                 enabled = isEqEnabled
                 setStrength((virtualizerPercent * 10).toShort().coerceIn(0, 1000))
             }
 
-            // Hardware Loudness Enhancer
             loudnessEnhancer = LoudnessEnhancer(sessionId).apply {
                 val boostGainMb = (((volumeBoostLevel - 100f) / 100f) * 2000f).toInt().coerceIn(0, 3000)
                 setTargetGain(boostGainMb)
@@ -984,9 +980,37 @@ class MusicManager(private val context: Context) {
         }
     }
 
+    /**
+     * Smooth, Zero-Flicker playback transition.
+     * When switching between tracks in the active queue, performs an instant seek
+     * rather than rebuilding the entire ExoPlayer playlist pipeline.
+     */
     fun playSong(song: Song, queue: List<Song>, section: String, initialPositionMs: Long = 0L) {
+        val isSameQueue = currentSectionName == section &&
+                playbackQueue.size == queue.size &&
+                player.mediaItemCount == queue.size
+
         currentSectionName = section
         currentSong = song
+
+        val targetIndex = queue.indexOfFirst { it.id == song.id }.coerceAtLeast(0)
+
+        if (isSameQueue && targetIndex in 0 until player.mediaItemCount) {
+            // Instant seamless transition without rebuilding ExoPlayer queue
+            if (initialPositionMs > 0L) {
+                player.seekTo(targetIndex, initialPositionMs)
+            } else {
+                player.seekToDefaultPosition(targetIndex)
+            }
+            if (!player.isPlaying) {
+                player.play()
+            }
+            recordSongPlayed(song)
+            applyVolumeNormalization()
+            return
+        }
+
+        // Full queue replacement only when entering a new list/playlist
         playbackQueue.clear()
         playbackQueue.addAll(queue)
 
@@ -1004,10 +1028,9 @@ class MusicManager(private val context: Context) {
                     )
                     .build()
             }
-            val index = queue.indexOfFirst { it.id == song.id }.coerceAtLeast(0)
 
             withContext(Dispatchers.Main.immediate) {
-                player.setMediaItems(mediaItems, index, initialPositionMs)
+                player.setMediaItems(mediaItems, targetIndex, initialPositionMs)
                 player.prepare()
                 if (isFadeOnStart) {
                     triggerFadeIn(1200L)

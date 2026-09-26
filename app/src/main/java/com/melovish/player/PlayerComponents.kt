@@ -538,7 +538,7 @@ fun IsolatedScrubberLeaf(
     }
 }
 
-// Full Player Sheet: 120 FPS Pager with Release-Only Snap
+// Full Player Sheet: 120 FPS Pager with Instant Single-Step Track Switching
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @UnstableApi
 @Composable
@@ -563,18 +563,23 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
         pageCount = { currentQueue.size }
     )
 
-    // Sync Pager Page Position when song changes through external controls
+    // Flag to prevent cyclic feedback loops between programmatic scroll and gesture settling
+    var isProgrammaticScroll by remember { mutableStateOf(false) }
+
+    // External track changes (like next/prev buttons) scroll the pager cleanly
     LaunchedEffect(manager.currentSong?.id) {
         val targetIdx = currentQueue.indexOfFirst { it.id == manager.currentSong?.id }
         if (targetIdx != -1 && targetIdx != pagerState.currentPage && !pagerState.isScrollInProgress) {
+            isProgrammaticScroll = true
             pagerState.scrollToPage(targetIdx)
+            isProgrammaticScroll = false
         }
     }
 
-    // Only commit song change when gesture completes and settles past the 50% screen threshold
+    // Only switch the song ONCE when the user releases touch and the page settles past the 50% boundary
     LaunchedEffect(pagerState) {
         snapshotFlow { pagerState.isScrollInProgress }.collect { isScrolling ->
-            if (!isScrolling) {
+            if (!isScrolling && !isProgrammaticScroll) {
                 val settledPage = pagerState.currentPage
                 if (settledPage in currentQueue.indices) {
                     val targetSong = currentQueue[settledPage]
@@ -616,7 +621,7 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
     val leftSeekAlpha by animateFloatAsState(if (showSeekLeftAnim) 1f else 0f, tween(if (showSeekLeftAnim) 80 else 350), label = "leftAlpha")
     val rightSeekAlpha by animateFloatAsState(if (showSeekRightAnim) 1f else 0f, tween(if (showSeekRightAnim) 80 else 350), label = "rightAlpha")
 
-    // Extract dominant palette once per settled song to prevent dropped frames
+    // Extract dominant palette cleanly without recomposition spam
     val activeSong = manager.currentSong ?: currentQueue[pagerState.currentPage]
     var albumArtBitmap by remember(activeSong.id) { mutableStateOf(manager.getCachedAlbumArt(activeSong.id)) }
     LaunchedEffect(activeSong.id) {
@@ -653,11 +658,11 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
         }
     }
 
-    val animBgTop by animateColorAsState(targetPalette.bgTop, tween(400, easing = FastOutSlowInEasing), label = "bgTop")
-    val animBgBottom by animateColorAsState(targetPalette.bgBottom, tween(400, easing = FastOutSlowInEasing), label = "bgBottom")
-    val animSurface by animateColorAsState(targetPalette.surface, tween(400, easing = FastOutSlowInEasing), label = "surface")
-    val animTextPrimary by animateColorAsState(targetPalette.textPrimary, tween(400, easing = FastOutSlowInEasing), label = "textPrimary")
-    val animTextSecondary by animateColorAsState(targetPalette.textSecondary, tween(400, easing = FastOutSlowInEasing), label = "textSecondary")
+    val animBgTop by animateColorAsState(targetPalette.bgTop, tween(350, easing = FastOutSlowInEasing), label = "bgTop")
+    val animBgBottom by animateColorAsState(targetPalette.bgBottom, tween(350, easing = FastOutSlowInEasing), label = "bgBottom")
+    val animSurface by animateColorAsState(targetPalette.surface, tween(350, easing = FastOutSlowInEasing), label = "surface")
+    val animTextPrimary by animateColorAsState(targetPalette.textPrimary, tween(350, easing = FastOutSlowInEasing), label = "textPrimary")
+    val animTextSecondary by animateColorAsState(targetPalette.textSecondary, tween(350, easing = FastOutSlowInEasing), label = "textSecondary")
 
     Box(
         modifier = Modifier
@@ -678,7 +683,7 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
             pageSpacing = 16.dp,
             flingBehavior = PagerDefaults.flingBehavior(
                 state = pagerState,
-                snapAnimationSpec = spring(stiffness = 500f, dampingRatio = 0.85f)
+                snapAnimationSpec = spring(stiffness = 550f, dampingRatio = 0.82f)
             ),
             modifier = Modifier.fillMaxSize()
         ) { pageIndex ->
@@ -693,7 +698,6 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                 modifier = Modifier
                     .fillMaxSize()
                     .graphicsLayer {
-                        // Computed purely on RenderNode without invoking composable functions inside lambda
                         val offset = (pagerState.currentPage - pageIndex) + pagerState.currentPageOffsetFraction
                         when (manager.pagerTransitionEffect) {
                             PagerTransitionEffect.SLIDE -> {
@@ -871,7 +875,7 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                         onSeek = { manager.seekTo(it) }
                     )
 
-                    // Control Buttons
+                    // Control Buttons (Instantly reflects player state without double-bounce)
                     Row(
                         modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
@@ -1887,7 +1891,7 @@ fun HeartIconVector(isFavorite: Boolean, defaultTint: Color, modifier: Modifier 
     )
 }
 
-// Repeat Control Icon
+// Playback Control Vectors with Cached Paths
 @Composable
 fun RepeatControlIcon(repeatMode: Int, tint: Color, modifier: Modifier = Modifier) {
     val isActive = repeatMode != Player.REPEAT_MODE_OFF
@@ -1934,7 +1938,6 @@ fun RepeatControlIcon(repeatMode: Int, tint: Color, modifier: Modifier = Modifie
     }
 }
 
-// Previous Control Icon
 @Composable
 fun PreviousControlIcon(tint: Color, modifier: Modifier = Modifier) {
     Spacer(
@@ -1956,7 +1959,6 @@ fun PreviousControlIcon(tint: Color, modifier: Modifier = Modifier) {
     )
 }
 
-// Next Control Icon
 @Composable
 fun NextControlIcon(tint: Color, modifier: Modifier = Modifier) {
     Spacer(
@@ -1978,7 +1980,6 @@ fun NextControlIcon(tint: Color, modifier: Modifier = Modifier) {
     )
 }
 
-// Shuffle Control Icon
 @Composable
 fun ShuffleControlIcon(isShuffleOn: Boolean, tint: Color, modifier: Modifier = Modifier) {
     val alpha = if (isShuffleOn) 1f else 0.4f
