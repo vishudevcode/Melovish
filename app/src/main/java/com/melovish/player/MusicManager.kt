@@ -141,6 +141,7 @@ class MusicManager(private val context: Context) {
 
     // Collections
     val allSongs = mutableStateListOf<Song>()
+    val rawStorageSongs = mutableStateListOf<Song>() // Retains full library so hidden audio never vanishes
     val playbackQueue = mutableStateListOf<Song>()
     val historySongs = mutableStateListOf<Song>()
     val customPlaylists = mutableStateListOf<Playlist>()
@@ -742,6 +743,8 @@ class MusicManager(private val context: Context) {
             }
 
             withContext(Dispatchers.Main.immediate) {
+                rawStorageSongs.clear()
+                rawStorageSongs.addAll(songList) // Stores all songs so hidden audio is accessible to Content Manager
                 allSongs.clear()
                 allSongs.addAll(visibleSongs)
                 refreshHistory()
@@ -989,7 +992,6 @@ class MusicManager(private val context: Context) {
         }
     }
 
-    // Resume First File Logic
     fun saveSongPosition(songId: Long, positionMs: Long) {
         prefs.edit().putLong("last_pos_$songId", positionMs).putLong("last_active_song_id", songId).apply()
     }
@@ -1147,6 +1149,8 @@ class MusicManager(private val context: Context) {
             withContext(Dispatchers.Main.immediate) {
                 val index = allSongs.indexOfFirst { it.id == song.id }
                 if (index != -1) allSongs[index] = updated
+                val rawIdx = rawStorageSongs.indexOfFirst { it.id == song.id }
+                if (rawIdx != -1) rawStorageSongs[rawIdx] = updated
                 if (currentSong?.id == song.id) currentSong = updated
                 updateNotification()
             }
@@ -1168,6 +1172,8 @@ class MusicManager(private val context: Context) {
 
         val idx = allSongs.indexOfFirst { it.id == song.id }
         if (idx != -1) allSongs[idx] = updated
+        val rawIdx = rawStorageSongs.indexOfFirst { it.id == song.id }
+        if (rawIdx != -1) rawStorageSongs[rawIdx] = updated
 
         managerScope.launch(Dispatchers.IO) {
             prefs.edit()
@@ -1284,8 +1290,19 @@ class MusicManager(private val context: Context) {
         }
     }
 
+    // Toggle Hide Audio with immediate update
     fun toggleHideAudio(songId: Long) {
-        if (songId in hiddenAudioIds) hiddenAudioIds.remove(songId) else hiddenAudioIds.add(songId)
+        if (songId in hiddenAudioIds) {
+            hiddenAudioIds.remove(songId)
+            rawStorageSongs.find { it.id == songId }?.let { restoredSong ->
+                if (restoredSong.folderName !in hiddenFolders && allSongs.none { it.id == songId }) {
+                    allSongs.add(restoredSong)
+                }
+            }
+        } else {
+            hiddenAudioIds.add(songId)
+            allSongs.removeAll { it.id == songId }
+        }
         managerScope.launch(Dispatchers.IO) {
             prefs.edit().putStringSet("hidden_audio", hiddenAudioIds.map { it.toString() }.toSet()).apply()
             scanStorage()
@@ -1298,6 +1315,7 @@ class MusicManager(private val context: Context) {
             if (file.exists()) file.delete()
             context.contentResolver.delete(song.uri, null, null)
             allSongs.removeAll { it.id == song.id }
+            rawStorageSongs.removeAll { it.id == song.id }
             playbackQueue.removeAll { it.id == song.id }
             historySongs.removeAll { it.id == song.id }
 

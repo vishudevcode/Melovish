@@ -305,7 +305,6 @@ fun SettingsScreen(
 
                 Spacer(modifier = Modifier.height(14.dp))
 
-                // Crossfade Row - Completely Symmetrical with Upper Rows
                 SettingSwitchRow(
                     icon = "↔️",
                     title = "Crossfade",
@@ -361,7 +360,6 @@ fun SettingsScreen(
                 Text("Adjust audio playback settings.", color = Color(0xFF64748B), fontSize = 12.sp)
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // Lossless Audio Toggle
                 SettingSwitchRow(
                     icon = "📶",
                     title = "Lossless Audio",
@@ -375,7 +373,6 @@ fun SettingsScreen(
 
                 Spacer(modifier = Modifier.height(14.dp))
 
-                // Volume Normalization (Mapped directly to ReplayGain)
                 SettingSwitchRow(
                     icon = "🔉",
                     title = "Volume Normalization",
@@ -388,7 +385,6 @@ fun SettingsScreen(
 
                 Spacer(modifier = Modifier.height(14.dp))
 
-                // Volume Boost Slider
                 Text("Volume Boost", color = textColor, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                 Text("Increase the maximum volume (${manager.volumeBoostLevel.toInt()}%).", color = Color(0xFF64748B), fontSize = 12.sp)
 
@@ -406,7 +402,6 @@ fun SettingsScreen(
 
                 Spacer(modifier = Modifier.height(14.dp))
 
-                // Mono Audio Toggle (Combines L & R Channels)
                 SettingSwitchRow(
                     icon = "🎚️",
                     title = "Mono Audio",
@@ -419,7 +414,6 @@ fun SettingsScreen(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // Audio Output Selection
                 Text("Audio Output", color = textColor, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                 Spacer(modifier = Modifier.height(10.dp))
 
@@ -451,7 +445,6 @@ fun SettingsScreen(
 
                 Spacer(modifier = Modifier.height(18.dp))
 
-                // Equalizer Row with Adjust Button and Switch Toggle
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -563,7 +556,6 @@ fun VerticalLinesEqualizerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                 .padding(22.dp)
         ) {
             Column(modifier = Modifier.fillMaxSize()) {
-                // Header with Save Button
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -588,7 +580,6 @@ fun VerticalLinesEqualizerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                     modifier = Modifier.weight(1f),
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    // Sound Presets Row
                     item {
                         Text("Sound Presets", color = textColor, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                         Spacer(modifier = Modifier.height(8.dp))
@@ -613,7 +604,6 @@ fun VerticalLinesEqualizerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                         }
                     }
 
-                    // Multi-band Graphic EQ in Vertical Lines
                     item {
                         Text("Frequency Response (-15dB to +15dB)", color = textColor, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                         Spacer(modifier = Modifier.height(10.dp))
@@ -654,7 +644,6 @@ fun VerticalLinesEqualizerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                         }
                     }
 
-                    // Bass Boost & Virtualizer
                     item {
                         Column(
                             modifier = Modifier
@@ -784,14 +773,19 @@ fun VerticalBandFader(
     }
 }
 
+// -----------------------------------------------------------------------------------------
+// Sub-Screens: Content Management (Hidden Folders and Hidden Audio)
+// -----------------------------------------------------------------------------------------
+
 @UnstableApi
 @Composable
 fun ManageHiddenFoldersFullScreen(manager: MusicManager, isDark: Boolean, onBack: () -> Unit) {
     val textColor = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A)
     val cardBg = if (isDark) Color(0xFF131B2E) else Color.White
 
-    val allFolders = remember(manager.allSongs.size) {
-        manager.allSongs.map { it.folderName }.distinct()
+    val pool = if (manager.rawStorageSongs.isNotEmpty()) manager.rawStorageSongs else manager.allSongs
+    val allFolders = remember(pool.size) {
+        pool.map { it.folderName }.distinct()
     }
     val hiddenSet = remember(manager.hiddenFolders.size, manager.hiddenFolders.toList()) {
         manager.hiddenFolders.toHashSet()
@@ -844,7 +838,7 @@ fun ManageHiddenFoldersFullScreen(manager: MusicManager, isDark: Boolean, onBack
                             .border(1.5.dp, Color(0x66EF4444), RoundedCornerShape(16.dp))
                             .clickable { manager.toggleHideFolder(folder) }
                             .padding(14.dp)
-                            .alpha(0.45f),
+                            .alpha(0.6f),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         GlassmorphicFolderIcon(folderColor = manager.getFolderColor(folder), modifier = Modifier.size(36.dp))
@@ -896,6 +890,7 @@ fun ManageHiddenFoldersFullScreen(manager: MusicManager, isDark: Boolean, onBack
     }
 }
 
+// Fixed Hide Audio Screen: Displays hidden audio on top and restores on tap
 @UnstableApi
 @Composable
 fun ManageHiddenAudioFullScreen(manager: MusicManager, isDark: Boolean, onBack: () -> Unit) {
@@ -907,16 +902,18 @@ fun ManageHiddenAudioFullScreen(manager: MusicManager, isDark: Boolean, onBack: 
         manager.hiddenAudioIds.toHashSet()
     }
 
+    val pool = if (manager.rawStorageSongs.isNotEmpty()) manager.rawStorageSongs else manager.allSongs
+
     val (hiddenSongs, visibleSongs) = remember(
         searchQuery,
-        manager.allSongs.size,
+        pool.size,
         hiddenSet
     ) {
         val q = searchQuery.trim()
         val filtered = if (q.isEmpty()) {
-            manager.allSongs
+            pool
         } else {
-            manager.allSongs.filter {
+            pool.filter {
                 it.title.contains(q, ignoreCase = true) || it.artist.contains(q, ignoreCase = true)
             }
         }
@@ -962,6 +959,7 @@ fun ManageHiddenAudioFullScreen(manager: MusicManager, isDark: Boolean, onBack: 
             contentPadding = PaddingValues(bottom = 80.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
+            // Hidden Audio Section appears on top when files are hidden
             if (hiddenSongs.isNotEmpty()) {
                 item(key = "hidden_audio_header", contentType = "section_header") {
                     Text(
@@ -980,20 +978,21 @@ fun ManageHiddenAudioFullScreen(manager: MusicManager, isDark: Boolean, onBack: 
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clip(RoundedCornerShape(14.dp))
+                            .clip(RoundedCornerShape(16.dp))
                             .background(cardBg)
-                            .border(1.2.dp, Color(0x66EF4444), RoundedCornerShape(14.dp))
+                            .border(1.5.dp, Color(0x66EF4444), RoundedCornerShape(16.dp))
                             .clickable { manager.toggleHideAudio(song.id) }
-                            .padding(12.dp)
-                            .alpha(0.45f),
+                            .padding(14.dp)
+                            .alpha(0.6f),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text("🚫", fontSize = 18.sp)
-                        Spacer(modifier = Modifier.width(10.dp))
+                        Spacer(modifier = Modifier.width(12.dp))
                         Column(modifier = Modifier.weight(1f)) {
-                            Text(song.title, color = textColor, fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            Text("${formatFileSize(song.size)} • ${song.artist} • Excluded", color = Color(0xFFEF4444), fontSize = 11.sp)
+                            Text(song.title, color = textColor, fontSize = 15.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text("${formatFileSize(song.size)} • ${if (song.artist.isNotBlank()) song.artist else "Unknown"} • Excluded", color = Color(0xFFEF4444), fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
                         }
+                        Text("👁️‍🗨️", fontSize = 18.sp)
                     }
                 }
             }
@@ -1016,20 +1015,20 @@ fun ManageHiddenAudioFullScreen(manager: MusicManager, isDark: Boolean, onBack: 
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(14.dp))
+                        .clip(RoundedCornerShape(16.dp))
                         .background(cardBg)
-                        .border(1.dp, if (isDark) Color(0x22FFFFFF) else Color(0xFFECEFF3), RoundedCornerShape(14.dp))
+                        .border(1.dp, if (isDark) Color(0x22FFFFFF) else Color(0xFFECEFF3), RoundedCornerShape(16.dp))
                         .clickable { manager.toggleHideAudio(song.id) }
-                        .padding(12.dp),
+                        .padding(14.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text("🎵", fontSize = 18.sp)
-                    Spacer(modifier = Modifier.width(10.dp))
+                    Spacer(modifier = Modifier.width(12.dp))
                     Column(modifier = Modifier.weight(1f)) {
-                        Text(song.title, color = textColor, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Text("${formatFileSize(song.size)} • ${song.artist}", color = Color(0xFF64748B), fontSize = 11.sp)
+                        Text(song.title, color = textColor, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text("${formatFileSize(song.size)} • ${if (song.artist.isNotBlank()) song.artist else "Unknown"}", color = Color(0xFF64748B), fontSize = 11.sp)
                     }
-                    Text("✓", color = manager.accentColor, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    Text("✓", color = manager.accentColor, fontSize = 18.sp, fontWeight = FontWeight.Bold)
                 }
             }
         }
