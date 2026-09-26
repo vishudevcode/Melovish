@@ -322,7 +322,7 @@ fun MainAppScaffold(manager: MusicManager) {
 }
 
 // -----------------------------------------------------------------------------------------
-// Universal Song Row Component (Resolves unresolved reference in ArtistsScreen.kt)
+// Universal Song Row Component (Matching exact parameter names required by ArtistsScreen.kt)
 // -----------------------------------------------------------------------------------------
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -333,13 +333,12 @@ fun UniversalSongRow(
     manager: MusicManager,
     isDark: Boolean,
     modifier: Modifier = Modifier,
-    isCurrent: Boolean = song.id == manager.currentSong?.id,
-    isPlaying: Boolean = manager.isPlaying && song.id == manager.currentSong?.id,
-    onClick: () -> Unit = {
+    onPlay: () -> Unit = {
         manager.playSong(song, manager.allSongs, manager.currentSectionName)
     },
-    onLongClick: () -> Unit = {},
-    onMoreClick: () -> Unit = {}
+    onMenuClick: () -> Unit = {},
+    isCurrent: Boolean = song.id == manager.currentSong?.id,
+    isPlaying: Boolean = manager.isPlaying && song.id == manager.currentSong?.id
 ) {
     val textColor = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A)
     val accent = manager.accentColor
@@ -365,10 +364,7 @@ fun UniversalSongRow(
                 else Color(0xFFECEFF3),
                 RoundedCornerShape(14.dp)
             )
-            .combinedClickable(
-                onClick = onClick,
-                onLongClick = onLongClick
-            )
+            .clickable { onPlay() }
             .padding(10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -430,7 +426,7 @@ fun UniversalSongRow(
             color = Color(0xFF64748B),
             fontWeight = FontWeight.Bold,
             modifier = Modifier
-                .clickable { onMoreClick() }
+                .clickable { onMenuClick() }
                 .padding(horizontal = 6.dp)
         )
     }
