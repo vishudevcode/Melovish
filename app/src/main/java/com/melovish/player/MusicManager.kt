@@ -85,6 +85,7 @@ class MusicManager(private val context: Context) {
     private val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
     private val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
+    // Mono Audio Hardware Channel Mixer Processor
     private val channelMixingAudioProcessor = ChannelMixingAudioProcessor()
 
     private val renderersFactory = object : DefaultRenderersFactory(context) {
@@ -117,7 +118,7 @@ class MusicManager(private val context: Context) {
         private set
 
     // Hardware Audio Effects
-    private var currentAudioSessionId: Int = C.AUDIO_SESSION_ID_UNSET
+    private var boundAudioSessionId: Int = C.AUDIO_SESSION_ID_UNSET
     private var equalizer: Equalizer? = null
     private var bassBoost: BassBoost? = null
     private var virtualizer: Virtualizer? = null
@@ -213,6 +214,20 @@ class MusicManager(private val context: Context) {
     val eqPresetNames = mutableStateListOf<String>()
     var selectedEqPreset by mutableStateOf(prefs.getString("selected_eq_preset", "Original") ?: "Original")
 
+    // Standard DSP Sound Preset Curves (-1500 to +1500 mB)
+    val standardPresetCurves = mapOf(
+        "Original" to listOf(0, 0, 0, 0, 0),
+        "Flat" to listOf(0, 0, 0, 0, 0),
+        "Rock" to listOf(500, 300, -100, 200, 500),
+        "Pop" to listOf(-100, 200, 500, 200, -100),
+        "Jazz" to listOf(400, 200, -200, 200, 400),
+        "Classical" to listOf(500, 300, -100, 200, 400),
+        "Hip Hop" to listOf(600, 400, 0, 200, 400),
+        "Dance" to listOf(500, 100, 200, 400, 200),
+        "Bass Boost" to listOf(800, 500, 200, 0, 0),
+        "Vocal Boost" to listOf(-300, 100, 600, 300, -200)
+    )
+
     var bassBoostPercent by mutableIntStateOf(prefs.getInt("bass_boost", 50))
     var virtualizerPercent by mutableIntStateOf(prefs.getInt("virtualizer", 30))
     var isStopBass by mutableStateOf(prefs.getBoolean("stop_bass", false))
@@ -239,6 +254,7 @@ class MusicManager(private val context: Context) {
 
     init {
         activeInstance = this
+        initDefaultEqualizerState()
         initMediaSession()
         setupBroadcastReceiver()
         loadPreferences()
@@ -248,6 +264,22 @@ class MusicManager(private val context: Context) {
         syncDeviceVolume()
         applyMonoAudio(isMonoAudio)
         registerAudioDeviceCallback()
+    }
+
+    private fun initDefaultEqualizerState() {
+        eqPresetNames.clear()
+        eqPresetNames.addAll(standardPresetCurves.keys)
+
+        eqBandsCount = 5
+        eqCenterFreqs[0] = 60
+        eqCenterFreqs[1] = 230
+        eqCenterFreqs[2] = 910
+        eqCenterFreqs[3] = 3600
+        eqCenterFreqs[4] = 14000
+
+        for (i in 0 until 5) {
+            eqBandLevels[i] = prefs.getInt("eq_band_$i", 0)
+        }
     }
 
     private fun initMediaSession() {
@@ -308,8 +340,7 @@ class MusicManager(private val context: Context) {
         player.addListener(object : Player.Listener {
             override fun onAudioSessionIdChanged(audioSessionId: Int) {
                 if (audioSessionId != C.AUDIO_SESSION_ID_UNSET && audioSessionId != 0) {
-                    currentAudioSessionId = audioSessionId
-                    attachAudioEffects(audioSessionId)
+                    bindHardwareAudioEffects(audioSessionId)
                 }
             }
 
@@ -324,8 +355,9 @@ class MusicManager(private val context: Context) {
             override fun onPlaybackStateChanged(state: Int) {
                 if (state == Player.STATE_READY) {
                     duration = player.duration.coerceAtLeast(0L)
-                    if (currentAudioSessionId != C.AUDIO_SESSION_ID_UNSET && currentAudioSessionId != 0) {
-                        attachAudioEffects(currentAudioSessionId)
+                    val sessionId = player.audioSessionId
+                    if (sessionId != C.AUDIO_SESSION_ID_UNSET && sessionId != 0) {
+                        bindHardwareAudioEffects(sessionId)
                     }
                     updateNotification()
                 } else if (state == Player.STATE_ENDED) {
@@ -380,72 +412,193 @@ class MusicManager(private val context: Context) {
         })
     }
 
-    fun attachAudioEffects(sessionId: Int = currentAudioSessionId) {
+    /**
+     * Binds Equalizer, Bass Boost, Virtualizer, and Loudness Enhancer.
+     * Releases prior stale effect sessions to ensure real-time response.
+     */
+    fun bindHardwareAudioEffects(sessionId: Int) {
         if (sessionId == C.AUDIO_SESSION_ID_UNSET || sessionId == 0) return
+        if (boundAudioSessionId == sessionId && equalizer != null) {
+            updateAudioEffectsState()
+            return
+        }
+
         try {
-            if (equalizer == null) {
-                equalizer = Equalizer(1000, sessionId).apply { enabled = isEqEnabled }
-                eqBandsCount = (equalizer?.numberOfBands?.toInt() ?: 5).coerceAtLeast(1)
-                val range = equalizer?.bandLevelRange
+            releaseAudioEffects()
+            boundAudioSessionId = sessionId
+
+            // Equalizer (Priority 0 for application-level access)
+            equalizer = Equalizer(0, sessionId).apply {
+                enabled = isEqEnabled
+                val range = bandLevelRange
                 if (range != null && range.size >= 2) {
                     eqMinLevel = range[0].toInt()
                     eqMaxLevel = range[1].toInt()
                 }
+                eqBandsCount = numberOfBands.toInt().coerceAtLeast(1)
                 for (i in 0 until eqBandsCount) {
-                    val freq = (equalizer?.getCenterFreq(i.toShort()) ?: 0) / 1000
-                    eqCenterFreqs[i] = if (freq > 0) freq else (60 * (i + 1) * (i + 1))
-                    val savedLevel = prefs.getInt("eq_band_$i", equalizer?.getBandLevel(i.toShort())?.toInt() ?: 0)
-                    eqBandLevels[i] = savedLevel
-                    equalizer?.setBandLevel(i.toShort(), savedLevel.toShort())
-                }
-                eqPresetNames.clear()
-                val presetsCount = equalizer?.numberOfPresets?.toInt() ?: 0
-                for (p in 0 until presetsCount) {
-                    eqPresetNames.add(equalizer?.getPresetName(p.toShort()) ?: "Preset $p")
-                }
-                if (eqPresetNames.isEmpty()) {
-                    listOf("Flat", "Rock", "Pop", "Jazz", "Classical", "Hip Hop", "Dance").forEach { eqPresetNames.add(it) }
-                }
-            } else {
-                equalizer?.enabled = isEqEnabled
-                for (i in 0 until eqBandsCount) {
-                    val lvl = eqBandLevels[i] ?: 0
-                    equalizer?.setBandLevel(i.toShort(), lvl.toShort())
+                    val freq = getCenterFreq(i.toShort()) / 1000
+                    if (freq > 0) eqCenterFreqs[i] = freq
+                    val level = eqBandLevels[i] ?: 0
+                    setBandLevel(i.toShort(), level.coerceIn(eqMinLevel, eqMaxLevel).toShort())
                 }
             }
 
-            if (bassBoost == null) bassBoost = BassBoost(1000, sessionId)
-            bassBoost?.enabled = !isStopBass && isEqEnabled
-            bassBoost?.setStrength((bassBoostPercent * 10).toShort().coerceIn(0, 1000))
+            // Bass Boost
+            bassBoost = BassBoost(0, sessionId).apply {
+                enabled = !isStopBass && isEqEnabled
+                setStrength((bassBoostPercent * 10).toShort().coerceIn(0, 1000))
+            }
 
-            if (virtualizer == null) virtualizer = Virtualizer(1000, sessionId)
-            virtualizer?.enabled = isEqEnabled
-            virtualizer?.setStrength((virtualizerPercent * 10).toShort().coerceIn(0, 1000))
+            // 3D Virtualizer
+            virtualizer = Virtualizer(0, sessionId).apply {
+                enabled = isEqEnabled
+                setStrength((virtualizerPercent * 10).toShort().coerceIn(0, 1000))
+            }
 
-            if (loudnessEnhancer == null) loudnessEnhancer = LoudnessEnhancer(sessionId)
-            val boostGainMb = (((volumeBoostLevel - 100f) / 100f) * 2000f).toInt().coerceIn(0, 3000)
-            loudnessEnhancer?.setTargetGain(boostGainMb)
-            loudnessEnhancer?.enabled = volumeBoostLevel > 100f || isVolumeNormalized
+            // Loudness Enhancer
+            loudnessEnhancer = LoudnessEnhancer(sessionId).apply {
+                val boostGainMb = (((volumeBoostLevel - 100f) / 100f) * 2000f).toInt().coerceIn(0, 3000)
+                setTargetGain(boostGainMb)
+                enabled = volumeBoostLevel > 100f || isVolumeNormalized
+            }
 
             applyVolumeNormalization()
-
-            if (isStopBass && equalizer != null && eqBandsCount > 0) {
-                equalizer?.setBandLevel(0, eqMinLevel.toShort())
-                eqBandLevels[0] = eqMinLevel
-            }
         } catch (e: Exception) {
             e.printStackTrace()
         }
     }
 
-    /**
-     * Real-time Volume Boost adjustment up to 200%.
-     * Adjusts LoudnessEnhancer target gain live as the user slides.
-     */
+    private fun updateAudioEffectsState() {
+        try {
+            equalizer?.enabled = isEqEnabled
+            for (i in 0 until eqBandsCount) {
+                val lvl = eqBandLevels[i] ?: 0
+                equalizer?.setBandLevel(i.toShort(), lvl.coerceIn(eqMinLevel, eqMaxLevel).toShort())
+            }
+
+            bassBoost?.enabled = !isStopBass && isEqEnabled
+            bassBoost?.setStrength((bassBoostPercent * 10).toShort().coerceIn(0, 1000))
+
+            virtualizer?.enabled = isEqEnabled
+            virtualizer?.setStrength((virtualizerPercent * 10).toShort().coerceIn(0, 1000))
+
+            val boostGainMb = (((volumeBoostLevel - 100f) / 100f) * 2000f).toInt().coerceIn(0, 3000)
+            loudnessEnhancer?.setTargetGain(boostGainMb)
+            loudnessEnhancer?.enabled = volumeBoostLevel > 100f || isVolumeNormalized
+
+            applyVolumeNormalization()
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    private fun releaseAudioEffects() {
+        try { equalizer?.release() } catch (_: Exception) {}
+        try { bassBoost?.release() } catch (_: Exception) {}
+        try { virtualizer?.release() } catch (_: Exception) {}
+        try { loudnessEnhancer?.release() } catch (_: Exception) {}
+        equalizer = null
+        bassBoost = null
+        virtualizer = null
+        loudnessEnhancer = null
+    }
+
+    fun attachAudioEffects() {
+        val sessionId = if (boundAudioSessionId != C.AUDIO_SESSION_ID_UNSET && boundAudioSessionId != 0) {
+            boundAudioSessionId
+        } else {
+            player.audioSessionId
+        }
+        if (sessionId != C.AUDIO_SESSION_ID_UNSET && sessionId != 0) {
+            bindHardwareAudioEffects(sessionId)
+        }
+    }
+
+    fun setEqBandLevel(band: Int, level: Int) {
+        eqBandLevels[band] = level
+        selectedEqPreset = "Custom"
+        if (!isEqEnabled) {
+            isEqEnabled = true
+            prefs.edit().putBoolean("eq_enabled", true).apply()
+        }
+        managerScope.launch(Dispatchers.IO) {
+            prefs.edit().putInt("eq_band_$band", level).putString("selected_eq_preset", "Custom").apply()
+        }
+        try {
+            equalizer?.enabled = true
+            equalizer?.setBandLevel(band.toShort(), level.coerceIn(eqMinLevel, eqMaxLevel).toShort())
+        } catch (_: Exception) {}
+    }
+
+    fun applyEqPreset(presetName: String) {
+        selectedEqPreset = presetName
+        if (!isEqEnabled) {
+            isEqEnabled = true
+            prefs.edit().putBoolean("eq_enabled", true).apply()
+        }
+        managerScope.launch(Dispatchers.IO) {
+            prefs.edit().putString("selected_eq_preset", presetName).apply()
+        }
+
+        val curve = standardPresetCurves[presetName] ?: standardPresetCurves["Flat"] ?: listOf(0, 0, 0, 0, 0)
+        for (i in 0 until eqBandsCount.coerceAtMost(curve.size)) {
+            val lvl = curve[i]
+            eqBandLevels[i] = lvl
+            prefs.edit().putInt("eq_band_$i", lvl).apply()
+            try {
+                equalizer?.enabled = true
+                equalizer?.setBandLevel(i.toShort(), lvl.coerceIn(eqMinLevel, eqMaxLevel).toShort())
+            } catch (_: Exception) {}
+        }
+    }
+
+    fun toggleEqualizer(enabled: Boolean) {
+        isEqEnabled = enabled
+        managerScope.launch(Dispatchers.IO) {
+            prefs.edit().putBoolean("eq_enabled", enabled).apply()
+        }
+        try {
+            equalizer?.enabled = enabled
+            bassBoost?.enabled = !isStopBass && enabled
+            virtualizer?.enabled = enabled
+        } catch (_: Exception) {}
+    }
+
+    fun setBassBoost(percent: Int) {
+        bassBoostPercent = percent
+        if (!isEqEnabled) {
+            isEqEnabled = true
+            prefs.edit().putBoolean("eq_enabled", true).apply()
+        }
+        managerScope.launch(Dispatchers.IO) {
+            prefs.edit().putInt("bass_boost", percent).apply()
+        }
+        try {
+            bassBoost?.enabled = !isStopBass
+            bassBoost?.setStrength((percent * 10).toShort().coerceIn(0, 1000))
+        } catch (_: Exception) {}
+    }
+
+    fun setVirtualizer(percent: Int) {
+        virtualizerPercent = percent
+        if (!isEqEnabled) {
+            isEqEnabled = true
+            prefs.edit().putBoolean("eq_enabled", true).apply()
+        }
+        managerScope.launch(Dispatchers.IO) {
+            prefs.edit().putInt("virtualizer", percent).apply()
+        }
+        try {
+            virtualizer?.enabled = true
+            virtualizer?.setStrength((percent * 10).toShort().coerceIn(0, 1000))
+        } catch (_: Exception) {}
+    }
+
     fun setVolumeBoost(level: Float) {
         volumeBoostLevel = level
-        val sessionId = if (currentAudioSessionId != C.AUDIO_SESSION_ID_UNSET && currentAudioSessionId != 0) {
-            currentAudioSessionId
+        val sessionId = if (boundAudioSessionId != C.AUDIO_SESSION_ID_UNSET && boundAudioSessionId != 0) {
+            boundAudioSessionId
         } else {
             player.audioSessionId
         }
@@ -466,91 +619,6 @@ class MusicManager(private val context: Context) {
         managerScope.launch(Dispatchers.IO) {
             prefs.edit().putFloat("vol_boost", level).apply()
         }
-    }
-
-    fun setEqBandLevel(band: Int, level: Int) {
-        eqBandLevels[band] = level
-        managerScope.launch(Dispatchers.IO) {
-            prefs.edit().putInt("eq_band_$band", level).putString("selected_eq_preset", "Custom").apply()
-        }
-        selectedEqPreset = "Custom"
-        try {
-            equalizer?.setBandLevel(band.toShort(), level.toShort())
-        } catch (_: Exception) {}
-    }
-
-    fun applyEqPreset(presetName: String) {
-        selectedEqPreset = presetName
-        managerScope.launch(Dispatchers.IO) {
-            prefs.edit().putString("selected_eq_preset", presetName).apply()
-        }
-        try {
-            val index = eqPresetNames.indexOf(presetName)
-            if (index >= 0 && index < (equalizer?.numberOfPresets ?: 0)) {
-                equalizer?.usePreset(index.toShort())
-                for (i in 0 until eqBandsCount) {
-                    val lvl = equalizer?.getBandLevel(i.toShort())?.toInt() ?: 0
-                    eqBandLevels[i] = lvl
-                    prefs.edit().putInt("eq_band_$i", lvl).apply()
-                }
-            }
-        } catch (_: Exception) {}
-    }
-
-    fun toggleEqualizer(enabled: Boolean) {
-        isEqEnabled = enabled
-        managerScope.launch(Dispatchers.IO) {
-            prefs.edit().putBoolean("eq_enabled", enabled).apply()
-        }
-        try {
-            equalizer?.enabled = enabled
-            bassBoost?.enabled = !isStopBass && enabled
-            virtualizer?.enabled = enabled
-        } catch (_: Exception) {}
-    }
-
-    fun setBassBoost(percent: Int) {
-        bassBoostPercent = percent
-        managerScope.launch(Dispatchers.IO) {
-            prefs.edit().putInt("bass_boost", percent).apply()
-        }
-        try { bassBoost?.setStrength((percent * 10).toShort().coerceIn(0, 1000)) } catch (_: Exception) {}
-    }
-
-    fun setVirtualizer(percent: Int) {
-        virtualizerPercent = percent
-        managerScope.launch(Dispatchers.IO) {
-            prefs.edit().putInt("virtualizer", percent).apply()
-        }
-        try { virtualizer?.setStrength((percent * 10).toShort().coerceIn(0, 1000)) } catch (_: Exception) {}
-    }
-
-    fun toggleStopBass(stop: Boolean) {
-        isStopBass = stop
-        managerScope.launch(Dispatchers.IO) {
-            prefs.edit().putBoolean("stop_bass", stop).apply()
-        }
-        try {
-            bassBoost?.enabled = !stop && isEqEnabled
-            if (stop && eqBandsCount > 0) {
-                equalizer?.setBandLevel(0.toShort(), eqMinLevel.toShort())
-                eqBandLevels[0] = eqMinLevel
-            }
-        } catch (_: Exception) {}
-    }
-
-    fun toggleRemoveVocals(remove: Boolean) {
-        isRemoveVocals = remove
-        managerScope.launch(Dispatchers.IO) {
-            prefs.edit().putBoolean("remove_vocals", remove).apply()
-        }
-        try {
-            if (remove && eqBandsCount >= 3) {
-                val mid = eqBandsCount / 2
-                equalizer?.setBandLevel(mid.toShort(), eqMinLevel.toShort())
-                eqBandLevels[mid] = eqMinLevel
-            }
-        } catch (_: Exception) {}
     }
 
     fun toggleVolumeNormalization(enabled: Boolean) {

@@ -315,7 +315,6 @@ fun SettingsScreen(
                     manager.prefs.edit().putBoolean("crossfade_enabled", it).apply()
                 }
 
-                // Centered Crossfade Duration Slider (Balanced layout matching card borders)
                 if (manager.isCrossfadeEnabled) {
                     Spacer(modifier = Modifier.height(12.dp))
                     Column(
@@ -363,6 +362,7 @@ fun SettingsScreen(
                 Text("Adjust audio playback settings.", color = Color(0xFF64748B), fontSize = 12.sp)
                 Spacer(modifier = Modifier.height(16.dp))
 
+                // Lossless Audio Toggle
                 SettingSwitchRow(
                     icon = "📶",
                     title = "Lossless Audio",
@@ -376,6 +376,7 @@ fun SettingsScreen(
 
                 Spacer(modifier = Modifier.height(14.dp))
 
+                // Volume Normalization Toggle
                 SettingSwitchRow(
                     icon = "🔉",
                     title = "Volume Normalization",
@@ -388,7 +389,7 @@ fun SettingsScreen(
 
                 Spacer(modifier = Modifier.height(14.dp))
 
-                // Fully Functional Live Volume Boost (100% to 200%)
+                // Volume Boost Slider (Real-time live gain up to 200%)
                 Text("Volume Boost", color = textColor, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                 Text("Increase the maximum volume (${manager.volumeBoostLevel.toInt()}%).", color = Color(0xFF64748B), fontSize = 12.sp)
 
@@ -404,6 +405,7 @@ fun SettingsScreen(
 
                 Spacer(modifier = Modifier.height(14.dp))
 
+                // Mono Audio Toggle
                 SettingSwitchRow(
                     icon = "🎚️",
                     title = "Mono Audio",
@@ -416,6 +418,7 @@ fun SettingsScreen(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
+                // Audio Output Selection
                 Text("Audio Output", color = textColor, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                 Spacer(modifier = Modifier.height(10.dp))
 
@@ -447,6 +450,7 @@ fun SettingsScreen(
 
                 Spacer(modifier = Modifier.height(18.dp))
 
+                // Equalizer Row with Adjust Button and Master Toggle
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -529,7 +533,7 @@ fun SettingsScreen(
 }
 
 // -----------------------------------------------------------------------------------------
-// Equalizer Modal Sheet: Vertical Faders, Sound Presets, Bass Boost, 3D Virtualizer & Save
+// Equalizer Modal Sheet with Presets, Vertical Faders, Bass Boost, 3D Virtualizer & Save
 // -----------------------------------------------------------------------------------------
 
 @Composable
@@ -582,6 +586,7 @@ fun VerticalLinesEqualizerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                     modifier = Modifier.weight(1f),
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
+                    // Sound Presets Row
                     item {
                         Text("Sound Presets", color = textColor, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                         Spacer(modifier = Modifier.height(8.dp))
@@ -606,6 +611,7 @@ fun VerticalLinesEqualizerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                         }
                     }
 
+                    // Multi-band Graphic EQ in Vertical Lines
                     item {
                         Text("Frequency Response (-15dB to +15dB)", color = textColor, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                         Spacer(modifier = Modifier.height(10.dp))
@@ -646,6 +652,7 @@ fun VerticalLinesEqualizerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                         }
                     }
 
+                    // Bass Boost & Virtualizer
                     item {
                         Column(
                             modifier = Modifier
@@ -713,8 +720,11 @@ fun VerticalBandFader(
                 .pointerInput(minLevel, maxLevel) {
                     awaitEachGesture {
                         val down = awaitFirstDown(requireUnconsumed = false)
-                        val trackHeight = size.height.toFloat()
-                        val newFraction = 1f - (down.position.y / trackHeight).coerceIn(0f, 1f)
+                        val topY = 8.dp.toPx()
+                        val bottomY = size.height - 8.dp.toPx()
+                        val trackHeight = (bottomY - topY).coerceAtLeast(1f)
+
+                        val newFraction = 1f - ((down.position.y - topY) / trackHeight).coerceIn(0f, 1f)
                         onLevelChange((minLevel + newFraction * totalRange).toInt())
 
                         while (true) {
@@ -722,7 +732,7 @@ fun VerticalBandFader(
                             val change = event.changes.firstOrNull() ?: break
                             if (change.pressed) {
                                 change.consume()
-                                val moveFraction = 1f - (change.position.y / trackHeight).coerceIn(0f, 1f)
+                                val moveFraction = 1f - ((change.position.y - topY) / trackHeight).coerceIn(0f, 1f)
                                 onLevelChange((minLevel + moveFraction * totalRange).toInt())
                             } else {
                                 break
