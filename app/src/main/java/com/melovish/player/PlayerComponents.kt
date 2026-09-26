@@ -193,7 +193,7 @@ fun GlassmorphicFolderIcon(folderColor: Color, modifier: Modifier = Modifier) {
                 quadraticBezierTo(w * 0.48f, h * 0.14f, w * 0.52f, h * 0.22f)
                 lineTo(w * 0.56f, h * 0.28f)
                 lineTo(w * 0.82f, h * 0.28f)
-                quadraticBezierTo(w * 0.88f, h * 0.28f, w * 0.88f, h * 0.35f)
+                quadraticBezierTo(w * 0.88f, h * 0.88f, w * 0.88f, h * 0.35f)
                 lineTo(w * 0.88f, h * 0.82f)
                 quadraticBezierTo(w * 0.88f, h * 0.88f, w * 0.80f, h * 0.88f)
                 lineTo(w * 0.18f, h * 0.88f)
@@ -1178,6 +1178,7 @@ fun QueueSheet(
     val itemHeightPx = with(density) { 72.dp.toPx() }
     val edgeScrollThresholdPx = with(density) { 96.dp.toPx() }
 
+    var draggingSongId by remember { mutableStateOf<Long?>(null) }
     var draggingIndex by remember { mutableStateOf<Int?>(null) }
     var draggingOffsetPx by remember { mutableFloatStateOf(0f) }
 
@@ -1195,21 +1196,21 @@ fun QueueSheet(
 
                     if (currentVisualTop < edgeScrollThresholdPx && currentIdx > 0) {
                         try {
-                            listState.scrollBy(-18f)
+                            listState.scrollBy(-20f)
                         } catch (_: Exception) {}
                         manager.moveQueueItem(currentIdx, currentIdx - 1)
                         draggingIndex = currentIdx - 1
                         draggingOffsetPx += itemHeightPx
                     } else if (currentVisualTop + itemHeightPx > viewportHeight - edgeScrollThresholdPx && currentIdx < manager.playbackQueue.size - 1) {
                         try {
-                            listState.scrollBy(18f)
+                            listState.scrollBy(20f)
                         } catch (_: Exception) {}
                         manager.moveQueueItem(currentIdx, currentIdx + 1)
                         draggingIndex = currentIdx + 1
                         draggingOffsetPx -= itemHeightPx
                     }
                 }
-                delay(30)
+                delay(25)
             }
         }
     }
@@ -1219,10 +1220,10 @@ fun QueueSheet(
             .fillMaxSize()
             .background(Brush.verticalGradient(listOf(bgTop, bgBottom)))
             .statusBarsPadding()
-            // Swipe Down to Dismiss Queue Section
+            // Direct Swipe-Down anywhere outside an active drag to dismiss
             .pointerInput(Unit) {
                 detectVerticalDragGestures { _, dragAmount ->
-                    if (dragAmount > 38f && draggingIndex == null) {
+                    if (dragAmount > 30f && draggingIndex == null) {
                         onDismiss()
                     }
                 }
@@ -1278,7 +1279,7 @@ fun QueueSheet(
                     contentType = { _, _ -> "queue_item_row" }
                 ) { index, song ->
                     val isCur = song.id == manager.currentSong?.id
-                    val isDraggingThis = draggingIndex == index
+                    val isDraggingThis = draggingSongId == song.id
 
                     val itemElevation = if (isDraggingThis) 24.dp else 0.dp
                     val itemScale = if (isDraggingThis) 1.04f else 1.0f
@@ -1288,7 +1289,7 @@ fun QueueSheet(
                             .fillMaxWidth()
                             .animateItemPlacement(
                                 animationSpec = spring(
-                                    stiffness = 500f,
+                                    stiffness = 550f,
                                     dampingRatio = 0.85f
                                 )
                             )
@@ -1357,40 +1358,46 @@ fun QueueSheet(
 
                         Spacer(modifier = Modifier.width(12.dp))
 
-                        // Large Bolder Touch Handle with Continuous Drag Across Any Distance
+                        // Large Bolder Touch Handle with Continuous Fast Multi-Item Drag
                         Box(
                             modifier = Modifier
                                 .size(48.dp)
                                 .clip(RoundedCornerShape(12.dp))
-                                .pointerInput(Unit) {
+                                .pointerInput(song.id) {
                                     detectDragGesturesAfterLongPress(
                                         onDragStart = {
-                                            draggingIndex = index
+                                            draggingSongId = song.id
+                                            val currentActualIndex = manager.playbackQueue.indexOfFirst { it.id == song.id }
+                                            draggingIndex = if (currentActualIndex != -1) currentActualIndex else index
                                             draggingOffsetPx = 0f
                                         },
                                         onDrag = { change, dragAmount ->
                                             change.consume()
                                             draggingOffsetPx += dragAmount.y
 
-                                            val currentIndex = draggingIndex ?: return@detectDragGesturesAfterLongPress
-                                            val threshold = itemHeightPx * 0.70f
+                                            val currentActualIndex = manager.playbackQueue.indexOfFirst { it.id == song.id }
+                                            if (currentActualIndex == -1) return@detectDragGesturesAfterLongPress
 
-                                            while (draggingOffsetPx > threshold && currentIndex < manager.playbackQueue.size - 1) {
-                                                manager.moveQueueItem(currentIndex, currentIndex + 1)
-                                                draggingIndex = currentIndex + 1
+                                            val threshold = itemHeightPx * 0.65f
+
+                                            while (draggingOffsetPx > threshold && currentActualIndex < manager.playbackQueue.size - 1) {
+                                                manager.moveQueueItem(currentActualIndex, currentActualIndex + 1)
+                                                draggingIndex = currentActualIndex + 1
                                                 draggingOffsetPx -= itemHeightPx
                                             }
-                                            while (draggingOffsetPx < -threshold && currentIndex > 0) {
-                                                manager.moveQueueItem(currentIndex, currentIndex - 1)
-                                                draggingIndex = currentIndex - 1
+                                            while (draggingOffsetPx < -threshold && currentActualIndex > 0) {
+                                                manager.moveQueueItem(currentActualIndex, currentActualIndex - 1)
+                                                draggingIndex = currentActualIndex - 1
                                                 draggingOffsetPx += itemHeightPx
                                             }
                                         },
                                         onDragEnd = {
+                                            draggingSongId = null
                                             draggingIndex = null
                                             draggingOffsetPx = 0f
                                         },
                                         onDragCancel = {
+                                            draggingSongId = null
                                             draggingIndex = null
                                             draggingOffsetPx = 0f
                                         }
