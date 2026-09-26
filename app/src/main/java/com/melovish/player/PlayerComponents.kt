@@ -13,6 +13,7 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -23,8 +24,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectDragGestures
-import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -45,6 +46,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.PagerDefaults
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -59,6 +61,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
@@ -81,11 +84,9 @@ import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -170,7 +171,7 @@ fun GlassBackButton(isDark: Boolean, onClick: () -> Unit, modifier: Modifier = M
     }
 }
 
-// Glassmorphic Full-Color Folder Icon with Cached Paths
+// Glassmorphic Folder Icon
 @Composable
 fun GlassmorphicFolderIcon(folderColor: Color, modifier: Modifier = Modifier) {
     Spacer(
@@ -538,12 +539,11 @@ fun IsolatedScrubberLeaf(
     }
 }
 
-// Full Player Sheet with Real-Time Horizontal Pager, 6 Transitions & Swipe-Down-To-Dismiss
+// Full Player Sheet: 120 FPS Pager with Release-Only Snap
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @UnstableApi
 @Composable
 fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
-    val haptic = LocalHapticFeedback.current
     val context = LocalContext.current
     val isDark = manager.isDarkMode
     val userAccent = manager.accentColor
@@ -564,22 +564,24 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
         pageCount = { currentQueue.size }
     )
 
-    // Sync Pager Page Position when Track changes from Controls
+    // Sync Pager Page Position when song changes through external controls
     LaunchedEffect(manager.currentSong?.id) {
         val targetIdx = currentQueue.indexOfFirst { it.id == manager.currentSong?.id }
-        if (targetIdx != -1 && targetIdx != pagerState.currentPage) {
+        if (targetIdx != -1 && targetIdx != pagerState.currentPage && !pagerState.isScrollInProgress) {
             pagerState.scrollToPage(targetIdx)
         }
     }
 
-    // Trigger Track Switch upon Swiping past 40% threshold
+    // Only commit song change when gesture completes and settles past the 50% screen threshold
     LaunchedEffect(pagerState) {
-        snapshotFlow { pagerState.currentPage }.collect { settledPage ->
-            if (settledPage in currentQueue.indices) {
-                val targetSong = currentQueue[settledPage]
-                if (targetSong.id != manager.currentSong?.id) {
-                    manager.playSong(targetSong, currentQueue, manager.currentSectionName)
-                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+        snapshotFlow { pagerState.isScrollInProgress }.collect { isScrolling ->
+            if (!isScrolling) {
+                val settledPage = pagerState.currentPage
+                if (settledPage in currentQueue.indices) {
+                    val targetSong = currentQueue[settledPage]
+                    if (targetSong.id != manager.currentSong?.id) {
+                        manager.playSong(targetSong, currentQueue, manager.currentSectionName)
+                    }
                 }
             }
         }
@@ -615,7 +617,7 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
     val leftSeekAlpha by animateFloatAsState(if (showSeekLeftAnim) 1f else 0f, tween(if (showSeekLeftAnim) 80 else 350), label = "leftAlpha")
     val rightSeekAlpha by animateFloatAsState(if (showSeekRightAnim) 1f else 0f, tween(if (showSeekRightAnim) 80 else 350), label = "rightAlpha")
 
-    // Dynamic Background Gradient Interpolation
+    // Extract dominant palette once per settled song to prevent dropped frames
     val activeSong = manager.currentSong ?: currentQueue[pagerState.currentPage]
     var albumArtBitmap by remember(activeSong.id) { mutableStateOf(manager.getCachedAlbumArt(activeSong.id)) }
     LaunchedEffect(activeSong.id) {
@@ -652,36 +654,44 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
         }
     }
 
-    val animBgTop by animateColorAsState(targetPalette.bgTop, tween(500, easing = FastOutSlowInEasing), label = "bgTop")
-    val animBgBottom by animateColorAsState(targetPalette.bgBottom, tween(500, easing = FastOutSlowInEasing), label = "bgBottom")
-    val animSurface by animateColorAsState(targetPalette.surface, tween(500, easing = FastOutSlowInEasing), label = "surface")
-    val animTextPrimary by animateColorAsState(targetPalette.textPrimary, tween(500, easing = FastOutSlowInEasing), label = "textPrimary")
-    val animTextSecondary by animateColorAsState(targetPalette.textSecondary, tween(500, easing = FastOutSlowInEasing), label = "textSecondary")
+    val animBgTop by animateColorAsState(targetPalette.bgTop, tween(400, easing = FastOutSlowInEasing), label = "bgTop")
+    val animBgBottom by animateColorAsState(targetPalette.bgBottom, tween(400, easing = FastOutSlowInEasing), label = "bgBottom")
+    val animSurface by animateColorAsState(targetPalette.surface, tween(400, easing = FastOutSlowInEasing), label = "surface")
+    val animTextPrimary by animateColorAsState(targetPalette.textPrimary, tween(400, easing = FastOutSlowInEasing), label = "textPrimary")
+    val animTextSecondary by animateColorAsState(targetPalette.textSecondary, tween(400, easing = FastOutSlowInEasing), label = "textSecondary")
 
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(Brush.verticalGradient(listOf(animBgTop, animBgBottom)))
             .statusBarsPadding()
-            // Swipe Down to Minimize Gesture
+            // Smooth Swipe-Down to Minimize
             .pointerInput(Unit) {
                 detectVerticalDragGestures { _, dragAmount ->
-                    if (dragAmount > 45f) {
+                    if (dragAmount > 38f) {
                         onDismiss()
                     }
                 }
             }
     ) {
-        // Full Page Real-Time Horizontal Pager
         HorizontalPager(
             state = pagerState,
             pageSpacing = 16.dp,
+            beyondBoundsPageCount = 1, // Pre-caches adjacent pages to eliminate image pop-in
+            flingBehavior = PagerDefaults.flingBehavior(
+                state = pagerState,
+                snapAnimationSpec = spring(stiffness = 500f, dampingRatio = 0.85f)
+            ),
             modifier = Modifier.fillMaxSize()
         ) { pageIndex ->
             val pageSong = currentQueue[pageIndex]
 
-            // 6 Preset Transformations Calculated on Native Graphics Layer
-            val pageOffset = (pagerState.currentPage - pageIndex) + pagerState.currentPageOffsetFraction
+            // 120 FPS Native Hardware-Accelerated Graphics Transform
+            val pageOffset by remember(pagerState) {
+                derivedStateOf {
+                    (pagerState.currentPage - pageIndex) + pagerState.currentPageOffsetFraction
+                }
+            }
 
             var pageBmp by remember(pageSong.id) { mutableStateOf(manager.getCachedAlbumArt(pageSong.id)) }
             LaunchedEffect(pageSong.id) {
@@ -698,12 +708,11 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                                 translationX = 0f
                             }
                             PagerTransitionEffect.CASCADE -> {
-                                // Depth Scaling & Parallax Cascade
                                 val scale = (1f - (abs(pageOffset) * 0.08f)).coerceIn(0.92f, 1f)
                                 scaleX = scale
                                 scaleY = scale
-                                alpha = (1f - (abs(pageOffset) * 0.4f)).coerceIn(0.6f, 1f)
-                                translationX = pageOffset * -size.width * 0.15f
+                                alpha = (1f - (abs(pageOffset) * 0.35f)).coerceIn(0.65f, 1f)
+                                translationX = pageOffset * -size.width * 0.12f
                             }
                             PagerTransitionEffect.CROSSFADE -> {
                                 alpha = (1f - abs(pageOffset)).coerceIn(0f, 1f)
@@ -711,18 +720,18 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                             PagerTransitionEffect.ROTATE -> {
                                 rotationY = (pageOffset * 18f).coerceIn(-30f, 30f)
                                 cameraDistance = 14f * density
-                                alpha = (1f - (abs(pageOffset) * 0.35f)).coerceIn(0.65f, 1f)
+                                alpha = (1f - (abs(pageOffset) * 0.3f)).coerceIn(0.7f, 1f)
                             }
                             PagerTransitionEffect.TUMBLE -> {
-                                rotationZ = (pageOffset * -15f).coerceIn(-20f, 20f)
-                                val scale = (1f - (abs(pageOffset) * 0.12f)).coerceIn(0.88f, 1f)
+                                rotationZ = (pageOffset * -12f).coerceIn(-18f, 18f)
+                                val scale = (1f - (abs(pageOffset) * 0.10f)).coerceIn(0.90f, 1f)
                                 scaleX = scale
                                 scaleY = scale
                             }
                             PagerTransitionEffect.PAGE -> {
                                 if (pageOffset < 0) {
-                                    translationX = -pageOffset * size.width * 0.5f
-                                    val scale = (1f + pageOffset * 0.15f).coerceIn(0.85f, 1f)
+                                    translationX = -pageOffset * size.width * 0.45f
+                                    val scale = (1f + pageOffset * 0.12f).coerceIn(0.88f, 1f)
                                     scaleX = scale
                                     scaleY = scale
                                 }
@@ -730,9 +739,9 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                         }
                     }
                     .padding(horizontal = 24.dp)
-                    .padding(top = 10.dp, bottom = 14.dp)
+                    .padding(top = 8.dp, bottom = 12.dp)
             ) {
-                // Top Header: Drag Handle & Quick Actions
+                // Top Action Bar
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -759,7 +768,7 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                     )
                 }
 
-                // Upper Half: 3D Art Card
+                // Upper Section: Album Artwork
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -771,7 +780,7 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                         modifier = Modifier
                             .fillMaxHeight()
                             .aspectRatio(1f)
-                            .shadow(22.dp, RoundedCornerShape(32.dp), spotColor = userAccent)
+                            .shadow(20.dp, RoundedCornerShape(32.dp), spotColor = userAccent)
                             .clip(RoundedCornerShape(32.dp))
                             .background(animSurface)
                             .border(1.5.dp, Color(0x33FFFFFF), RoundedCornerShape(32.dp))
@@ -785,7 +794,6 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                                             showSeekRightAnim = true
                                             manager.seekTo((manager.currentPosition + 10000L).coerceAtMost(manager.duration))
                                         }
-                                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                                     }
                                 )
                             },
@@ -828,7 +836,7 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                     }
                 }
 
-                // Lower Half: Metadata, Scrubber, Playback Controls & Bottom Dock
+                // Lower Section: Metadata, Scrubber, Playback Controls, & Dock
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -859,10 +867,11 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                         )
                     }
 
-                    // Scrubber locked to currently active song
+                    // Scrubber locked cleanly to playback position
+                    val isCurrentActiveTrack = pageSong.id == manager.currentSong?.id
                     IsolatedScrubberLeaf(
-                        currentPositionMs = if (pageSong.id == manager.currentSong?.id) manager.currentPosition else 0L,
-                        durationMs = if (pageSong.id == manager.currentSong?.id) manager.duration else pageSong.duration,
+                        currentPositionMs = if (isCurrentActiveTrack) manager.currentPosition else 0L,
+                        durationMs = if (isCurrentActiveTrack) manager.duration else pageSong.duration,
                         accentColor = userAccent,
                         textColor = animTextSecondary,
                         isDark = isDark,
@@ -1033,7 +1042,7 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
             }
         }
 
-        // Shared Dialogs
+        // Shared Unified Modal Sheets
         if (showEqualizerSheet) EqualizerSheet(manager = manager, onDismiss = { showEqualizerSheet = false })
         if (showSpeedDialog) MagneticSpeedDialog(manager = manager, onDismiss = { showSpeedDialog = false })
         if (showSleepDialog) SleepTimerDialog(manager = manager, onDismiss = { showSleepDialog = false })
@@ -1071,7 +1080,7 @@ fun EqualizerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                 .padding(22.dp)
         ) {
             Column(modifier = Modifier.fillMaxSize()) {
-                // Top Header with Preset Name and Save Button
+                // Header with Preset and Save Button
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -1121,7 +1130,7 @@ fun EqualizerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                         }
                     }
 
-                    // Multi-band Graphic EQ in Vertical Lines
+                    // Multi-band Graphic EQ with Vertical Fader Lines
                     item {
                         Text("Frequency Response (-15dB to +15dB)", color = textColor, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                         Spacer(modifier = Modifier.height(10.dp))
@@ -1366,7 +1375,7 @@ fun MenuRow(icon: String, text: String, isDark: Boolean, isDanger: Boolean = fal
     }
 }
 
-// Mini Player Dock with Swipe Up to Maximize Gesture
+// Mini Player Dock with Smooth Swipe Up to Maximize
 @UnstableApi
 @Composable
 fun MiniPlayerDock(manager: MusicManager, onClick: () -> Unit) {
@@ -1386,10 +1395,9 @@ fun MiniPlayerDock(manager: MusicManager, onClick: () -> Unit) {
             .clip(RoundedCornerShape(22.dp))
             .background(if (isDark) Color(0xE60A0F1D) else Color(0xF2FFFFFF))
             .border(1.dp, if (isDark) Color(0x33FFFFFF) else Color(0x22000000), RoundedCornerShape(22.dp))
-            // Swipe Up to Maximize Gesture
             .pointerInput(Unit) {
                 detectVerticalDragGestures { _, dragAmount ->
-                    if (dragAmount < -30f) {
+                    if (dragAmount < -24f) {
                         onClick()
                     }
                 }
@@ -1689,7 +1697,6 @@ fun AddToPlaylistDialog(manager: MusicManager, song: Song, onDismiss: () -> Unit
 // Magnetic Speed Dialog
 @Composable
 fun MagneticSpeedDialog(manager: MusicManager, onDismiss: () -> Unit) {
-    val haptic = LocalHapticFeedback.current
     var speed by remember { mutableFloatStateOf(manager.playbackSpeed) }
     val isDark = manager.isDarkMode
     val accent = manager.accentColor
@@ -1712,7 +1719,6 @@ fun MagneticSpeedDialog(manager: MusicManager, onDismiss: () -> Unit) {
                     value = speed,
                     onValueChange = { raw ->
                         val snapped = manager.setMagneticSpeed(raw)
-                        if (snapped != speed) haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                         speed = snapped
                     },
                     valueRange = 0.25f..3.0f,
@@ -1888,7 +1894,7 @@ fun HeartIconVector(isFavorite: Boolean, defaultTint: Color, modifier: Modifier 
     )
 }
 
-// Repeat Control Icon
+// Playback Control Vectors with Cached Paths
 @Composable
 fun RepeatControlIcon(repeatMode: Int, tint: Color, modifier: Modifier = Modifier) {
     val isActive = repeatMode != Player.REPEAT_MODE_OFF
@@ -1935,7 +1941,6 @@ fun RepeatControlIcon(repeatMode: Int, tint: Color, modifier: Modifier = Modifie
     }
 }
 
-// Previous Control Icon
 @Composable
 fun PreviousControlIcon(tint: Color, modifier: Modifier = Modifier) {
     Spacer(
@@ -1957,7 +1962,6 @@ fun PreviousControlIcon(tint: Color, modifier: Modifier = Modifier) {
     )
 }
 
-// Next Control Icon
 @Composable
 fun NextControlIcon(tint: Color, modifier: Modifier = Modifier) {
     Spacer(
@@ -1979,7 +1983,6 @@ fun NextControlIcon(tint: Color, modifier: Modifier = Modifier) {
     )
 }
 
-// Shuffle Control Icon
 @Composable
 fun ShuffleControlIcon(isShuffleOn: Boolean, tint: Color, modifier: Modifier = Modifier) {
     val alpha = if (isShuffleOn) 1f else 0.4f
