@@ -36,6 +36,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -120,11 +122,51 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
 class MainActivity : ComponentActivity() {
     private val viewModel by viewModels<MusicViewModel>()
 
+    private val permissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        val audioGranted = permissions[Manifest.permission.READ_MEDIA_AUDIO] == true ||
+                permissions[Manifest.permission.READ_EXTERNAL_STORAGE] == true
+        if (audioGranted) {
+            viewModel.manager.scanStorage()
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        MediaPlaybackService.start(this)
+        
+        try {
+            val serviceIntent = Intent(this, MediaPlaybackService::class.java)
+            ContextCompat.startForegroundService(this, serviceIntent)
+        } catch (_: Exception) {}
+
+        requestRequiredPermissions()
+
         setContent {
             MelovishRootApp(viewModel.manager)
+        }
+    }
+
+    private fun requestRequiredPermissions() {
+        val permissions = mutableListOf<String>()
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_MEDIA_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+                permissions.add(Manifest.permission.READ_MEDIA_AUDIO)
+            }
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                permissions.add(Manifest.permission.POST_NOTIFICATIONS)
+            }
+        } else {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
+                permissions.add(Manifest.permission.READ_EXTERNAL_STORAGE)
+            }
+        }
+
+        if (permissions.isNotEmpty()) {
+            permissionLauncher.launch(permissions.toTypedArray())
+        } else {
+            viewModel.manager.scanStorage()
         }
     }
 
@@ -136,7 +178,6 @@ class MainActivity : ComponentActivity() {
     override fun onTrimMemory(level: Int) {
         super.onTrimMemory(level)
         if (level >= ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW) {
-            // Trim Coil image pipeline memory cache
             coil.Coil.imageLoader(this).memoryCache?.clear()
             System.gc()
         }
@@ -437,7 +478,6 @@ fun RecentlyPlayedCard(song: Song, manager: MusicManager, onClick: () -> Unit) {
     }
 }
 
-// Phase 2 Invariant: Zero-Allocation Rotating Vector Matrix via drawWithCache
 @Composable
 fun LiveMechanicalGearIcon(isDark: Boolean, modifier: Modifier = Modifier) {
     val infiniteTransition = rememberInfiniteTransition(label = "gearRotation")

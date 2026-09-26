@@ -1,5 +1,6 @@
 package com.melovish.player
 
+import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.BroadcastReceiver
@@ -36,6 +37,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.core.app.NotificationCompat
+import androidx.core.content.ContextCompat
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
@@ -51,6 +53,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.audio.AudioSink
 import androidx.media3.exoplayer.audio.DefaultAudioSink
 import androidx.media3.session.MediaSession
+import androidx.media3.session.MediaStyleNotificationHelper
 import kotlinx.collections.immutable.toImmutableList
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
@@ -267,6 +270,7 @@ class MusicManager(private val context: Context) {
         activeInstance = this
         initDefaultEqualizerState()
         initMediaSession()
+        createNotificationChannel()
         setupBroadcastReceiver()
         loadPreferences()
         loadColorPresets()
@@ -309,6 +313,21 @@ class MusicManager(private val context: Context) {
                 .build()
         } catch (e: Exception) {
             e.printStackTrace()
+        }
+    }
+
+    private fun createNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(
+                MediaPlaybackService.NOTIF_CHANNEL_ID,
+                "Playback Controls",
+                NotificationManager.IMPORTANCE_LOW
+            ).apply {
+                description = "Music playback controls and lockscreen carousel"
+                setShowBadge(false)
+                lockscreenVisibility = NotificationCompat.VISIBILITY_PUBLIC
+            }
+            notificationManager.createNotificationChannel(channel)
         }
     }
 
@@ -980,11 +999,6 @@ class MusicManager(private val context: Context) {
         }
     }
 
-    /**
-     * Smooth, Zero-Flicker playback transition.
-     * When switching between tracks in the active queue, performs an instant seek
-     * rather than rebuilding the entire ExoPlayer playlist pipeline.
-     */
     fun playSong(song: Song, queue: List<Song>, section: String, initialPositionMs: Long = 0L) {
         val isSameQueue = currentSectionName == section &&
                 playbackQueue.size == queue.size &&
@@ -996,7 +1010,6 @@ class MusicManager(private val context: Context) {
         val targetIndex = queue.indexOfFirst { it.id == song.id }.coerceAtLeast(0)
 
         if (isSameQueue && targetIndex in 0 until player.mediaItemCount) {
-            // Instant seamless transition without rebuilding ExoPlayer queue
             if (initialPositionMs > 0L) {
                 player.seekTo(targetIndex, initialPositionMs)
             } else {
@@ -1007,10 +1020,10 @@ class MusicManager(private val context: Context) {
             }
             recordSongPlayed(song)
             applyVolumeNormalization()
+            updateNotification()
             return
         }
 
-        // Full queue replacement only when entering a new list/playlist
         playbackQueue.clear()
         playbackQueue.addAll(queue)
 
@@ -1040,6 +1053,7 @@ class MusicManager(private val context: Context) {
                 player.play()
                 recordSongPlayed(song)
                 applyVolumeNormalization()
+                updateNotification()
             }
         }
     }
@@ -1096,6 +1110,7 @@ class MusicManager(private val context: Context) {
             if (isFadeOnStart) triggerFadeIn(1000L)
             player.play()
         }
+        updateNotification()
     }
 
     fun playNext() {
@@ -1104,6 +1119,7 @@ class MusicManager(private val context: Context) {
         } else if (repeatModeState == Player.REPEAT_MODE_ALL && playbackQueue.isNotEmpty()) {
             player.seekTo(0, 0L)
         }
+        updateNotification()
     }
 
     fun playPrevious() {
@@ -1112,6 +1128,7 @@ class MusicManager(private val context: Context) {
         } else {
             player.seekToPreviousMediaItem()
         }
+        updateNotification()
     }
 
     fun seekTo(positionMs: Long) {
@@ -1685,9 +1702,19 @@ class MusicManager(private val context: Context) {
         return inSampleSize
     }
 
+    /**
+     * Updates notification directly using Media3's MediaStyle.
+     * Routes directly to Android's native Lockscreen and Notification Quick Settings carousel.
+     */
     fun updateNotification() {
         val song = currentSong ?: return
+        val session = mediaSession ?: return
         val art = getCachedAlbumArt(song.id)
+
+        try {
+            val serviceIntent = Intent(context, MediaPlaybackService::class.java)
+            ContextCompat.startForegroundService(context, serviceIntent)
+        } catch (_: Exception) {}
 
         val launchIntent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
@@ -1697,32 +1724,37 @@ class MusicManager(private val context: Context) {
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
 
+        val prevIntent = PendingIntent.getService(
+            context, 1, Intent(context, MediaPlaybackService::class.java).apply { action = MediaPlaybackService.ACTION_PREV },
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+        val playPauseIntent = PendingIntent.getService(
+            context, 2, Intent(context, MediaPlaybackService::class.java).apply {
+                action = if (isPlaying) MediaPlaybackService.ACTION_PAUSE else MediaPlaybackService.ACTION_PLAY
+            },
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+        val nextIntent = PendingIntent.getService(
+            context, 3, Intent(context, MediaPlaybackService::class.java).apply { action = MediaPlaybackService.ACTION_NEXT },
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+
         val playPauseIcon = if (isPlaying) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play
         val playPauseTitle = if (isPlaying) "Pause" else "Play"
 
-        val prevIntent = PendingIntent.getBroadcast(
-            context, 1, Intent("ACTION_PREV"),
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
-        )
-        val playPauseIntent = PendingIntent.getBroadcast(
-            context, 2, Intent(if (isPlaying) "ACTION_PAUSE" else "ACTION_PLAY"),
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
-        )
-        val nextIntent = PendingIntent.getBroadcast(
-            context, 3, Intent("ACTION_NEXT"),
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
-        )
+        val mediaStyle = MediaStyleNotificationHelper.MediaStyle(session)
+            .setShowActionsInCompactView(0, 1, 2)
 
         val builder = NotificationCompat.Builder(context, MediaPlaybackService.NOTIF_CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_media_play)
             .setContentTitle(song.title)
-            .setContentText("${formatFileSize(song.size)} • ${if (song.artist.isNotBlank()) song.artist else "Melovish"}")
+            .setContentText(if (song.artist.isNotBlank()) song.artist else "Unknown Artist")
+            .setSubText(song.album)
             .setContentIntent(contentPendingIntent)
-            .setColor(accentColor.toArgb())
-            .setColorized(true)
-            .setOngoing(isPlaying)
+            .setStyle(mediaStyle)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setOngoing(isPlaying)
             .addAction(android.R.drawable.ic_media_previous, "Previous", prevIntent)
             .addAction(playPauseIcon, playPauseTitle, playPauseIntent)
             .addAction(android.R.drawable.ic_media_next, "Next", nextIntent)

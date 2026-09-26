@@ -6,128 +6,140 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.graphics.Bitmap
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
+import androidx.media3.session.MediaStyleNotificationHelper
 
 @UnstableApi
 class MediaPlaybackService : MediaSessionService() {
 
     companion object {
-        const val NOTIF_CHANNEL_ID = "melovish_playback_channel"
+        const val NOTIF_CHANNEL_ID = "melovish_playback_channel_v2"
         const val NOTIF_ID = 1001
-
-        /**
-         * Safe startup hook handling API-level branching and Android 12+ foreground start rules.
-         */
-        fun start(context: Context) {
-            val intent = Intent(context, MediaPlaybackService::class.java)
-            try {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    context.startForegroundService(intent)
-                } else {
-                    context.startService(intent)
-                }
-            } catch (e: Exception) {
-                // Intercepts ForegroundServiceStartNotAllowedException on Android 12+
-                e.printStackTrace()
-            }
-        }
+        const val ACTION_PLAY = "com.melovish.player.ACTION_PLAY"
+        const val ACTION_PAUSE = "com.melovish.player.ACTION_PAUSE"
+        const val ACTION_NEXT = "com.melovish.player.ACTION_NEXT"
+        const val ACTION_PREV = "com.melovish.player.ACTION_PREV"
     }
+
+    private var musicManager: MusicManager? = null
 
     override fun onCreate() {
         super.onCreate()
         createNotificationChannel()
-        startInitialForeground()
+    }
+
+    override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? {
+        if (musicManager == null) {
+            musicManager = MusicManager.activeInstance ?: MusicManager(applicationContext)
+        }
+        return musicManager?.mediaSession
+    }
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        val manager = musicManager ?: MusicManager.activeInstance ?: MusicManager(applicationContext).also {
+            musicManager = it
+        }
+
+        when (intent?.action) {
+            ACTION_PLAY -> manager.togglePlayPause()
+            ACTION_PAUSE -> manager.togglePlayPause()
+            ACTION_NEXT -> manager.playNext()
+            ACTION_PREV -> manager.playPrevious()
+        }
+
+        startForegroundNotification(manager)
+        return super.onStartCommand(intent, flags, startId)
+    }
+
+    fun startForegroundNotification(manager: MusicManager) {
+        val song = manager.currentSong ?: return
+        val session = manager.mediaSession ?: return
+        val art = manager.getCachedAlbumArt(song.id)
+
+        val launchIntent = Intent(this, MainActivity::class.java).apply {
+            this.flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
+        val contentPendingIntent = PendingIntent.getActivity(
+            this, 0, launchIntent,
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+
+        val prevIntent = PendingIntent.getService(
+            this, 1, Intent(this, MediaPlaybackService::class.java).apply { action = ACTION_PREV },
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+        val playPauseIntent = PendingIntent.getService(
+            this, 2, Intent(this, MediaPlaybackService::class.java).apply {
+                action = if (manager.isPlaying) ACTION_PAUSE else ACTION_PLAY
+            },
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+        val nextIntent = PendingIntent.getService(
+            this, 3, Intent(this, MediaPlaybackService::class.java).apply { action = ACTION_NEXT },
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+
+        val playPauseIcon = if (manager.isPlaying) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play
+        val playPauseTitle = if (manager.isPlaying) "Pause" else "Play"
+
+        // Media3 MediaStyle for Native Android Quick Settings & Lockscreen Carousel
+        val mediaStyle = MediaStyleNotificationHelper.MediaStyle(session)
+            .setShowActionsInCompactView(0, 1, 2)
+
+        val builder = NotificationCompat.Builder(this, NOTIF_CHANNEL_ID)
+            .setSmallIcon(android.R.drawable.ic_media_play)
+            .setContentTitle(song.title)
+            .setContentText(if (song.artist.isNotBlank()) song.artist else "Unknown Artist")
+            .setSubText(song.album)
+            .setContentIntent(contentPendingIntent)
+            .setStyle(mediaStyle)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setOngoing(manager.isPlaying)
+            .addAction(android.R.drawable.ic_media_previous, "Previous", prevIntent)
+            .addAction(playPauseIcon, playPauseTitle, playPauseIntent)
+            .addAction(android.R.drawable.ic_media_next, "Next", nextIntent)
+
+        if (art != null) {
+            builder.setLargeIcon(art)
+        }
+
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                startForeground(NOTIF_ID, builder.build(), ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK)
+            } else {
+                startForeground(NOTIF_ID, builder.build())
+            }
+        } catch (e: Exception) {
+            val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            notificationManager.notify(NOTIF_ID, builder.build())
+        }
     }
 
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
                 NOTIF_CHANNEL_ID,
-                "Melovish Playback Controls",
+                "Playback Controls",
                 NotificationManager.IMPORTANCE_LOW
             ).apply {
-                description = "Active playback controls and media notification pipeline"
+                description = "Music playback controls and lockscreen carousel"
                 setShowBadge(false)
                 lockscreenVisibility = NotificationCompat.VISIBILITY_PUBLIC
             }
-            val notificationManager = getSystemService(NotificationManager::class.java)
-            notificationManager?.createNotificationChannel(channel)
-        }
-    }
-
-    /**
-     * Phase 3 Invariant: Immediate Foreground Promotion.
-     * Prevents Android 14+ ForegroundServiceDidNotStartInTimeException ANRs/crashes
-     * by calling startForeground within the OS-mandated window during service initialization.
-     */
-    private fun startInitialForeground() {
-        val launchIntent = Intent(this, MainActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
-        }
-        val pendingIntent = PendingIntent.getActivity(
-            this,
-            0,
-            launchIntent,
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
-        )
-
-        val notification = NotificationCompat.Builder(this, NOTIF_CHANNEL_ID)
-            .setContentTitle("Melovish")
-            .setContentText("Audio service ready")
-            .setSmallIcon(android.R.drawable.ic_media_play)
-            .setContentIntent(pendingIntent)
-            .setOngoing(false)
-            .setPriority(NotificationCompat.PRIORITY_LOW)
-            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-            .build()
-
-        try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                startForeground(
-                    NOTIF_ID,
-                    notification,
-                    ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
-                )
-            } else {
-                startForeground(NOTIF_ID, notification)
-            }
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
-    }
-
-    /**
-     * Bridges Android media routing, Lockscreen UI, Wear OS, and Bluetooth accessories
-     * directly to the active MusicManager's ExoPlayer session.
-     */
-    override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? {
-        return MusicManager.activeInstance?.mediaSession
-    }
-
-    /**
-     * Phase 3 Invariant: Task-Kill Resilience.
-     * When the user swipes Melovish from Recent Apps, verify playback state.
-     * If playing or preparing, retain foreground execution to prevent playback interruption.
-     */
-    override fun onTaskRemoved(rootIntent: Intent?) {
-        super.onTaskRemoved(rootIntent)
-        val player = MusicManager.activeInstance?.player
-        if (player == null || 
-            !player.playWhenReady || 
-            player.playbackState == Player.STATE_ENDED || 
-            player.playbackState == Player.STATE_IDLE
-        ) {
-            stopForeground(STOP_FOREGROUND_REMOVE)
-            stopSelf()
+            val manager = getSystemService(NotificationManager::class.java)
+            manager.createNotificationChannel(channel)
         }
     }
 
     override fun onDestroy() {
         super.onDestroy()
+        stopForeground(STOP_FOREGROUND_REMOVE)
     }
 }
