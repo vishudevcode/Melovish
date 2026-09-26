@@ -299,11 +299,11 @@ fun FolderColorDialog(
                                 .size(38.dp)
                                 .clip(CircleShape)
                                 .background(Brush.sweepGradient(listOf(Color.Red, Color.Yellow, Color.Green, Color.Cyan, Color.Blue, Color.Magenta, Color.Red)))
-                            .border(2.dp, Color.White, CircleShape)
-                            .clickable {
-                                onDismiss()
-                                onOpenRainbowPicker()
-                            },
+                                .border(2.dp, Color.White, CircleShape)
+                                .clickable {
+                                    onDismiss()
+                                    onOpenRainbowPicker()
+                                },
                             contentAlignment = Alignment.Center
                         ) {
                             Box(modifier = Modifier.size(12.dp).clip(CircleShape).background(Color.White))
@@ -1489,6 +1489,7 @@ fun TagEditorDialog(manager: MusicManager, song: Song, onDismiss: () -> Unit) {
     var selectedCoverUri by remember { mutableStateOf<Uri?>(null) }
     val photoPickerLauncher = rememberLauncherForActivityResult(contract = ActivityResultContracts.GetContent()) { uri -> if (uri != null) selectedCoverUri = uri }
     val isDark = manager.isDarkMode
+    val accent = manager.accentColor
 
     Box(
         modifier = Modifier
@@ -1504,7 +1505,7 @@ fun TagEditorDialog(manager: MusicManager, song: Song, onDismiss: () -> Unit) {
             Column(modifier = Modifier.fillMaxWidth()) {
                 Text("Edit Audio Tags", color = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A), fontSize = 18.sp, fontWeight = FontWeight.Bold)
                 Spacer(modifier = Modifier.height(14.dp))
-                Button(onClick = { photoPickerLauncher.launch("image/*") }, colors = ButtonDefaults.buttonColors(containerColor = manager.accentColor), shape = RoundedCornerShape(10.dp)) {
+                Button(onClick = { photoPickerLauncher.launch("image/*") }, colors = ButtonDefaults.buttonColors(containerColor = accent), shape = RoundedCornerShape(10.dp)) {
                     Text(if (selectedCoverUri != null) "Artwork Picked ✓" else "Change Artwork", color = Color.White, fontSize = 12.sp)
                 }
                 Spacer(modifier = Modifier.height(12.dp))
@@ -1516,7 +1517,7 @@ fun TagEditorDialog(manager: MusicManager, song: Song, onDismiss: () -> Unit) {
                 Spacer(modifier = Modifier.height(8.dp))
                 OutlinedTextField(value = editDate, onValueChange = { editDate = it }, label = { Text("Date & Time / Year") }, modifier = Modifier.fillMaxWidth())
                 Spacer(modifier = Modifier.height(16.dp))
-                Button(onClick = { manager.updateSongMetadata(song, editTitle, editArtist, editAlbum, editDate, selectedCoverUri); onDismiss() }, modifier = Modifier.fillMaxWidth().height(48.dp), shape = RoundedCornerShape(12.dp), colors = ButtonDefaults.buttonColors(containerColor = manager.accentColor)) {
+                Button(onClick = { manager.updateSongMetadata(song, editTitle, editArtist, editAlbum, editDate, selectedCoverUri); onDismiss() }, modifier = Modifier.fillMaxWidth().height(48.dp), shape = RoundedCornerShape(12.dp), colors = ButtonDefaults.buttonColors(containerColor = accent)) {
                     Text("Save Changes", color = Color.White, fontWeight = FontWeight.Bold)
                 }
             }
@@ -1570,6 +1571,7 @@ fun MagneticSpeedDialog(manager: MusicManager, onDismiss: () -> Unit) {
     val haptic = LocalHapticFeedback.current
     var speed by remember { mutableFloatStateOf(manager.playbackSpeed) }
     val isDark = manager.isDarkMode
+    val accent = manager.accentColor
 
     Box(
         modifier = Modifier
@@ -1593,10 +1595,10 @@ fun MagneticSpeedDialog(manager: MusicManager, onDismiss: () -> Unit) {
                         speed = snapped
                     },
                     valueRange = 0.25f..3.0f,
-                    colors = SliderDefaults.colors(thumbColor = manager.accentColor, activeTrackColor = accentColor)
+                    colors = SliderDefaults.colors(thumbColor = accent, activeTrackColor = accent)
                 )
                 Spacer(modifier = Modifier.height(18.dp))
-                Button(onClick = { onDismiss() }, modifier = Modifier.fillMaxWidth().height(48.dp), shape = RoundedCornerShape(12.dp), colors = ButtonDefaults.buttonColors(containerColor = manager.accentColor)) {
+                Button(onClick = { onDismiss() }, modifier = Modifier.fillMaxWidth().height(48.dp), shape = RoundedCornerShape(12.dp), colors = ButtonDefaults.buttonColors(containerColor = accent)) {
                     Text("Done", color = Color.White, fontWeight = FontWeight.Bold)
                 }
             }
