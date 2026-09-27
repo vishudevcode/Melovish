@@ -7,7 +7,6 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
@@ -43,7 +42,6 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -74,7 +72,6 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
@@ -98,13 +95,11 @@ import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -113,13 +108,11 @@ import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.atan2
 import kotlin.math.cos
-import kotlin.math.roundToInt
 import kotlin.math.sin
 import kotlin.math.sqrt
 
@@ -665,7 +658,7 @@ fun ReorderDragHandle(tint: Color, modifier: Modifier = Modifier) {
     }
 }
 
-// Full Player Sheet: 120 FPS Pager with Instant Single-Step Track Switching & Interactive Physics Drag-Down
+// Full Player Sheet: 120 FPS Pager with Instant Single-Step Track Switching & Vertical Swipe-Up for Queue
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @UnstableApi
 @Composable
@@ -674,12 +667,6 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
     val isDark = manager.isDarkMode
     val userAccent = manager.accentColor
     val monoColor = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A)
-    val coroutineScope = rememberCoroutineScope()
-    val configuration = LocalConfiguration.current
-    val density = LocalDensity.current
-
-    val screenHeightPx = with(density) { configuration.screenHeightDp.dp.toPx() }
-    val playerOffsetY = remember { Animatable(0f) }
 
     val currentQueue = remember(manager.playbackQueue.size, manager.playbackQueue.toList()) {
         if (manager.playbackQueue.isNotEmpty()) manager.playbackQueue.toList()
@@ -796,39 +783,17 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .offset { IntOffset(0, playerOffsetY.value.roundToInt().coerceAtLeast(0)) }
             .background(Brush.verticalGradient(listOf(animBgTop, animBgBottom)))
             .statusBarsPadding()
-            // Interactive 1:1 Physics: Slides smoothly with finger downward to minimize, or upward to open Queue
+            // Gestures: Swipe down to minimize player; swipe up to open Queue
             .pointerInput(Unit) {
-                detectVerticalDragGestures(
-                    onDragStart = { },
-                    onVerticalDrag = { change, dragAmount ->
-                        change.consume()
-                        if (playerOffsetY.value > 0f || dragAmount > 0f) {
-                            coroutineScope.launch {
-                                playerOffsetY.snapTo((playerOffsetY.value + dragAmount).coerceAtLeast(0f))
-                            }
-                        } else if (dragAmount < -32f) {
-                            showQueueSheet = true
-                        }
-                    },
-                    onDragEnd = {
-                        coroutineScope.launch {
-                            if (playerOffsetY.value > screenHeightPx * 0.22f) {
-                                playerOffsetY.animateTo(screenHeightPx, tween(260))
-                                onDismiss()
-                            } else {
-                                playerOffsetY.animateTo(0f, spring(stiffness = 550f, dampingRatio = 0.82f))
-                            }
-                        }
-                    },
-                    onDragCancel = {
-                        coroutineScope.launch {
-                            playerOffsetY.animateTo(0f, spring(stiffness = 550f, dampingRatio = 0.82f))
-                        }
+                detectVerticalDragGestures { _, dragAmount ->
+                    if (dragAmount > 38f) {
+                        onDismiss()
+                    } else if (dragAmount < -38f) {
+                        showQueueSheet = true
                     }
-                )
+                }
             }
     ) {
         HorizontalPager(
@@ -869,7 +834,7 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                             }
                             PagerTransitionEffect.ROTATE -> {
                                 rotationY = (offset * 18f).coerceIn(-30f, 30f)
-                                cameraDistance = 14f * density.density
+                                cameraDistance = 14f * density
                                 alpha = (1f - (abs(offset) * 0.3f)).coerceIn(0.7f, 1f)
                             }
                             PagerTransitionEffect.TUMBLE -> {
@@ -1228,7 +1193,7 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
     }
 }
 
-// Queue Sheet: Interactive Real-Time Sticky Physics Drag, Auto-Scroll, & Fling-Protected Dismiss
+// Queue Sheet: Continuous Multi-Item Drag & Drop, Edge Auto-Scroll, & Full Screen Swipe-Down to Dismiss
 @OptIn(ExperimentalFoundationApi::class)
 @UnstableApi
 @Composable
@@ -1244,52 +1209,41 @@ fun QueueSheet(
     onDismiss: () -> Unit
 ) {
     val density = LocalDensity.current
-    val configuration = LocalConfiguration.current
-    val coroutineScope = rememberCoroutineScope()
     val listState = rememberLazyListState()
 
-    val screenHeightPx = with(density) { configuration.screenHeightDp.dp.toPx() }
     val itemHeightPx = with(density) { 72.dp.toPx() }
     val edgeScrollThresholdPx = with(density) { 96.dp.toPx() }
-
-    val sheetOffsetY = remember { Animatable(0f) }
 
     var draggingSongId by remember { mutableStateOf<Long?>(null) }
     var draggingIndex by remember { mutableStateOf<Int?>(null) }
     var draggingOffsetPx by remember { mutableFloatStateOf(0f) }
 
+    // Intercept downward drag gestures across the entire screen (including over songs) when at the top of the queue
     val nestedScrollConnection = remember {
         object : NestedScrollConnection {
             override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
-                if (sheetOffsetY.value > 0f && draggingSongId == null) {
-                    val newOffset = (sheetOffsetY.value + available.y).coerceAtLeast(0f)
-                    coroutineScope.launch { sheetOffsetY.snapTo(newOffset) }
-                    return Offset(0f, available.y)
+                if (available.y > 0 && listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset == 0 && draggingSongId == null) {
+                    if (available.y > 20f) {
+                        onDismiss()
+                        return available
+                    }
                 }
                 return Offset.Zero
             }
 
             override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
-                if (source == NestedScrollSource.Drag && available.y > 0f && listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset == 0 && draggingSongId == null) {
-                    val newOffset = (sheetOffsetY.value + available.y).coerceAtLeast(0f)
-                    coroutineScope.launch { sheetOffsetY.snapTo(newOffset) }
-                    return Offset(0f, available.y)
+                // If scrolling down reached the very top of the list and user keeps dragging down anywhere on cards
+                if (available.y > 15f && draggingSongId == null) {
+                    onDismiss()
+                    return available
                 }
                 return Offset.Zero
             }
 
             override suspend fun onPreFling(available: Velocity): Velocity {
-                return Velocity.Zero
-            }
-
-            override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity {
-                if (sheetOffsetY.value > 0f) {
-                    if (available.y > 450f || sheetOffsetY.value > screenHeightPx * 0.22f) {
-                        sheetOffsetY.animateTo(screenHeightPx, tween(260))
-                        onDismiss()
-                    } else {
-                        sheetOffsetY.animateTo(0f, spring(stiffness = 550f, dampingRatio = 0.82f))
-                    }
+                if (available.y > 350f && listState.firstVisibleItemIndex == 0 && draggingSongId == null) {
+                    onDismiss()
+                    return available
                 }
                 return Velocity.Zero
             }
@@ -1331,41 +1285,21 @@ fun QueueSheet(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .offset { IntOffset(0, sheetOffsetY.value.roundToInt().coerceAtLeast(0)) }
             .background(Brush.verticalGradient(listOf(bgTop, bgBottom)))
             .statusBarsPadding()
             .nestedScroll(nestedScrollConnection)
             .pointerInput(Unit) {
-                detectVerticalDragGestures(
-                    onDragStart = { },
-                    onVerticalDrag = { change, dragAmount ->
-                        if (draggingSongId == null) {
-                            change.consume()
-                            val target = (sheetOffsetY.value + dragAmount).coerceAtLeast(0f)
-                            coroutineScope.launch { sheetOffsetY.snapTo(target) }
-                        }
-                    },
-                    onDragEnd = {
-                        coroutineScope.launch {
-                            if (sheetOffsetY.value > screenHeightPx * 0.22f) {
-                                sheetOffsetY.animateTo(screenHeightPx, tween(260))
-                                onDismiss()
-                            } else {
-                                sheetOffsetY.animateTo(0f, spring(stiffness = 550f, dampingRatio = 0.82f))
-                            }
-                        }
-                    },
-                    onDragCancel = {
-                        coroutineScope.launch {
-                            sheetOffsetY.animateTo(0f, spring(stiffness = 550f, dampingRatio = 0.82f))
-                        }
+                detectVerticalDragGestures { _, dragAmount ->
+                    if (dragAmount > 26f && draggingSongId == null) {
+                        onDismiss()
                     }
-                )
+                }
             }
             .padding(horizontal = 16.dp)
             .padding(top = 8.dp, bottom = 14.dp)
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
+            // Header Bar
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -1400,6 +1334,7 @@ fun QueueSheet(
                 }
             }
 
+            // Continuous Draggable List with Smooth Item Reordering
             LazyColumn(
                 state = listState,
                 modifier = Modifier.weight(1f),
@@ -1490,6 +1425,7 @@ fun QueueSheet(
 
                         Spacer(modifier = Modifier.width(12.dp))
 
+                        // Large Bolder Touch Handle with Continuous Fast Multi-Item Drag
                         Box(
                             modifier = Modifier
                                 .size(48.dp)
@@ -1547,6 +1483,7 @@ fun QueueSheet(
 
             Spacer(modifier = Modifier.height(12.dp))
 
+            // Bottom Full-Width Close Button
             Button(
                 onClick = onDismiss,
                 modifier = Modifier
@@ -1593,6 +1530,7 @@ fun EqualizerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                 .padding(22.dp)
         ) {
             Column(modifier = Modifier.fillMaxSize()) {
+                // Header with Preset and Save Button
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -1617,6 +1555,7 @@ fun EqualizerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                     modifier = Modifier.weight(1f),
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
+                    // Sound Presets Row
                     item {
                         Text("Sound Presets", color = textColor, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                         Spacer(modifier = Modifier.height(8.dp))
@@ -1641,6 +1580,7 @@ fun EqualizerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                         }
                     }
 
+                    // Multi-band Graphic EQ with Vertical Fader Lines
                     item {
                         Text("Frequency Response (-15dB to +15dB)", color = textColor, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                         Spacer(modifier = Modifier.height(10.dp))
@@ -1681,6 +1621,7 @@ fun EqualizerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                         }
                     }
 
+                    // Bass Boost & Virtualizer
                     item {
                         Column(
                             modifier = Modifier
@@ -1709,6 +1650,7 @@ fun EqualizerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                         }
                     }
 
+                    // Remove Vocals & Stop Bass Controls
                     item {
                         Column(
                             modifier = Modifier
@@ -1751,6 +1693,7 @@ fun EqualizerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                     }
                 }
 
+                // Bottom Close Button
                 Spacer(modifier = Modifier.height(12.dp))
                 Button(
                     onClick = onDismiss,
@@ -1904,7 +1847,7 @@ fun MiniPlayerDock(manager: MusicManager, onClick: () -> Unit) {
             .border(1.dp, if (isDark) Color(0x33FFFFFF) else Color(0x22000000), RoundedCornerShape(22.dp))
             .pointerInput(Unit) {
                 detectVerticalDragGestures { _, dragAmount ->
-                    if (dragAmount < -18f) {
+                    if (dragAmount < -24f) {
                         onClick()
                     }
                 }
@@ -2378,3 +2321,4 @@ fun ShuffleControlIcon(isShuffleOn: Boolean, tint: Color, modifier: Modifier = M
         }
     )
 }
+

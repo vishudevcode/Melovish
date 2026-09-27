@@ -15,12 +15,10 @@ import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
@@ -30,7 +28,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
@@ -44,7 +41,6 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -91,19 +87,15 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.toArgb
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.zIndex
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.media3.common.util.UnstableApi
@@ -114,9 +106,13 @@ import kotlinx.coroutines.launch
 import java.io.File
 import java.util.Locale
 import kotlin.math.cos
-import kotlin.math.roundToInt
 import kotlin.math.sin
 
+/**
+ * Phase 3 Invariant: Android Architecture Component ViewModel.
+ * Retains the MusicManager instance across all Activity recreation events (screen rotations,
+ * foldable unfolding/folding, split-screen multi-window resizing, and system dark mode toggles).
+ */
 @UnstableApi
 class MusicViewModel(application: Application) : AndroidViewModel(application) {
     val manager: MusicManager = MusicManager.activeInstance ?: MusicManager(application.applicationContext)
@@ -138,7 +134,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
+        
         try {
             val serviceIntent = Intent(this, MediaPlaybackService::class.java)
             ContextCompat.startForegroundService(this, serviceIntent)
@@ -174,6 +170,11 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    /**
+     * Phase 3 Invariant: LMK (Low Memory Killer) Defensive Interceptor.
+     * Hooks directly into Android runtime memory trim callbacks. When OS signals memory pressure,
+     * non-essential cached bitmaps are evicted immediately to protect the process from termination.
+     */
     override fun onTrimMemory(level: Int) {
         super.onTrimMemory(level)
         if (level >= ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW) {
@@ -188,12 +189,6 @@ class MainActivity : ComponentActivity() {
 fun MelovishRootApp(manager: MusicManager) {
     val context = LocalContext.current
     val systemDark = isSystemInDarkTheme()
-    val configuration = LocalConfiguration.current
-    val density = LocalDensity.current
-    val coroutineScope = rememberCoroutineScope()
-
-    val screenHeightPx = with(density) { configuration.screenHeightDp.dp.toPx() }
-    val playerOffsetY = remember { Animatable(screenHeightPx) }
 
     val isDark = when (manager.themeMode) {
         "Light" -> false
@@ -241,24 +236,12 @@ fun MelovishRootApp(manager: MusicManager) {
     val libraryListState = rememberLazyListState()
     val artistsListState = rememberLazyListState()
     val searchListState = rememberLazyListState()
-
-    LaunchedEffect(isPlayerExpanded) {
-        if (isPlayerExpanded) {
-            playerOffsetY.animateTo(0f, spring(stiffness = 550f, dampingRatio = 0.82f))
-        } else {
-            playerOffsetY.animateTo(screenHeightPx, spring(stiffness = 550f, dampingRatio = 0.82f))
-        }
-    }
+    val coroutineScope = rememberCoroutineScope()
 
     BackHandler(enabled = isSettingsEqOpen || isPlayerExpanded || selectedArtist != null || selectedAlbum != null || selectedPlaylist != null || selectedFolder != null || activeScreen != "home") {
         when {
             isSettingsEqOpen -> isSettingsEqOpen = false
-            isPlayerExpanded -> {
-                coroutineScope.launch {
-                    playerOffsetY.animateTo(screenHeightPx, tween(260))
-                    isPlayerExpanded = false
-                }
-            }
+            isPlayerExpanded -> isPlayerExpanded = false
             selectedArtist != null -> selectedArtist = null
             selectedAlbum != null -> selectedAlbum = null
             selectedPlaylist != null -> selectedPlaylist = null
@@ -353,43 +336,8 @@ fun MelovishRootApp(manager: MusicManager) {
                     }
                 }
 
-                // Mini Player with 1:1 Interactive Finger-Tracking Drag to Expand
                 if (manager.currentSong != null && !isPlayerExpanded) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .pointerInput(Unit) {
-                                detectVerticalDragGestures(
-                                    onDragStart = { },
-                                    onVerticalDrag = { change, dragAmount ->
-                                        change.consume()
-                                        if (dragAmount < 0f || playerOffsetY.value < screenHeightPx) {
-                                            coroutineScope.launch {
-                                                val target = (playerOffsetY.value + dragAmount).coerceIn(0f, screenHeightPx)
-                                                playerOffsetY.snapTo(target)
-                                            }
-                                        }
-                                    },
-                                    onDragEnd = {
-                                        coroutineScope.launch {
-                                            if (playerOffsetY.value < screenHeightPx * 0.75f) {
-                                                isPlayerExpanded = true
-                                                playerOffsetY.animateTo(0f, spring(stiffness = 550f, dampingRatio = 0.82f))
-                                            } else {
-                                                playerOffsetY.animateTo(screenHeightPx, spring(stiffness = 550f, dampingRatio = 0.82f))
-                                            }
-                                        }
-                                    },
-                                    onDragCancel = {
-                                        coroutineScope.launch {
-                                            playerOffsetY.animateTo(screenHeightPx, spring(stiffness = 550f, dampingRatio = 0.82f))
-                                        }
-                                    }
-                                )
-                            }
-                    ) {
-                        MiniPlayerDock(manager = manager, onClick = { isPlayerExpanded = true })
-                    }
+                    MiniPlayerDock(manager = manager, onClick = { isPlayerExpanded = true })
                 }
 
                 if (activeScreen in listOf("home", "library", "artists", "search") && selectedFolder == null && selectedPlaylist == null && selectedArtist == null && selectedAlbum == null) {
@@ -414,24 +362,12 @@ fun MelovishRootApp(manager: MusicManager) {
                 }
             }
 
-            // Full Player Container with Real-Time Sticky Offset Tracking
-            if (isPlayerExpanded || playerOffsetY.value < screenHeightPx) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .zIndex(15f)
-                        .offset { IntOffset(0, playerOffsetY.value.roundToInt().coerceAtLeast(0)) }
-                ) {
-                    FullPlayerSheet(
-                        manager = manager,
-                        onDismiss = {
-                            coroutineScope.launch {
-                                playerOffsetY.animateTo(screenHeightPx, tween(260))
-                                isPlayerExpanded = false
-                            }
-                        }
-                    )
-                }
+            AnimatedVisibility(
+                visible = isPlayerExpanded,
+                enter = slideInVertically(initialOffsetY = { it }),
+                exit = slideOutVertically(targetOffsetY = { it })
+            ) {
+                FullPlayerSheet(manager = manager, onDismiss = { isPlayerExpanded = false })
             }
 
             if (isSettingsEqOpen) {
@@ -1788,3 +1724,4 @@ fun BottomNavBar(manager: MusicManager, activeTab: String, onTabSelected: (Strin
         }
     }
 }
+
