@@ -515,7 +515,7 @@ fun SettingsScreen(
             }
         }
 
-        // 5. Content Manager Section (Matching Photo Exact Look)
+        // 5. Content Manager Section
         item(key = "content_manager_section", contentType = "content_manager_card") {
             Column(
                 modifier = Modifier
@@ -612,7 +612,7 @@ fun SettingSwitchRow(
     }
 }
 
-// Full Screen Manage Folders with Top "Hidden Folders (count) - Tap to Restore" and Bottom "Visible Folders (count) - Tap to Exclude"
+// Full Screen Manage Folders with matching GlassmorphicFolderIcon and row heights
 @UnstableApi
 @Composable
 fun ManageHiddenFoldersFullScreen(
@@ -660,26 +660,27 @@ fun ManageHiddenFoldersFullScreen(
                 }
 
                 items(items = hiddenList, key = { "hidden_$it" }) { folder ->
+                    val fColor = manager.getFolderColor(folder)
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clip(RoundedCornerShape(16.dp))
+                            .clip(RoundedCornerShape(18.dp))
                             .background(if (isDark) Color(0x1AE53935) else Color.White)
-                            .border(1.2.dp, Color(0x66E53935), RoundedCornerShape(16.dp))
+                            .border(1.2.dp, Color(0x66E53935), RoundedCornerShape(18.dp))
                             .clickable { manager.toggleHideFolder(folder) }
-                            .padding(horizontal = 16.dp, vertical = 14.dp),
+                            .padding(horizontal = 16.dp, vertical = 16.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
-                            Text("📁", fontSize = 24.sp)
+                            GlassmorphicFolderIcon(folderColor = fColor, modifier = Modifier.size(42.dp))
                             Spacer(modifier = Modifier.width(14.dp))
                             Column {
-                                Text(folder, color = textColor, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-                                Text("Excluded • Tap to unhide", color = Color(0xFFE57373), fontSize = 11.sp)
+                                Text(folder, color = textColor, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                                Text("Excluded • Tap to unhide", color = Color(0xFFE57373), fontSize = 12.sp)
                             }
                         }
-                        Text("👁️", fontSize = 16.sp)
+                        Text("👁️", fontSize = 18.sp)
                     }
                 }
             }
@@ -696,33 +697,34 @@ fun ManageHiddenFoldersFullScreen(
             }
 
             items(items = visibleList, key = { "visible_$it" }) { folder ->
+                val fColor = manager.getFolderColor(folder)
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(16.dp))
+                        .clip(RoundedCornerShape(18.dp))
                         .background(cardBg)
-                        .border(1.dp, if (isDark) Color(0x22FFFFFF) else Color(0xFFECEFF3), RoundedCornerShape(16.dp))
+                        .border(1.dp, if (isDark) Color(0x22FFFFFF) else Color(0xFFECEFF3), RoundedCornerShape(18.dp))
                         .clickable { manager.toggleHideFolder(folder) }
-                        .padding(horizontal = 16.dp, vertical = 14.dp),
+                        .padding(horizontal = 16.dp, vertical = 16.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
-                        Text("📁", fontSize = 24.sp)
+                        GlassmorphicFolderIcon(folderColor = fColor, modifier = Modifier.size(42.dp))
                         Spacer(modifier = Modifier.width(14.dp))
                         Column {
-                            Text(folder, color = textColor, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-                            Text("Active • Tap to hide", color = Color(0xFF64748B), fontSize = 11.sp)
+                            Text(folder, color = textColor, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                            Text("Active • Tap to hide", color = Color(0xFF64748B), fontSize = 12.sp)
                         }
                     }
-                    Text("✓", color = Color(0xFFE91E63), fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    Text("✓", color = Color(0xFFE91E63), fontSize = 18.sp, fontWeight = FontWeight.Bold)
                 }
             }
         }
     }
 }
 
-// Full Screen Manage Audio Files with Top Search Bar, Hidden Audio at Top, and Visible Audio Below
+// Full Screen Manage Audio Files with matching card aesthetics
 @UnstableApi
 @Composable
 fun ManageHiddenAudioFullScreen(
@@ -799,9 +801,9 @@ fun ManageHiddenAudioFullScreen(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clip(RoundedCornerShape(16.dp))
+                            .clip(RoundedCornerShape(18.dp))
                             .background(if (isDark) Color(0x1AE53935) else Color.White)
-                            .border(1.2.dp, Color(0x66E53935), RoundedCornerShape(16.dp))
+                            .border(1.2.dp, Color(0x66E53935), RoundedCornerShape(18.dp))
                             .clickable { manager.toggleHideAudio(song.id) }
                             .padding(horizontal = 16.dp, vertical = 14.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
@@ -811,11 +813,11 @@ fun ManageHiddenAudioFullScreen(
                             Text("🎵", fontSize = 22.sp)
                             Spacer(modifier = Modifier.width(14.dp))
                             Column {
-                                Text(song.title, color = textColor, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                Text("${formatFileSize(song.size)} • ${if (song.artist.isNotBlank()) song.artist else "Unknown"} • Hidden", color = Color(0xFFE57373), fontSize = 11.sp, maxLines = 1)
+                                Text(song.title, color = textColor, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text("${formatFileSize(song.size)} • ${if (song.artist.isNotBlank()) song.artist else "Unknown"} • Hidden", color = Color(0xFFE57373), fontSize = 12.sp, maxLines = 1)
                             }
                         }
-                        Text("👁️", fontSize = 16.sp)
+                        Text("👁️", fontSize = 18.sp)
                     }
                 }
             }
@@ -835,9 +837,9 @@ fun ManageHiddenAudioFullScreen(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(16.dp))
+                        .clip(RoundedCornerShape(18.dp))
                         .background(cardBg)
-                        .border(1.dp, if (isDark) Color(0x22FFFFFF) else Color(0xFFECEFF3), RoundedCornerShape(16.dp))
+                        .border(1.dp, if (isDark) Color(0x22FFFFFF) else Color(0xFFECEFF3), RoundedCornerShape(18.dp))
                         .clickable { manager.toggleHideAudio(song.id) }
                         .padding(horizontal = 16.dp, vertical = 14.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -847,11 +849,11 @@ fun ManageHiddenAudioFullScreen(
                         Text("🎵", fontSize = 22.sp)
                         Spacer(modifier = Modifier.width(14.dp))
                         Column {
-                            Text(song.title, color = textColor, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            Text("${formatFileSize(song.size)} • ${if (song.artist.isNotBlank()) song.artist else "Unknown"}", color = Color(0xFF64748B), fontSize = 11.sp, maxLines = 1)
+                            Text(song.title, color = textColor, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text("${formatFileSize(song.size)} • ${if (song.artist.isNotBlank()) song.artist else "Unknown"}", color = Color(0xFF64748B), fontSize = 12.sp, maxLines = 1)
                         }
                     }
-                    Text("✓", color = Color(0xFFE91E63), fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    Text("✓", color = Color(0xFFE91E63), fontSize = 18.sp, fontWeight = FontWeight.Bold)
                 }
             }
         }
