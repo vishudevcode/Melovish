@@ -117,11 +117,6 @@ import kotlin.math.cos
 import kotlin.math.roundToInt
 import kotlin.math.sin
 
-/**
- * Phase 3 Invariant: Android Architecture Component ViewModel.
- * Retains the MusicManager instance across all Activity recreation events (screen rotations,
- * foldable unfolding/folding, split-screen multi-window resizing, and system dark mode toggles).
- */
 @UnstableApi
 class MusicViewModel(application: Application) : AndroidViewModel(application) {
     val manager: MusicManager = MusicManager.activeInstance ?: MusicManager(application.applicationContext)
@@ -179,11 +174,6 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    /**
-     * Phase 3 Invariant: LMK (Low Memory Killer) Defensive Interceptor.
-     * Hooks directly into Android runtime memory trim callbacks. When OS signals memory pressure,
-     * non-essential cached bitmaps are evicted immediately to protect the process from termination.
-     */
     override fun onTrimMemory(level: Int) {
         super.onTrimMemory(level)
         if (level >= ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW) {
@@ -371,7 +361,7 @@ fun MelovishRootApp(manager: MusicManager) {
                             .pointerInput(Unit) {
                                 detectVerticalDragGestures(
                                     onDragStart = { },
-                                    onDrag = { change, dragAmount ->
+                                    onVerticalDrag = { change, dragAmount ->
                                         change.consume()
                                         if (dragAmount < 0f || playerOffsetY.value < screenHeightPx) {
                                             coroutineScope.launch {
@@ -552,7 +542,6 @@ fun RecentlyPlayedCard(song: Song, manager: MusicManager, onClick: () -> Unit) {
     }
 }
 
-// Zero-Allocation Rotating Vector Matrix via drawWithCache
 @Composable
 fun LiveMechanicalGearIcon(isDark: Boolean, modifier: Modifier = Modifier) {
     val infiniteTransition = rememberInfiniteTransition(label = "gearRotation")
