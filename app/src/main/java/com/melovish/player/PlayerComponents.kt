@@ -184,7 +184,7 @@ fun GlassBackButton(isDark: Boolean, onClick: () -> Unit, modifier: Modifier = M
     }
 }
 
-// Moon Clock Sleep Timer Icon (Exact Match with Image 2)
+// Moon Clock Sleep Timer Icon (Exact Match with Sharp Cusps & Balanced Hands)
 @Composable
 fun MoonClockSleepIcon(tint: Color, modifier: Modifier = Modifier) {
     Spacer(
@@ -194,72 +194,88 @@ fun MoonClockSleepIcon(tint: Color, modifier: Modifier = Modifier) {
             val strokeW = 1.9f.dp.toPx()
             val strokeStyle = Stroke(width = strokeW, cap = StrokeCap.Round, join = StrokeJoin.Round)
 
-            // Center of the clock face and coordinate anchors
             val clockCenter = Offset(w * 0.50f, h * 0.50f)
 
-            // Exact crescent moon geometry matching Image 2 using clean circular arcs
-            val moonPath = Path().apply {
-                // Outer circle bounding rectangle
-                val outerRadius = w * 0.43f
-                val outerRect = Rect(
-                    clockCenter.x - outerRadius,
-                    clockCenter.y - outerRadius,
-                    clockCenter.x + outerRadius,
-                    clockCenter.y + outerRadius
-                )
-                // Inner circle bounding rectangle (shifted down-right to carve thin, needle-sharp cusps)
-                val innerRadius = w * 0.38f
-                val innerOffset = Offset(w * 0.58f, h * 0.42f)
-                val innerRect = Rect(
-                    innerOffset.x - innerRadius,
-                    innerOffset.y - innerRadius,
-                    innerOffset.x + innerRadius,
-                    innerOffset.y + innerRadius
-                )
+            // Outer circle definition
+            val rOuter = w * 0.42f
+            val cOuter = clockCenter
 
-                // Start from top-left cusp (~238 degrees) down around the outer rim to bottom-right cusp (~52 degrees)
-                arcTo(outerRect, 238f, -186f, false)
-                // Curve back inward using the inner circle arc to finish the sharp crescent shape
-                arcTo(innerRect, 52f, 186f, false)
+            // Inner circle definition (shifted right-upward)
+            val rInner = w * 0.36f
+            val cInner = Offset(w * 0.58f, h * 0.42f)
+
+            // Exact mathematical intersection of two circles
+            val d = (cInner - cOuter).getDistance()
+            val a = (rOuter * rOuter - rInner * rInner + d * d) / (2 * d)
+            val hVal = sqrt((rOuter * rOuter - a * a).coerceAtLeast(0f))
+
+            val p2 = Offset(
+                cOuter.x + a * (cInner.x - cOuter.x) / d,
+                cOuter.y + a * (cInner.y - cOuter.y) / d
+            )
+
+            val cuspTop = Offset(
+                p2.x + hVal * (cInner.y - cOuter.y) / d,
+                p2.y - hVal * (cInner.x - cOuter.x) / d
+            )
+            val cuspBottom = Offset(
+                p2.x - hVal * (cInner.y - cOuter.y) / d,
+                p2.y + hVal * (cInner.x - cOuter.x) / d
+            )
+
+            var startAngleOuter = Math.toDegrees(atan2((cuspTop.y - cOuter.y).toDouble(), (cuspTop.x - cOuter.x).toDouble())).toFloat()
+            var endAngleOuter = Math.toDegrees(atan2((cuspBottom.y - cOuter.y).toDouble(), (cuspBottom.x - cOuter.x).toDouble())).toFloat()
+            var sweepOuter = endAngleOuter - startAngleOuter
+            if (sweepOuter < 0) sweepOuter += 360f
+
+            var startAngleInner = Math.toDegrees(atan2((cuspBottom.y - cInner.y).toDouble(), (cuspBottom.x - cInner.x).toDouble())).toFloat()
+            var endAngleInner = Math.toDegrees(atan2((cuspTop.y - cInner.y).toDouble(), (cuspTop.x - cInner.x).toDouble())).toFloat()
+            var sweepInner = endAngleInner - startAngleInner
+            if (sweepInner < 0) sweepInner += 360f
+
+            val outerRect = Rect(cOuter.x - rOuter, cOuter.y - rOuter, cOuter.x + rOuter, cOuter.y + rOuter)
+            val innerRect = Rect(cInner.x - rInner, cInner.y - rInner, cInner.x + rInner, cInner.y + rInner)
+
+            val moonPath = Path().apply {
+                arcTo(outerRect, startAngleOuter, sweepOuter, false)
+                arcTo(innerRect, startAngleInner, sweepInner, false)
                 close()
             }
 
-            // Radial Clock Tick Lines at 12, 1, 2, and 3 o'clock
+            // Radial Clock Hour Ticks at 12, 1, 2, and 3 o'clock
             val tickAngles = floatArrayOf(-90f, -60f, -30f, 0f)
-            val tickInnerRadius = w * 0.34f
+            val tickInnerRadius = w * 0.35f
             val tickOuterRadius = w * 0.44f
 
-            // Clock hands meeting cleanly at the center vertex without any ring
-            val minHandLength = w * 0.28f
-            val hourHandLength = w * 0.19f
-            val hourAngleRad = Math.toRadians(42.0) // ~4:20 angle matching image
+            // Both hands equal length with clear space to 12 o'clock tick
+            val handLength = w * 0.17f
+            val hourAngleRad = Math.toRadians(45.0) // ~4:30 position
 
             onDrawBehind {
-                // 1. Draw Crescent Moon Outline
                 drawPath(moonPath, color = tint, style = strokeStyle)
 
-                // 2. Draw Minute Hand (Pointing up to 12)
+                // Minute Hand (Pointing up to 12)
                 drawLine(
                     color = tint,
                     start = clockCenter,
-                    end = Offset(clockCenter.x, clockCenter.y - minHandLength),
+                    end = Offset(clockCenter.x, clockCenter.y - handLength),
                     strokeWidth = strokeW,
                     cap = StrokeCap.Round
                 )
 
-                // 3. Draw Hour Hand (Angled downward-right with no center ring)
+                // Hour Hand (Pointing downward-right at ~4:30)
                 drawLine(
                     color = tint,
                     start = clockCenter,
                     end = Offset(
-                        clockCenter.x + (hourHandLength * cos(hourAngleRad)).toFloat(),
-                        clockCenter.y + (hourHandLength * sin(hourAngleRad)).toFloat()
+                        clockCenter.x + (handLength * cos(hourAngleRad)).toFloat(),
+                        clockCenter.y + (handLength * sin(hourAngleRad)).toFloat()
                     ),
                     strokeWidth = strokeW,
                     cap = StrokeCap.Round
                 )
 
-                // 4. Draw Radial Hour Ticks
+                // 4 Clock Hour Ticks
                 for (deg in tickAngles) {
                     val rad = Math.toRadians(deg.toDouble())
                     val pStart = Offset(
@@ -329,7 +345,7 @@ fun GlassmorphicFolderIcon(folderColor: Color, modifier: Modifier = Modifier) {
                 quadraticBezierTo(w * 0.48f, h * 0.14f, w * 0.52f, h * 0.22f)
                 lineTo(w * 0.56f, h * 0.28f)
                 lineTo(w * 0.82f, h * 0.28f)
-                quadraticBezierTo(w * 0.88f, h * 0.28f, w * 0.88f, h * 0.35f)
+                quadraticBezierTo(w * 0.88f, h * 0.82f, w * 0.88f, h * 0.35f)
                 lineTo(w * 0.88f, h * 0.82f)
                 quadraticBezierTo(w * 0.88f, h * 0.88f, w * 0.80f, h * 0.88f)
                 lineTo(w * 0.18f, h * 0.88f)
@@ -1153,7 +1169,7 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                         )
                     }
 
-                    // Bottom Dock with New Moon Clock Vector Icon
+                    // Bottom Dock with Moon Clock Sleep Timer Icon
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -1214,9 +1230,9 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                     .fillMaxSize()
                     .background(Color.Transparent)
                     .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null
-                    ) { showMenuModal = false },
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null
+            ) { showMenuModal = false },
                 contentAlignment = Alignment.BottomCenter
             ) {
                 Box(
