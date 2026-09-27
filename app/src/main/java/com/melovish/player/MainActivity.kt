@@ -1411,7 +1411,13 @@ fun HomeScreen(
     if (showCreatePlaylistDialog) CreatePlaylistDialog(manager = manager, onDismiss = { showCreatePlaylistDialog = false })
     if (showManagePlaylistsDialog) ManagePlaylistsDialog(manager = manager, isDark = isDark, onAddNew = { showCreatePlaylistDialog = true }, onDismiss = { showManagePlaylistsDialog = false })
     if (showArrangePlaylistsDialog) ArrangePlaylistsDialog(manager = manager, isDark = isDark, onDismiss = { showArrangePlaylistsDialog = false })
-    if (showGridSizeDialog) GridSizeDialog(currentMode = manager.homeViewMode, isDark = isDark, accent = manager.accentColor, onSelectMode = { manager.setHomeViewMode(it) }, onDismiss = { showGridSizeDialog = false })
+    if (showGridSizeDialog) GridSizeDialog(
+        currentMode = manager.homeViewMode,
+        isDark = isDark,
+        accent = manager.accentColor,
+        onSelectMode = { manager.updateHomeViewMode(it) },
+        onDismiss = { showGridSizeDialog = false }
+    )
 
     if (longPressPlaylist != null) {
         val pl = longPressPlaylist!!

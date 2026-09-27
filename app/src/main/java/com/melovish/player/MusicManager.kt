@@ -818,7 +818,8 @@ class MusicManager(private val context: Context) {
         }
     }
 
-    fun setHomeViewMode(mode: GridViewMode) {
+    // Renamed from setHomeViewMode to updateHomeViewMode to eliminate JVM signature clash
+    fun updateHomeViewMode(mode: GridViewMode) {
         homeViewMode = mode
         managerScope.launch(Dispatchers.IO) {
             prefs.edit().putString("home_view_mode", mode.name).apply()
@@ -828,7 +829,7 @@ class MusicManager(private val context: Context) {
     fun cycleNextHomeViewMode() {
         val modes = GridViewMode.values()
         val nextIdx = (homeViewMode.ordinal + 1) % modes.size
-        setHomeViewMode(modes[nextIdx])
+        updateHomeViewMode(modes[nextIdx])
     }
 
     fun setPagerTransition(effect: PagerTransitionEffect) {
