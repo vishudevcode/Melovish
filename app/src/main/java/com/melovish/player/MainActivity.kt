@@ -227,6 +227,8 @@ fun MelovishRootApp(manager: MusicManager) {
     }
 
     var activeScreen by remember { mutableStateOf("home") }
+    var previousActiveScreen by remember { mutableStateOf("home") }
+
     var selectedFolder by remember { mutableStateOf<String?>(null) }
     var selectedPlaylist by remember { mutableStateOf<Playlist?>(null) }
     var selectedArtist by remember { mutableStateOf<ArtistItem?>(null) }
@@ -245,12 +247,13 @@ fun MelovishRootApp(manager: MusicManager) {
     val searchListState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
 
+    // Discrete 1-Step Back Handler: returns precisely to origin screen
     BackHandler(enabled = isSettingsEqOpen || isPlayerExpanded || activeScreen == "settings" || activeScreen == "profile" || selectedArtist != null || selectedAlbum != null || selectedPlaylist != null || selectedFolder != null || activeScreen != "home") {
         when {
             isSettingsEqOpen -> isSettingsEqOpen = false
             isPlayerExpanded -> isPlayerExpanded = false
-            activeScreen == "settings" -> activeScreen = "home"
-            activeScreen == "profile" -> activeScreen = "home"
+            activeScreen == "settings" -> activeScreen = previousActiveScreen
+            activeScreen == "profile" -> activeScreen = previousActiveScreen
             selectedArtist != null -> selectedArtist = null
             selectedAlbum != null -> selectedAlbum = null
             selectedPlaylist != null -> selectedPlaylist = null
@@ -266,21 +269,30 @@ fun MelovishRootApp(manager: MusicManager) {
             Column(modifier = Modifier.fillMaxSize()) {
                 TopBar(
                     manager = manager,
-                    onProfileClick = { activeScreen = "profile" },
-                    onSettingsClick = { activeScreen = "settings" }
+                    onProfileClick = {
+                        previousActiveScreen = activeScreen
+                        activeScreen = "profile"
+                    },
+                    onSettingsClick = {
+                        previousActiveScreen = activeScreen
+                        activeScreen = "settings"
+                    }
                 )
 
                 Box(modifier = Modifier.weight(1f)) {
                     when {
                         activeScreen == "settings" -> SettingsScreen(
                             manager = manager,
-                            onBackClick = { activeScreen = "home" },
-                            onOpenProfile = { activeScreen = "profile" },
+                            onBackClick = { activeScreen = previousActiveScreen },
+                            onOpenProfile = {
+                                previousActiveScreen = activeScreen
+                                activeScreen = "profile"
+                            },
                             onOpenEqualizer = { isSettingsEqOpen = true }
                         )
                         activeScreen == "profile" -> ProfileScreen(
                             manager = manager,
-                            onBackClick = { activeScreen = "home" }
+                            onBackClick = { activeScreen = previousActiveScreen }
                         )
                         selectedArtist != null -> {
                             ArtistDetailScreen(
@@ -505,6 +517,7 @@ fun ShimmerSkeletonRow(isDark: Boolean) {
     }
 }
 
+// 1:1 Standard Square Card with Full Information
 @UnstableApi
 @Composable
 fun SquareAlbumOverlayCard(
@@ -588,6 +601,85 @@ fun SquareAlbumOverlayCard(
     }
 }
 
+// 5th View Mode: Hero Album Card (Expansive 2-Column, Song Title Only, Zero Metadata)
+@UnstableApi
+@Composable
+fun HeroAlbumCard(
+    song: Song,
+    manager: MusicManager,
+    isDark: Boolean,
+    onPlay: () -> Unit,
+    onMenuClick: () -> Unit
+) {
+    val isPlayingThis = manager.currentSong?.id == song.id
+    val accent = manager.accentColor
+    var albumArtBitmap by remember(song.id) { mutableStateOf(manager.getCachedAlbumArt(song.id)) }
+    LaunchedEffect(song.id) {
+        if (albumArtBitmap == null) albumArtBitmap = manager.loadAlbumArtAsync(song)
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .aspectRatio(0.92f)
+            .shadow(6.dp, RoundedCornerShape(22.dp))
+            .clip(RoundedCornerShape(22.dp))
+            .background(Color(0xFF1E293B))
+            .border(
+                width = if (isPlayingThis) 2.5.dp else 1.dp,
+                color = if (isPlayingThis) accent else if (isDark) Color(0x28FFFFFF) else Color(0xFFE2E8F0),
+                shape = RoundedCornerShape(22.dp)
+            )
+            .clickable { onPlay() }
+    ) {
+        if (albumArtBitmap != null) {
+            Image(
+                bitmap = albumArtBitmap!!.asImageBitmap(),
+                contentDescription = song.title,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize()
+            )
+        } else {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Text("🎵", fontSize = 48.sp)
+            }
+        }
+
+        // Frosted bottom banner showing strictly song title
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .background(
+                    Brush.verticalGradient(
+                        listOf(Color.Transparent, Color(0xA6000000), Color(0xF2000000))
+                    )
+                )
+                .padding(horizontal = 10.dp, vertical = 10.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    text = song.title,
+                    color = if (isPlayingThis) accent else Color.White,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
+                Box(modifier = Modifier.clickable { onMenuClick() }.padding(start = 6.dp)) {
+                    Text("⋮", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Black)
+                }
+            }
+        }
+    }
+}
+
+// 5-Mode Vector Switcher Icon
 @Composable
 fun GridViewModeVectorIcon(mode: GridViewMode, tint: Color, modifier: Modifier = Modifier) {
     Canvas(modifier = modifier) {
@@ -595,7 +687,7 @@ fun GridViewModeVectorIcon(mode: GridViewMode, tint: Color, modifier: Modifier =
         val h = size.height
         val s = 2.dp.toPx()
         when (mode) {
-            GridViewMode.LIST, GridViewMode.DETAILED_LIST -> {
+            GridViewMode.LIST -> {
                 drawLine(tint, Offset(0f, h * 0.20f), Offset(w, h * 0.20f), s)
                 drawLine(tint, Offset(0f, h * 0.50f), Offset(w, h * 0.50f), s)
                 drawLine(tint, Offset(0f, h * 0.80f), Offset(w, h * 0.80f), s)
@@ -615,7 +707,7 @@ fun GridViewModeVectorIcon(mode: GridViewMode, tint: Color, modifier: Modifier =
                     }
                 }
             }
-            GridViewMode.GRID_4, GridViewMode.HERO_GRID -> {
+            GridViewMode.GRID_4 -> {
                 val step = w / 4.4f
                 val radius = 1.8f.dp.toPx()
                 for (r in 0..3) {
@@ -624,10 +716,15 @@ fun GridViewModeVectorIcon(mode: GridViewMode, tint: Color, modifier: Modifier =
                     }
                 }
             }
+            GridViewMode.HERO_GRID -> {
+                drawRoundRect(tint, Offset(0f, 0f), Size(w * 0.46f, h), CornerRadius(5f, 5f))
+                drawRoundRect(tint, Offset(w * 0.54f, 0f), Size(w * 0.46f, h), CornerRadius(5f, 5f))
+            }
         }
     }
 }
 
+// 5-Mode Grid Size Dialog
 @Composable
 fun GridSizeDialog(
     currentMode: GridViewMode,
@@ -661,11 +758,10 @@ fun GridSizeDialog(
 
                 listOf(
                     Pair(GridViewMode.LIST, "Standard List View"),
-                    Pair(GridViewMode.DETAILED_LIST, "Compact Row List"),
                     Pair(GridViewMode.GRID_2, "Big (2 Cards Grid)"),
                     Pair(GridViewMode.GRID_3, "Medium (3 Cards Grid)"),
                     Pair(GridViewMode.GRID_4, "Small (4 Cards Grid)"),
-                    Pair(GridViewMode.HERO_GRID, "Hero Album Grid")
+                    Pair(GridViewMode.HERO_GRID, "Hero Album Grid (Clean & Expansive)")
                 ).forEach { (mode, name) ->
                     val isSel = currentMode == mode
                     Row(
@@ -1058,7 +1154,6 @@ fun FavouritePlaylistLongPressDialog(
                                 .background(Brush.sweepGradient(listOf(Color.Red, Color.Yellow, Color.Green, Color.Cyan, Color.Blue, Color.Magenta, Color.Red)))
                                 .border(2.dp, Color.White, CircleShape)
                                 .clickable {
-                                    // Instantly transition to Rainbow Picker without clearing state
                                     onOpenRainbowPicker()
                                 },
                             contentAlignment = Alignment.Center
@@ -1264,6 +1359,7 @@ fun HomeScreen(
                         }
                         Spacer(modifier = Modifier.width(6.dp))
 
+                        // Unified 5-Mode Grid Size Switcher
                         Box(
                             modifier = Modifier
                                 .size(36.dp)
@@ -1303,7 +1399,7 @@ fun HomeScreen(
                 }
             } else {
                 when (manager.homeViewMode) {
-                    GridViewMode.LIST, GridViewMode.DETAILED_LIST -> {
+                    GridViewMode.LIST -> {
                         items(
                             items = sortedSongs,
                             key = { it.id },
@@ -1364,7 +1460,7 @@ fun HomeScreen(
                             }
                         }
                     }
-                    GridViewMode.GRID_4, GridViewMode.HERO_GRID -> {
+                    GridViewMode.GRID_4 -> {
                         items(
                             items = sortedSongs.chunked(4),
                             key = { it.first().id }
@@ -1382,6 +1478,30 @@ fun HomeScreen(
                                     }
                                 }
                                 for (i in rowSongs.size until 4) {
+                                    Spacer(modifier = Modifier.weight(1f))
+                                }
+                            }
+                        }
+                    }
+                    GridViewMode.HERO_GRID -> {
+                        // 5th View Mode: Expansive 2-Column Hero Album Grid (Song Name Only, No Metadata)
+                        items(
+                            items = sortedSongs.chunked(2),
+                            key = { it.first().id }
+                        ) { rowSongs ->
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                rowSongs.forEach { song ->
+                                    Box(modifier = Modifier.weight(1f)) {
+                                        HeroAlbumCard(
+                                            song = song,
+                                            manager = manager,
+                                            isDark = isDark,
+                                            onPlay = { manager.playSong(song, sortedSongs, "All Songs") },
+                                            onMenuClick = { onSongMenuClick(song) }
+                                        )
+                                    }
+                                }
+                                if (rowSongs.size == 1) {
                                     Spacer(modifier = Modifier.weight(1f))
                                 }
                             }
@@ -1419,7 +1539,6 @@ fun HomeScreen(
         onDismiss = { showGridSizeDialog = false }
     )
 
-    // Mutual exclusivity between Playlist Long-Press Dialog and Rainbow Picker
     if (longPressPlaylist != null && !showRainbowWheelForPl) {
         val pl = longPressPlaylist!!
         FavouritePlaylistLongPressDialog(
@@ -1427,7 +1546,6 @@ fun HomeScreen(
             manager = manager,
             isDark = isDark,
             onOpenRainbowPicker = {
-                // Immediately transition to the rainbow picker without clearing the target playlist
                 showRainbowWheelForPl = true
             },
             onDismiss = { longPressPlaylist = null }
@@ -1560,6 +1678,7 @@ fun LibraryScreen(manager: MusicManager, listState: LazyListState, onFolderClick
     var showFolderSortMenu by remember { mutableStateOf(false) }
     var customizingFolder by remember { mutableStateOf<String?>(null) }
     var showRainbowWheelForFolder by remember { mutableStateOf(false) }
+    var showGridSizeDialog by remember { mutableStateOf(false) }
 
     val sortedFolders: ImmutableList<String> = remember(manager.allSongs.size, manager.currentFolderSortOrder) {
         manager.getSortedFolders().toImmutableList()
@@ -1574,15 +1693,19 @@ fun LibraryScreen(manager: MusicManager, listState: LazyListState, onFolderClick
         ) {
             Text("Folders & Storage", color = textColor, fontSize = 22.sp, fontWeight = FontWeight.Bold)
             Row(verticalAlignment = Alignment.CenterVertically) {
+                // Unified 5-Mode Grid Size Switcher
                 Box(
                     modifier = Modifier
                         .size(36.dp)
                         .clip(CircleShape)
                         .background(if (isDark) Color(0x22FFFFFF) else Color(0xFFF1F5F9))
-                        .clickable { manager.setPersistentFolderInnerCardView(!manager.folderInnerIsCardView) },
+                        .combinedClickable(
+                            onClick = { manager.cycleNextHomeViewMode() },
+                            onLongClick = { showGridSizeDialog = true }
+                        ),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text(if (manager.folderInnerIsCardView) "☰" else "⊞", fontSize = 16.sp, color = textColor, fontWeight = FontWeight.Bold)
+                    GridViewModeVectorIcon(mode = manager.homeViewMode, tint = textColor, modifier = Modifier.size(16.dp))
                 }
 
                 Spacer(modifier = Modifier.width(6.dp))
@@ -1608,86 +1731,183 @@ fun LibraryScreen(manager: MusicManager, listState: LazyListState, onFolderClick
             }
         }
 
-        if (manager.folderInnerIsCardView) {
-            LazyVerticalGrid(
-                columns = GridCells.Fixed(2),
-                contentPadding = PaddingValues(bottom = 80.dp),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-                modifier = Modifier.fillMaxSize()
-            ) {
-                items(
-                    items = sortedFolders,
-                    key = { it },
-                    contentType = { "folder_grid_card" }
-                ) { folderName ->
-                    val songs = folderMap[folderName] ?: emptyList()
-                    val totalSize = remember(songs) { songs.sumOf { it.size } }
-                    val fColor = manager.getFolderColor(folderName)
+        when (manager.homeViewMode) {
+            GridViewMode.LIST -> {
+                LazyColumn(
+                    state = listState,
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(bottom = 80.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    items(
+                        items = sortedFolders,
+                        key = { it },
+                        contentType = { "folder_list_row" }
+                    ) { folderName ->
+                        val songs = folderMap[folderName] ?: emptyList()
+                        val totalSize = remember(songs) { songs.sumOf { it.size } }
+                        val fColor = manager.getFolderColor(folderName)
 
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(20.dp))
-                            .background(cardBg)
-                            .border(1.dp, if (isDark) Color(0x22FFFFFF) else Color(0xFFECEFF3), RoundedCornerShape(20.dp))
-                            .combinedClickable(
-                                onClick = { onFolderClick(folderName) },
-                                onLongClick = { customizingFolder = folderName }
-                            )
-                            .padding(16.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.Center
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(18.dp))
+                                .background(cardBg)
+                                .border(1.dp, if (isDark) Color(0x22FFFFFF) else Color(0xFFECEFF3), RoundedCornerShape(18.dp))
+                                .combinedClickable(onClick = { onFolderClick(folderName) }, onLongClick = { customizingFolder = folderName })
+                                .padding(16.dp),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            GlassmorphicFolderIcon(folderColor = fColor, modifier = Modifier.size(54.dp))
-                            Spacer(modifier = Modifier.height(10.dp))
-                            Text(folderName, color = textColor, fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
-                            Spacer(modifier = Modifier.height(2.dp))
-                            Text("${songs.size} songs • ${formatFileSize(totalSize)}", color = Color(0xFF64748B), fontSize = 11.sp, textAlign = TextAlign.Center)
+                            GlassmorphicFolderIcon(folderColor = fColor, modifier = Modifier.size(42.dp))
+                            Spacer(modifier = Modifier.width(14.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(folderName, color = textColor, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                                Text("${formatFileSize(totalSize)} • ${songs.size} songs", color = Color(0xFF64748B), fontSize = 12.sp)
+                            }
+                            Text("›", color = fColor, fontSize = 22.sp, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
             }
-        } else {
-            LazyColumn(
-                state = listState,
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(bottom = 80.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                items(
-                    items = sortedFolders,
-                    key = { it },
-                    contentType = { "folder_list_row" }
-                ) { folderName ->
-                    val songs = folderMap[folderName] ?: emptyList()
-                    val totalSize = remember(songs) { songs.sumOf { it.size } }
-                    val fColor = manager.getFolderColor(folderName)
+            GridViewMode.GRID_2, GridViewMode.HERO_GRID -> {
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(2),
+                    contentPadding = PaddingValues(bottom = 80.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    modifier = Modifier.fillMaxSize()
+                ) {
+                    items(
+                        items = sortedFolders,
+                        key = { it },
+                        contentType = { "folder_grid_card_2" }
+                    ) { folderName ->
+                        val songs = folderMap[folderName] ?: emptyList()
+                        val totalSize = remember(songs) { songs.sumOf { it.size } }
+                        val fColor = manager.getFolderColor(folderName)
 
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(18.dp))
-                            .background(cardBg)
-                            .border(1.dp, if (isDark) Color(0x22FFFFFF) else Color(0xFFECEFF3), RoundedCornerShape(18.dp))
-                            .combinedClickable(onClick = { onFolderClick(folderName) }, onLongClick = { customizingFolder = folderName })
-                            .padding(16.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        GlassmorphicFolderIcon(folderColor = fColor, modifier = Modifier.size(42.dp))
-                        Spacer(modifier = Modifier.width(14.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(folderName, color = textColor, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                            Text("${formatFileSize(totalSize)} • ${songs.size} songs", color = Color(0xFF64748B), fontSize = 12.sp)
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(20.dp))
+                                .background(cardBg)
+                                .border(1.dp, if (isDark) Color(0x22FFFFFF) else Color(0xFFECEFF3), RoundedCornerShape(20.dp))
+                                .combinedClickable(
+                                    onClick = { onFolderClick(folderName) },
+                                    onLongClick = { customizingFolder = folderName }
+                                )
+                                .padding(16.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.Center
+                            ) {
+                                GlassmorphicFolderIcon(folderColor = fColor, modifier = Modifier.size(54.dp))
+                                Spacer(modifier = Modifier.height(10.dp))
+                                Text(folderName, color = textColor, fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text("${songs.size} songs • ${formatFileSize(totalSize)}", color = Color(0xFF64748B), fontSize = 11.sp, textAlign = TextAlign.Center)
+                            }
                         }
-                        Text("›", color = fColor, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+            GridViewMode.GRID_3 -> {
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(3),
+                    contentPadding = PaddingValues(bottom = 80.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxSize()
+                ) {
+                    items(
+                        items = sortedFolders,
+                        key = { it },
+                        contentType = { "folder_grid_card_3" }
+                    ) { folderName ->
+                        val songs = folderMap[folderName] ?: emptyList()
+                        val fColor = manager.getFolderColor(folderName)
+
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(16.dp))
+                                .background(cardBg)
+                                .border(1.dp, if (isDark) Color(0x22FFFFFF) else Color(0xFFECEFF3), RoundedCornerShape(16.dp))
+                                .combinedClickable(
+                                    onClick = { onFolderClick(folderName) },
+                                    onLongClick = { customizingFolder = folderName }
+                                )
+                                .padding(10.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.Center
+                            ) {
+                                GlassmorphicFolderIcon(folderColor = fColor, modifier = Modifier.size(42.dp))
+                                Spacer(modifier = Modifier.height(6.dp))
+                                Text(folderName, color = textColor, fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
+                                Text("${songs.size}", color = Color(0xFF64748B), fontSize = 10.sp, textAlign = TextAlign.Center)
+                            }
+                        }
+                    }
+                }
+            }
+            GridViewMode.GRID_4 -> {
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(4),
+                    contentPadding = PaddingValues(bottom = 80.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                    modifier = Modifier.fillMaxSize()
+                ) {
+                    items(
+                        items = sortedFolders,
+                        key = { it },
+                        contentType = { "folder_grid_card_4" }
+                    ) { folderName ->
+                        val songs = folderMap[folderName] ?: emptyList()
+                        val fColor = manager.getFolderColor(folderName)
+
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(14.dp))
+                                .background(cardBg)
+                                .border(1.dp, if (isDark) Color(0x22FFFFFF) else Color(0xFFECEFF3), RoundedCornerShape(14.dp))
+                                .combinedClickable(
+                                    onClick = { onFolderClick(folderName) },
+                                    onLongClick = { customizingFolder = folderName }
+                                )
+                                .padding(6.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.Center
+                            ) {
+                                GlassmorphicFolderIcon(folderColor = fColor, modifier = Modifier.size(34.dp))
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(folderName, color = textColor, fontSize = 10.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
+                                Text("${songs.size}", color = Color(0xFF64748B), fontSize = 9.sp, textAlign = TextAlign.Center)
+                            }
+                        }
                     }
                 }
             }
         }
+    }
+
+    if (showGridSizeDialog) {
+        GridSizeDialog(
+            currentMode = manager.homeViewMode,
+            isDark = isDark,
+            accent = manager.accentColor,
+            onSelectMode = { manager.updateHomeViewMode(it) },
+            onDismiss = { showGridSizeDialog = false }
+        )
     }
 
     if (customizingFolder != null) {
@@ -1776,6 +1996,7 @@ fun PlaylistDetailScreen(
     val textColor = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A)
     var showAddSongsSearchPicker by remember { mutableStateOf(false) }
     var showSortMenu by remember { mutableStateOf(false) }
+    var showGridSizeDialog by remember { mutableStateOf(false) }
 
     val songLookup = remember(manager.allSongs.size) { manager.allSongs.associateBy { it.id } }
     val rawSongsInPlaylist = remember(playlist.songIds, songLookup) {
@@ -1810,15 +2031,19 @@ fun PlaylistDetailScreen(
             }
 
             Row(verticalAlignment = Alignment.CenterVertically) {
+                // Unified 5-Mode Grid Size Switcher
                 Box(
                     modifier = Modifier
                         .size(36.dp)
                         .clip(CircleShape)
                         .background(if (isDark) Color(0x22FFFFFF) else Color(0xFFF1F5F9))
-                        .clickable { manager.setPersistentPlaylistInnerCardView(!manager.playlistInnerIsCardView) },
+                        .combinedClickable(
+                            onClick = { manager.cycleNextHomeViewMode() },
+                            onLongClick = { showGridSizeDialog = true }
+                        ),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text(if (manager.playlistInnerIsCardView) "☰" else "⊞", fontSize = 16.sp, color = textColor, fontWeight = FontWeight.Bold)
+                    GridViewModeVectorIcon(mode = manager.homeViewMode, tint = textColor, modifier = Modifier.size(16.dp))
                 }
 
                 Spacer(modifier = Modifier.width(6.dp))
@@ -1865,34 +2090,98 @@ fun PlaylistDetailScreen(
                 Text("Playlist is empty. Tap '+ Add' to search and add tracks.", color = Color(0xFF64748B))
             }
         } else {
-            if (manager.playlistInnerIsCardView) {
-                LazyVerticalGrid(
-                    columns = GridCells.Fixed(2),
-                    contentPadding = PaddingValues(bottom = 80.dp),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
-                    modifier = Modifier.fillMaxSize()
-                ) {
-                    items(
-                        items = sortedSongs,
-                        key = { it.id },
-                        contentType = { "playlist_song_card" }
-                    ) { song ->
-                        UniversalSongCard(song = song, manager = manager, isDark = isDark, onPlay = { manager.playSong(song, sortedSongs, playlist.name) }, onMenuClick = { onSongMenuClick(song) })
+            when (manager.homeViewMode) {
+                GridViewMode.LIST -> {
+                    LazyColumn(contentPadding = PaddingValues(bottom = 80.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        items(
+                            items = sortedSongs,
+                            key = { it.id },
+                            contentType = { "playlist_song_row" }
+                        ) { song ->
+                            UniversalSongRow(song = song, manager = manager, isDark = isDark, onPlay = { manager.playSong(song, sortedSongs, playlist.name) }, onMenuClick = { onSongMenuClick(song) })
+                        }
                     }
                 }
-            } else {
-                LazyColumn(contentPadding = PaddingValues(bottom = 80.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    items(
-                        items = sortedSongs,
-                        key = { it.id },
-                        contentType = { "playlist_song_row" }
-                    ) { song ->
-                        UniversalSongRow(song = song, manager = manager, isDark = isDark, onPlay = { manager.playSong(song, sortedSongs, playlist.name) }, onMenuClick = { onSongMenuClick(song) })
+                GridViewMode.GRID_2 -> {
+                    LazyVerticalGrid(
+                        columns = GridCells.Fixed(2),
+                        contentPadding = PaddingValues(bottom = 80.dp),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                        modifier = Modifier.fillMaxSize()
+                    ) {
+                        items(
+                            items = sortedSongs,
+                            key = { it.id },
+                            contentType = { "playlist_song_card_2" }
+                        ) { song ->
+                            SquareAlbumOverlayCard(song = song, manager = manager, isDark = isDark, onPlay = { manager.playSong(song, sortedSongs, playlist.name) }, onMenuClick = { onSongMenuClick(song) })
+                        }
+                    }
+                }
+                GridViewMode.GRID_3 -> {
+                    LazyVerticalGrid(
+                        columns = GridCells.Fixed(3),
+                        contentPadding = PaddingValues(bottom = 80.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.fillMaxSize()
+                    ) {
+                        items(
+                            items = sortedSongs,
+                            key = { it.id },
+                            contentType = { "playlist_song_card_3" }
+                        ) { song ->
+                            SquareAlbumOverlayCard(song = song, manager = manager, isDark = isDark, onPlay = { manager.playSong(song, sortedSongs, playlist.name) }, onMenuClick = { onSongMenuClick(song) })
+                        }
+                    }
+                }
+                GridViewMode.GRID_4 -> {
+                    LazyVerticalGrid(
+                        columns = GridCells.Fixed(4),
+                        contentPadding = PaddingValues(bottom = 80.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                        modifier = Modifier.fillMaxSize()
+                    ) {
+                        items(
+                            items = sortedSongs,
+                            key = { it.id },
+                            contentType = { "playlist_song_card_4" }
+                        ) { song ->
+                            SquareAlbumOverlayCard(song = song, manager = manager, isDark = isDark, onPlay = { manager.playSong(song, sortedSongs, playlist.name) }, onMenuClick = { onSongMenuClick(song) })
+                        }
+                    }
+                }
+                GridViewMode.HERO_GRID -> {
+                    LazyVerticalGrid(
+                        columns = GridCells.Fixed(2),
+                        contentPadding = PaddingValues(bottom = 80.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                        modifier = Modifier.fillMaxSize()
+                    ) {
+                        items(
+                            items = sortedSongs,
+                            key = { it.id },
+                            contentType = { "playlist_song_card_hero" }
+                        ) { song ->
+                            HeroAlbumCard(song = song, manager = manager, isDark = isDark, onPlay = { manager.playSong(song, sortedSongs, playlist.name) }, onMenuClick = { onSongMenuClick(song) })
+                        }
                     }
                 }
             }
         }
+    }
+
+    if (showGridSizeDialog) {
+        GridSizeDialog(
+            currentMode = manager.homeViewMode,
+            isDark = isDark,
+            accent = manager.accentColor,
+            onSelectMode = { manager.updateHomeViewMode(it) },
+            onDismiss = { showGridSizeDialog = false }
+        )
     }
 
     if (showAddSongsSearchPicker) {
@@ -2051,6 +2340,7 @@ fun FolderSongsScreen(folderName: String, manager: MusicManager, isDark: Boolean
     val textColor = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A)
     val accent = manager.accentColor
     var showSortMenu by remember { mutableStateOf(false) }
+    var showGridSizeDialog by remember { mutableStateOf(false) }
 
     val sortedSongs: ImmutableList<Song> = remember(rawSongs, manager.folderInnerSortOrder) {
         when (manager.folderInnerSortOrder) {
@@ -2080,15 +2370,19 @@ fun FolderSongsScreen(folderName: String, manager: MusicManager, isDark: Boolean
             }
 
             Row(verticalAlignment = Alignment.CenterVertically) {
+                // Unified 5-Mode Grid Size Switcher
                 Box(
                     modifier = Modifier
                         .size(36.dp)
                         .clip(CircleShape)
                         .background(if (isDark) Color(0x22FFFFFF) else Color(0xFFF1F5F9))
-                        .clickable { manager.setPersistentFolderInnerCardView(!manager.folderInnerIsCardView) },
+                        .combinedClickable(
+                            onClick = { manager.cycleNextHomeViewMode() },
+                            onLongClick = { showGridSizeDialog = true }
+                        ),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text(if (manager.folderInnerIsCardView) "☰" else "⊞", fontSize = 16.sp, color = textColor, fontWeight = FontWeight.Bold)
+                    GridViewModeVectorIcon(mode = manager.homeViewMode, tint = textColor, modifier = Modifier.size(16.dp))
                 }
 
                 Spacer(modifier = Modifier.width(6.dp))
@@ -2136,34 +2430,98 @@ fun FolderSongsScreen(folderName: String, manager: MusicManager, isDark: Boolean
                 Text("Folder is empty.", color = Color(0xFF64748B))
             }
         } else {
-            if (manager.folderInnerIsCardView) {
-                LazyVerticalGrid(
-                    columns = GridCells.Fixed(2),
-                    contentPadding = PaddingValues(bottom = 80.dp),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
-                    modifier = Modifier.fillMaxSize()
-                ) {
-                    items(
-                        items = sortedSongs,
-                        key = { it.id },
-                        contentType = { "folder_inner_card" }
-                    ) { song ->
-                        UniversalSongCard(song = song, manager = manager, isDark = isDark, onPlay = { manager.playSong(song, sortedSongs, folderName) }, onMenuClick = { onSongMenuClick(song) })
+            when (manager.homeViewMode) {
+                GridViewMode.LIST -> {
+                    LazyColumn(contentPadding = PaddingValues(bottom = 80.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        items(
+                            items = sortedSongs,
+                            key = { it.id },
+                            contentType = { "folder_inner_row" }
+                        ) { song ->
+                            UniversalSongRow(song = song, manager = manager, isDark = isDark, onPlay = { manager.playSong(song, sortedSongs, folderName) }, onMenuClick = { onSongMenuClick(song) })
+                        }
                     }
                 }
-            } else {
-                LazyColumn(contentPadding = PaddingValues(bottom = 80.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    items(
-                        items = sortedSongs,
-                        key = { it.id },
-                        contentType = { "folder_inner_row" }
-                    ) { song ->
-                        UniversalSongRow(song = song, manager = manager, isDark = isDark, onPlay = { manager.playSong(song, sortedSongs, folderName) }, onMenuClick = { onSongMenuClick(song) })
+                GridViewMode.GRID_2 -> {
+                    LazyVerticalGrid(
+                        columns = GridCells.Fixed(2),
+                        contentPadding = PaddingValues(bottom = 80.dp),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                        modifier = Modifier.fillMaxSize()
+                    ) {
+                        items(
+                            items = sortedSongs,
+                            key = { it.id },
+                            contentType = { "folder_inner_card_2" }
+                        ) { song ->
+                            SquareAlbumOverlayCard(song = song, manager = manager, isDark = isDark, onPlay = { manager.playSong(song, sortedSongs, folderName) }, onMenuClick = { onSongMenuClick(song) })
+                        }
+                    }
+                }
+                GridViewMode.GRID_3 -> {
+                    LazyVerticalGrid(
+                        columns = GridCells.Fixed(3),
+                        contentPadding = PaddingValues(bottom = 80.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.fillMaxSize()
+                    ) {
+                        items(
+                            items = sortedSongs,
+                            key = { it.id },
+                            contentType = { "folder_inner_card_3" }
+                        ) { song ->
+                            SquareAlbumOverlayCard(song = song, manager = manager, isDark = isDark, onPlay = { manager.playSong(song, sortedSongs, folderName) }, onMenuClick = { onSongMenuClick(song) })
+                        }
+                    }
+                }
+                GridViewMode.GRID_4 -> {
+                    LazyVerticalGrid(
+                        columns = GridCells.Fixed(4),
+                        contentPadding = PaddingValues(bottom = 80.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                        modifier = Modifier.fillMaxSize()
+                    ) {
+                        items(
+                            items = sortedSongs,
+                            key = { it.id },
+                            contentType = { "folder_inner_card_4" }
+                        ) { song ->
+                            SquareAlbumOverlayCard(song = song, manager = manager, isDark = isDark, onPlay = { manager.playSong(song, sortedSongs, folderName) }, onMenuClick = { onSongMenuClick(song) })
+                        }
+                    }
+                }
+                GridViewMode.HERO_GRID -> {
+                    LazyVerticalGrid(
+                        columns = GridCells.Fixed(2),
+                        contentPadding = PaddingValues(bottom = 80.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                        modifier = Modifier.fillMaxSize()
+                    ) {
+                        items(
+                            items = sortedSongs,
+                            key = { it.id },
+                            contentType = { "folder_inner_card_hero" }
+                        ) { song ->
+                            HeroAlbumCard(song = song, manager = manager, isDark = isDark, onPlay = { manager.playSong(song, sortedSongs, folderName) }, onMenuClick = { onSongMenuClick(song) })
+                        }
                     }
                 }
             }
         }
+    }
+
+    if (showGridSizeDialog) {
+        GridSizeDialog(
+            currentMode = manager.homeViewMode,
+            isDark = isDark,
+            accent = manager.accentColor,
+            onSelectMode = { manager.updateHomeViewMode(it) },
+            onDismiss = { showGridSizeDialog = false }
+        )
     }
 }
 

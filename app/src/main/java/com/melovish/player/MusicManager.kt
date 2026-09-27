@@ -74,7 +74,7 @@ import java.util.Locale
 import kotlin.math.pow
 
 enum class GridViewMode {
-    LIST, DETAILED_LIST, GRID_2, GRID_3, GRID_4, HERO_GRID
+    LIST, GRID_2, GRID_3, GRID_4, HERO_GRID
 }
 
 @UnstableApi
@@ -161,9 +161,11 @@ class MusicManager(private val context: Context) {
     val folderColors = mutableStateMapOf<String, Long>()
     val parsedArtistsList = mutableStateListOf<ArtistItem>()
 
+    // Global unified View Mode State
     var homeViewMode by mutableStateOf(
         try {
-            GridViewMode.valueOf(prefs.getString("home_view_mode", GridViewMode.LIST.name) ?: GridViewMode.LIST.name)
+            val saved = prefs.getString("home_view_mode", GridViewMode.LIST.name) ?: GridViewMode.LIST.name
+            if (saved == "DETAILED_LIST") GridViewMode.LIST else GridViewMode.valueOf(saved)
         } catch (_: Exception) {
             GridViewMode.LIST
         }
@@ -206,7 +208,6 @@ class MusicManager(private val context: Context) {
             SongSortOrder.A_TO_Z
         }
     )
-    var folderInnerIsCardView by mutableStateOf(prefs.getBoolean("folder_inner_card_view", false))
     var playlistInnerSortOrder by mutableStateOf(
         try {
             SongSortOrder.valueOf(prefs.getString("playlist_inner_sort", SongSortOrder.A_TO_Z.name) ?: SongSortOrder.A_TO_Z.name)
@@ -214,7 +215,6 @@ class MusicManager(private val context: Context) {
             SongSortOrder.A_TO_Z
         }
     )
-    var playlistInnerIsCardView by mutableStateOf(prefs.getBoolean("playlist_inner_card_view", false))
 
     var isColorfulPlayer by mutableStateOf(prefs.getBoolean("colorful_player", true))
     var isResumeFirstOnly by mutableStateOf(prefs.getBoolean("resume_first", false))
@@ -818,7 +818,7 @@ class MusicManager(private val context: Context) {
         }
     }
 
-    // Renamed from setHomeViewMode to updateHomeViewMode to eliminate JVM signature clash
+    // Unified 5 view mode update
     fun updateHomeViewMode(mode: GridViewMode) {
         homeViewMode = mode
         managerScope.launch(Dispatchers.IO) {
@@ -1824,24 +1824,10 @@ class MusicManager(private val context: Context) {
         }
     }
 
-    fun setPersistentFolderInnerCardView(isCard: Boolean) {
-        folderInnerIsCardView = isCard
-        managerScope.launch(Dispatchers.IO) {
-            prefs.edit().putBoolean("folder_inner_card_view", isCard).apply()
-        }
-    }
-
     fun setPersistentPlaylistInnerSort(order: SongSortOrder) {
         playlistInnerSortOrder = order
         managerScope.launch(Dispatchers.IO) {
             prefs.edit().putString("playlist_inner_sort", order.name).apply()
-        }
-    }
-
-    fun setPersistentPlaylistInnerCardView(isCard: Boolean) {
-        playlistInnerIsCardView = isCard
-        managerScope.launch(Dispatchers.IO) {
-            prefs.edit().putBoolean("playlist_inner_card_view", isCard).apply()
         }
     }
 
