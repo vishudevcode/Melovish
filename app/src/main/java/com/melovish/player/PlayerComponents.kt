@@ -80,6 +80,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -183,70 +184,84 @@ fun GlassBackButton(isDark: Boolean, onClick: () -> Unit, modifier: Modifier = M
     }
 }
 
-// Moon Clock Sleep Timer Icon (Exact Match with Uniform Clock Hour Ticks & Hands)
+// Moon Clock Sleep Timer Icon (Exact Match with Image 2)
 @Composable
 fun MoonClockSleepIcon(tint: Color, modifier: Modifier = Modifier) {
     Spacer(
         modifier = modifier.drawWithCache {
             val w = size.width
             val h = size.height
-            val strokeW = 2.1f.dp.toPx()
+            val strokeW = 1.9f.dp.toPx()
             val strokeStyle = Stroke(width = strokeW, cap = StrokeCap.Round, join = StrokeJoin.Round)
 
-            val clockCenter = Offset(w * 0.48f, h * 0.48f)
+            // Center of the clock face and coordinate anchors
+            val clockCenter = Offset(w * 0.50f, h * 0.50f)
 
+            // Exact crescent moon geometry matching Image 2 using clean circular arcs
             val moonPath = Path().apply {
-                moveTo(w * 0.32f, h * 0.20f)
-                cubicTo(w * 0.08f, h * 0.20f, w * 0.10f, h * 0.80f, w * 0.70f, h * 0.78f)
-                cubicTo(w * 0.26f, h * 0.86f, w * 0.18f, h * 0.42f, w * 0.32f, h * 0.20f)
+                // Outer circle bounding rectangle
+                val outerRadius = w * 0.43f
+                val outerRect = Rect(
+                    clockCenter.x - outerRadius,
+                    clockCenter.y - outerRadius,
+                    clockCenter.x + outerRadius,
+                    clockCenter.y + outerRadius
+                )
+                // Inner circle bounding rectangle (shifted down-right to carve thin, needle-sharp cusps)
+                val innerRadius = w * 0.38f
+                val innerOffset = Offset(w * 0.58f, h * 0.42f)
+                val innerRect = Rect(
+                    innerOffset.x - innerRadius,
+                    innerOffset.y - innerRadius,
+                    innerOffset.x + innerRadius,
+                    innerOffset.y + innerRadius
+                )
+
+                // Start from top-left cusp (~238 degrees) down around the outer rim to bottom-right cusp (~52 degrees)
+                arcTo(outerRect, 238f, -186f, false)
+                // Curve back inward using the inner circle arc to finish the sharp crescent shape
+                arcTo(innerRect, 52f, 186f, false)
                 close()
             }
 
-            val anglesDeg = floatArrayOf(-90f, -60f, -30f, 0f, 30f, 60f)
-            val tickInnerRadius = w * 0.36f
-            val tickOuterRadius = w * 0.46f
+            // Radial Clock Tick Lines at 12, 1, 2, and 3 o'clock
+            val tickAngles = floatArrayOf(-90f, -60f, -30f, 0f)
+            val tickInnerRadius = w * 0.34f
+            val tickOuterRadius = w * 0.44f
 
-            val minHandLength = w * 0.26f
-            val hourHandLength = w * 0.17f
-            val centerPivotRadius = w * 0.055f
+            // Clock hands meeting cleanly at the center vertex without any ring
+            val minHandLength = w * 0.28f
+            val hourHandLength = w * 0.19f
+            val hourAngleRad = Math.toRadians(42.0) // ~4:20 angle matching image
 
             onDrawBehind {
+                // 1. Draw Crescent Moon Outline
                 drawPath(moonPath, color = tint, style = strokeStyle)
 
-                drawCircle(
-                    color = tint,
-                    radius = centerPivotRadius,
-                    center = clockCenter,
-                    style = strokeStyle
-                )
-
+                // 2. Draw Minute Hand (Pointing up to 12)
                 drawLine(
                     color = tint,
-                    start = Offset(clockCenter.x, clockCenter.y - centerPivotRadius),
+                    start = clockCenter,
                     end = Offset(clockCenter.x, clockCenter.y - minHandLength),
                     strokeWidth = strokeW,
                     cap = StrokeCap.Round
                 )
 
-                val hourAngleRad = Math.toRadians(-26.0)
-                val hourHandEnd = Offset(
-                    clockCenter.x + (hourHandLength * cos(hourAngleRad)).toFloat(),
-                    clockCenter.y + (hourHandLength * sin(hourAngleRad)).toFloat()
-                )
-                val hourHandStart = Offset(
-                    clockCenter.x + (centerPivotRadius * cos(hourAngleRad)).toFloat(),
-                    clockCenter.y + (centerPivotRadius * sin(hourAngleRad)).toFloat()
-                )
+                // 3. Draw Hour Hand (Angled downward-right with no center ring)
                 drawLine(
                     color = tint,
-                    start = hourHandStart,
-                    end = hourHandEnd,
+                    start = clockCenter,
+                    end = Offset(
+                        clockCenter.x + (hourHandLength * cos(hourAngleRad)).toFloat(),
+                        clockCenter.y + (hourHandLength * sin(hourAngleRad)).toFloat()
+                    ),
                     strokeWidth = strokeW,
                     cap = StrokeCap.Round
                 )
 
-                for (angle in anglesDeg) {
-                    val rad = Math.toRadians(angle.toDouble())
+                // 4. Draw Radial Hour Ticks
+                for (deg in tickAngles) {
+                    val rad = Math.toRadians(deg.toDouble())
                     val pStart = Offset(
                         clockCenter.x + (tickInnerRadius * cos(rad)).toFloat(),
                         clockCenter.y + (tickInnerRadius * sin(rad)).toFloat()
@@ -314,7 +329,7 @@ fun GlassmorphicFolderIcon(folderColor: Color, modifier: Modifier = Modifier) {
                 quadraticBezierTo(w * 0.48f, h * 0.14f, w * 0.52f, h * 0.22f)
                 lineTo(w * 0.56f, h * 0.28f)
                 lineTo(w * 0.82f, h * 0.28f)
-                quadraticBezierTo(w * 0.88f, h * 0.82f, w * 0.88f, h * 0.35f)
+                quadraticBezierTo(w * 0.88f, h * 0.28f, w * 0.88f, h * 0.35f)
                 lineTo(w * 0.88f, h * 0.82f)
                 quadraticBezierTo(w * 0.88f, h * 0.88f, w * 0.80f, h * 0.88f)
                 lineTo(w * 0.18f, h * 0.88f)
@@ -1138,7 +1153,7 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                         )
                     }
 
-                    // Bottom Dock with Moon Clock Sleep Timer Icon
+                    // Bottom Dock with New Moon Clock Vector Icon
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
