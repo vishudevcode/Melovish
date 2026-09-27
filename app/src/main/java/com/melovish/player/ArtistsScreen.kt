@@ -484,18 +484,19 @@ fun ArtistsScreen(
         else artistsList.filter { it.name.contains(query, ignoreCase = true) }
 
         val comparator = when (manager.artistsSortOrder) {
-            ArtistSortOrder.A_TO_Z -> Comparator<ArtistItem> { a, b ->
+            ArtistSortOrder.NAME_A_TO_Z -> Comparator<ArtistItem> { a, b ->
                 if (a.name.equals("Unknown Artist", true)) 1
                 else if (b.name.equals("Unknown Artist", true)) -1
                 else a.name.compareTo(b.name, true)
             }
-            ArtistSortOrder.Z_TO_A -> Comparator<ArtistItem> { a, b ->
+            ArtistSortOrder.NAME_Z_TO_A -> Comparator<ArtistItem> { a, b ->
                 if (a.name.equals("Unknown Artist", true)) 1
                 else if (b.name.equals("Unknown Artist", true)) -1
                 else b.name.compareTo(a.name, true)
             }
-            ArtistSortOrder.MOST_SONGS -> compareByDescending<ArtistItem> { it.songs.size }
-            ArtistSortOrder.MOST_PLAYED -> compareByDescending<ArtistItem> { item -> item.songs.sumOf { it.playCount } }
+            ArtistSortOrder.MOST_TRACKS -> compareByDescending<ArtistItem> { it.songs.size }
+            ArtistSortOrder.FEWEST_TRACKS -> compareBy<ArtistItem> { it.songs.size }
+            else -> compareByDescending<ArtistItem> { it.songs.size }
         }
 
         val pinned = filtered.filter { it.isPinned }.sortedWith(comparator)
@@ -548,19 +549,19 @@ fun ArtistsScreen(
 
                     DropdownMenu(expanded = showSortMenu, onDismissRequest = { showSortMenu = false }) {
                         DropdownMenuItem(text = { Text("Name (A to Z)") }, onClick = {
-                            manager.setPersistentArtistsSort(ArtistSortOrder.A_TO_Z)
+                            manager.setPersistentArtistsSort(ArtistSortOrder.NAME_A_TO_Z)
                             showSortMenu = false
                         })
                         DropdownMenuItem(text = { Text("Name (Z to A)") }, onClick = {
-                            manager.setPersistentArtistsSort(ArtistSortOrder.Z_TO_A)
+                            manager.setPersistentArtistsSort(ArtistSortOrder.NAME_Z_TO_A)
                             showSortMenu = false
                         })
-                        DropdownMenuItem(text = { Text("Most Songs") }, onClick = {
-                            manager.setPersistentArtistsSort(ArtistSortOrder.MOST_SONGS)
+                        DropdownMenuItem(text = { Text("Most Tracks") }, onClick = {
+                            manager.setPersistentArtistsSort(ArtistSortOrder.MOST_TRACKS)
                             showSortMenu = false
                         })
-                        DropdownMenuItem(text = { Text("Most Played") }, onClick = {
-                            manager.setPersistentArtistsSort(ArtistSortOrder.MOST_PLAYED)
+                        DropdownMenuItem(text = { Text("Fewest Tracks") }, onClick = {
+                            manager.setPersistentArtistsSort(ArtistSortOrder.FEWEST_TRACKS)
                             showSortMenu = false
                         })
                     }
