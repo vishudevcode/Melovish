@@ -116,7 +116,7 @@ import kotlin.math.cos
 import kotlin.math.sin
 import kotlin.math.sqrt
 
-// Moon-Clock Vector Icon matching exact reference artwork
+// Moon-Clock Sleep Timer Icon
 @Composable
 fun SleepTimerMoonClockIcon(
     tint: Color,
@@ -132,7 +132,6 @@ fun SleepTimerMoonClockIcon(
                 val capRound = StrokeCap.Round
                 val joinRound = StrokeJoin.Round
 
-                // Crescent moon outline on the left
                 val moonPath = Path().apply {
                     moveTo(w * 0.34f, h * 0.20f)
                     cubicTo(w * 0.16f, h * 0.23f, w * 0.10f, h * 0.40f, w * 0.16f, h * 0.63f)
@@ -142,29 +141,25 @@ fun SleepTimerMoonClockIcon(
                     close()
                 }
 
-                // Clock hand paths from center (w * 0.50f, h * 0.47f)
                 val cx = w * 0.50f
                 val cy = h * 0.47f
                 val hubRadius = w * 0.055f
 
-                // Dial tick markers around the right side
                 val ticks = listOf(
-                    Pair(Offset(cx, h * 0.18f), Offset(cx, h * 0.24f)), // 12 o'clock tick
-                    Pair(Offset(w * 0.64f, h * 0.21f), Offset(w * 0.60f, h * 0.26f)), // 1 o'clock tick
-                    Pair(Offset(w * 0.75f, h * 0.30f), Offset(w * 0.69f, h * 0.34f)), // 2 o'clock tick
-                    Pair(Offset(w * 0.80f, cy), Offset(w * 0.73f, cy)), // 3 o'clock tick
-                    Pair(Offset(w * 0.79f, h * 0.55f), Offset(w * 0.73f, h * 0.53f))  // 4 o'clock tick
+                    Pair(Offset(cx, h * 0.18f), Offset(cx, h * 0.24f)),
+                    Pair(Offset(w * 0.64f, h * 0.21f), Offset(w * 0.60f, h * 0.26f)),
+                    Pair(Offset(w * 0.75f, h * 0.30f), Offset(w * 0.69f, h * 0.34f)),
+                    Pair(Offset(w * 0.80f, cy), Offset(w * 0.73f, cy)),
+                    Pair(Offset(w * 0.79f, h * 0.55f), Offset(w * 0.73f, h * 0.53f))
                 )
 
                 onDrawBehind {
-                    // Draw Crescent Moon
                     drawPath(
                         path = moonPath,
                         color = tint,
                         style = Stroke(width = strokeW, cap = capRound, join = joinRound)
                     )
 
-                    // Draw Center Hub Ring
                     drawCircle(
                         color = tint,
                         radius = hubRadius,
@@ -172,7 +167,6 @@ fun SleepTimerMoonClockIcon(
                         style = Stroke(width = strokeW)
                     )
 
-                    // 12 o'clock Hand (pointing straight up)
                     drawLine(
                         color = tint,
                         start = Offset(cx, cy - hubRadius),
@@ -181,7 +175,6 @@ fun SleepTimerMoonClockIcon(
                         cap = capRound
                     )
 
-                    // ~2 o'clock Hand (pointing up and to the right)
                     drawLine(
                         color = tint,
                         start = Offset(cx + hubRadius * 0.707f, cy - hubRadius * 0.707f),
@@ -190,7 +183,6 @@ fun SleepTimerMoonClockIcon(
                         cap = capRound
                     )
 
-                    // Outer dial ticks
                     ticks.forEach { (start, end) ->
                         drawLine(
                             color = tint,
@@ -203,6 +195,38 @@ fun SleepTimerMoonClockIcon(
                 }
             }
     )
+}
+
+// Bolder, Wider Triple-Line Drag Handle Icon
+@Composable
+fun ReorderDragHandle(tint: Color, modifier: Modifier = Modifier) {
+    Canvas(modifier = modifier) {
+        val w = size.width
+        val h = size.height
+        val strokeW = 3.2f.dp.toPx()
+
+        drawLine(
+            color = tint,
+            start = Offset(w * 0.10f, h * 0.25f),
+            end = Offset(w * 0.90f, h * 0.25f),
+            strokeWidth = strokeW,
+            cap = StrokeCap.Round
+        )
+        drawLine(
+            color = tint,
+            start = Offset(w * 0.10f, h * 0.50f),
+            end = Offset(w * 0.90f, h * 0.50f),
+            strokeWidth = strokeW,
+            cap = StrokeCap.Round
+        )
+        drawLine(
+            color = tint,
+            start = Offset(w * 0.10f, h * 0.75f),
+            end = Offset(w * 0.90f, h * 0.75f),
+            strokeWidth = strokeW,
+            cap = StrokeCap.Round
+        )
+    }
 }
 
 // Live Animated 4-Bar Equalizer
@@ -286,7 +310,7 @@ fun GlassmorphicFolderIcon(folderColor: Color, modifier: Modifier = Modifier) {
                 quadraticBezierTo(w * 0.48f, h * 0.14f, w * 0.52f, h * 0.22f)
                 lineTo(w * 0.56f, h * 0.28f)
                 lineTo(w * 0.82f, h * 0.28f)
-                quadraticBezierTo(w * 0.88f, h * 0.82f, w * 0.88f, h * 0.35f)
+                quadraticBezierTo(w * 0.88f, h * 0.28f, w * 0.88f, h * 0.35f)
                 lineTo(w * 0.88f, h * 0.82f)
                 quadraticBezierTo(w * 0.88f, h * 0.88f, w * 0.80f, h * 0.88f)
                 lineTo(w * 0.18f, h * 0.88f)
@@ -1126,7 +1150,6 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                     ) {
                         Text("❝≡", fontSize = 24.sp, fontWeight = FontWeight.Black, color = animTextPrimary, modifier = Modifier.clickable { showLyricsDialog = true })
 
-                        // Sleep Timer: Shows the custom moon-clock icon or active countdown minutes
                         Box(
                             modifier = Modifier
                                 .size(32.dp)
@@ -1187,7 +1210,7 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                         .background(if (isDark) Color(0xFF1E293B) else Color.White)
                         .clickable(enabled = false) {}
                         .padding(22.dp)
-        ) {
+                ) {
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text(
                             text = "${activeSong.title} - ${if (activeSong.artist.isNotBlank()) activeSong.artist else "Unknown"}",
