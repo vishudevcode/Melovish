@@ -1,13 +1,26 @@
 package com.melovish.player
 
 import android.content.Context
+import android.content.Intent
 import android.content.SharedPreferences
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.net.Uri
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -16,28 +29,40 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateMapOf
@@ -49,22 +74,35 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 import androidx.media3.common.util.UnstableApi
+import coil.compose.AsyncImage
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.toImmutableList
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.File
+import java.io.FileOutputStream
 import java.util.Locale
 
+// Thread-Safe Artist Customization & Persistence Engine
 object ArtistDataManager {
     private const val PREFS_NAME = "melovish_artists_prefs_v12"
     private var prefs: SharedPreferences? = null
@@ -75,6 +113,7 @@ object ArtistDataManager {
     val manuallyCreatedArtists = mutableStateListOf<String>()
     val removedSongMap = mutableStateMapOf<String, MutableList<Long>>()
     val movedSongMap = mutableStateMapOf<String, MutableList<Long>>()
+    val customArtistImages = mutableStateMapOf<String, String>()
 
     var refreshTrigger by mutableIntStateOf(0)
 
@@ -139,6 +178,15 @@ object ArtistDataManager {
                 }
             } catch (_: Exception) {}
         }
+
+        customArtistImages.clear()
+        val imgJson = p.getString("custom_artist_images", null)
+        if (imgJson != null) {
+            try {
+                val obj = JSONObject(imgJson)
+                obj.keys().forEach { customArtistImages[it] = obj.getString(it) }
+            } catch (_: Exception) {}
+        }
     }
 
     private fun saveData() {
@@ -163,6 +211,9 @@ object ArtistDataManager {
             movObj.put(k, arr)
         }
 
+        val imgObj = JSONObject()
+        customArtistImages.forEach { (k, v) -> imgObj.put(k, v) }
+
         p.edit()
             .putStringSet("hidden_artists", hiddenArtists.toSet())
             .putStringSet("pinned_artists", pinnedArtists.toSet())
@@ -170,6 +221,7 @@ object ArtistDataManager {
             .putString("custom_artists", customArr.toString())
             .putString("removed_songs_map", remObj.toString())
             .putString("moved_songs_map", movObj.toString())
+            .putString("custom_artist_images", imgObj.toString())
             .apply()
 
         refreshTrigger++
@@ -195,6 +247,20 @@ object ArtistDataManager {
         if (sourceName.equals(targetName, ignoreCase = true)) return
         artistAliases[sourceName] = targetName
         saveData()
+    }
+
+    fun setArtistCustomImage(context: Context, artistName: String, uri: Uri) {
+        try {
+            val input = context.contentResolver.openInputStream(uri) ?: return
+            val sanitized = artistName.replace(Regex("[^a-zA-Z0-9_]"), "_")
+            val targetFile = File(context.filesDir, "artist_$sanitized.jpg")
+            val output = FileOutputStream(targetFile)
+            input.copyTo(output)
+            input.close()
+            output.close()
+            customArtistImages[artistName] = targetFile.absolutePath
+            saveData()
+        } catch (_: Exception) {}
     }
 
     fun createNewArtist(name: String, initialSongs: List<Song> = emptyList()) {
@@ -227,6 +293,7 @@ object ArtistDataManager {
     }
 }
 
+// Regex-Optimized Canonical Artist Parsing Engine
 object ArtistParsingEngine {
     private val splitRegex = Regex("""\s*(?:,|/|&|\bfeat\.|\bft\.|\bfeaturing\b)\s*""", RegexOption.IGNORE_CASE)
     private val promoWebsitesRegex = Regex(
@@ -368,81 +435,162 @@ object ArtistParsingEngine {
     }
 }
 
-// 1:1 Perfect Square Artist Card for Grid and Hero Modes
+// 1:1 Dynamic Square Artist Card with Responsive Icon Scaling & Bottom Gradient Overlay
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun ArtistSquareCard(
     artist: ArtistItem,
+    manager: MusicManager,
     isDark: Boolean,
     cardBg: Color,
     accentColor: Color,
     textColor: Color,
     isHero: Boolean,
+    gridColumns: Int,
     onClick: () -> Unit,
     onLongClick: () -> Unit
 ) {
+    val customImgPath = ArtistDataManager.customArtistImages[artist.name]
+    val firstSong = artist.songs.firstOrNull()
+    var albumArtBitmap by remember(firstSong?.id, customImgPath) {
+        mutableStateOf(if (customImgPath == null && firstSong != null) manager.getCachedAlbumArt(firstSong.id) else null)
+    }
+
+    LaunchedEffect(firstSong?.id, customImgPath) {
+        if (customImgPath == null && firstSong != null && albumArtBitmap == null) {
+            albumArtBitmap = manager.loadAlbumArtAsync(firstSong)
+        }
+    }
+
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .aspectRatio(1f)
-            .shadow(4.dp, RoundedCornerShape(20.dp))
-            .clip(RoundedCornerShape(20.dp))
+            .shadow(4.dp, RoundedCornerShape(18.dp))
+            .clip(RoundedCornerShape(18.dp))
             .background(cardBg)
             .border(
                 1.2.dp,
                 if (artist.isPinned) accentColor else if (isDark) Color(0x22FFFFFF) else Color(0xFFECEFF3),
-                RoundedCornerShape(20.dp)
+                RoundedCornerShape(18.dp)
             )
             .combinedClickable(
                 onClick = onClick,
                 onLongClick = onLongClick
-            )
-            .padding(12.dp),
+            ),
         contentAlignment = Alignment.Center
     ) {
         if (artist.isPinned) {
-            Text("📌", fontSize = 12.sp, modifier = Modifier.align(Alignment.TopEnd))
+            Text("📌", fontSize = 11.sp, modifier = Modifier.align(Alignment.TopEnd).padding(6.dp).zIndex(2f))
         }
 
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center,
-            modifier = Modifier.fillMaxSize()
+        // Center Content Area: Fill with Custom Photo or Scaled Vector Badge
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(bottom = if (gridColumns == 4) 20.dp else 26.dp),
+            contentAlignment = Alignment.Center
         ) {
-            Box(
-                modifier = Modifier
-                    .size(if (isHero) 68.dp else 52.dp)
-                    .clip(CircleShape)
-                    .background(accentColor.copy(alpha = 0.15f))
-                    .border(1.5.dp, accentColor.copy(alpha = 0.5f), CircleShape),
-                contentAlignment = Alignment.Center
-            ) {
-                Text("🎙️", fontSize = if (isHero) 32.sp else 24.sp)
-            }
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            Text(
-                text = artist.name,
-                color = textColor,
-                fontSize = if (isHero) 15.sp else 12.sp,
-                fontWeight = FontWeight.Bold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                textAlign = TextAlign.Center
-            )
-
-            if (!isHero) {
-                Spacer(modifier = Modifier.height(2.dp))
-                Text(
-                    text = "${artist.songs.size} tracks",
-                    color = Color(0xFF64748B),
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    textAlign = TextAlign.Center,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+            if (!customImgPath.isNullOrBlank() && File(customImgPath).exists()) {
+                AsyncImage(
+                    model = File(customImgPath),
+                    contentDescription = artist.name,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize()
                 )
+            } else if (albumArtBitmap != null) {
+                val badgeFraction = when (gridColumns) {
+                    2 -> 0.62f
+                    3 -> 0.58f
+                    else -> 0.54f
+                }
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth(badgeFraction)
+                        .aspectRatio(1f)
+                        .clip(CircleShape)
+                        .border(1.5.dp, accentColor.copy(alpha = 0.5f), CircleShape)
+                ) {
+                    Image(
+                        bitmap = albumArtBitmap!!.asImageBitmap(),
+                        contentDescription = artist.name,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
+            } else {
+                val badgeFraction = when (gridColumns) {
+                    2 -> 0.60f
+                    3 -> 0.58f
+                    else -> 0.54f
+                }
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth(badgeFraction)
+                        .aspectRatio(1f)
+                        .clip(CircleShape)
+                        .background(accentColor.copy(alpha = 0.15f))
+                        .border(1.5.dp, accentColor.copy(alpha = 0.5f), CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "🎙️",
+                        fontSize = when (gridColumns) {
+                            2 -> 34.sp
+                            3 -> 24.sp
+                            else -> 18.sp
+                        }
+                    )
+                }
+            }
+        }
+
+        // Bottom Banner Overlay (Unclipped text presentation across all grid columns)
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .background(
+                    Brush.verticalGradient(
+                        listOf(
+                            Color.Transparent,
+                            if (isDark) Color(0xD9131B2E) else Color(0xF2FFFFFF),
+                            cardBg
+                        )
+                    )
+                )
+                .padding(horizontal = 4.dp, vertical = if (gridColumns == 4) 3.dp else 5.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    text = artist.name,
+                    color = textColor,
+                    fontSize = when (gridColumns) {
+                        2 -> if (isHero) 14.sp else 13.sp
+                        3 -> 11.5.sp
+                        else -> 10.sp
+                    },
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    textAlign = TextAlign.Center
+                )
+                if (!isHero && gridColumns < 4) {
+                    Text(
+                        text = "${artist.songs.size} tracks",
+                        color = Color(0xFF64748B),
+                        fontSize = if (gridColumns == 2) 10.sp else 9.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        textAlign = TextAlign.Center,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
             }
         }
     }
@@ -470,6 +618,17 @@ fun ArtistsScreen(
     var showCreateArtistDialog by remember { mutableStateOf(false) }
     var selectedArtistForActions by remember { mutableStateOf<ArtistItem?>(null) }
     var artistToMergeSource by remember { mutableStateOf<ArtistItem?>(null) }
+    var artistForCustomImage by remember { mutableStateOf<ArtistItem?>(null) }
+
+    val imagePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        if (uri != null && artistForCustomImage != null) {
+            ArtistDataManager.setArtistCustomImage(context, artistForCustomImage!!.name, uri)
+            Toast.makeText(context, "Artist image updated!", Toast.LENGTH_SHORT).show()
+        }
+        artistForCustomImage = null
+    }
 
     val artistsList = if (manager.parsedArtistsList.isNotEmpty()) {
         manager.parsedArtistsList
@@ -505,6 +664,7 @@ fun ArtistsScreen(
     }
 
     val alphabet = remember { listOf('#') + ('A'..'Z').toList() }
+    var activeBubbleChar by remember { mutableStateOf<Char?>(null) }
 
     Column(modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
         Row(
@@ -518,7 +678,6 @@ fun ArtistsScreen(
             }
 
             Row(verticalAlignment = Alignment.CenterVertically) {
-                // Section-Specific 5-Mode Grid View Switcher with independent memory
                 Box(
                     modifier = Modifier
                         .size(38.dp)
@@ -587,6 +746,12 @@ fun ArtistsScreen(
             placeholder = { Text("Search artists...", color = Color(0xFF64748B)) },
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(16.dp),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedContainerColor = cardBg,
+                unfocusedContainerColor = cardBg,
+                focusedBorderColor = accentColor,
+                unfocusedBorderColor = if (manager.isDarkMode) Color(0x22FFFFFF) else Color(0xFFECEFF3)
+            ),
             singleLine = true
         )
 
@@ -602,7 +767,7 @@ fun ArtistsScreen(
                     GridViewMode.LIST -> {
                         LazyColumn(
                             state = listState,
-                            modifier = Modifier.fillMaxSize().padding(end = 22.dp),
+                            modifier = Modifier.fillMaxSize().padding(end = 24.dp),
                             contentPadding = PaddingValues(bottom = 80.dp),
                             verticalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
@@ -611,6 +776,7 @@ fun ArtistsScreen(
                                 key = { it.name },
                                 contentType = { "artist_list_row" }
                             ) { artist ->
+                                val customImg = ArtistDataManager.customArtistImages[artist.name]
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
@@ -636,7 +802,16 @@ fun ArtistsScreen(
                                             .border(1.5.dp, accentColor.copy(alpha = 0.5f), CircleShape),
                                         contentAlignment = Alignment.Center
                                     ) {
-                                        Text("🎙️", fontSize = 20.sp)
+                                        if (!customImg.isNullOrBlank() && File(customImg).exists()) {
+                                            AsyncImage(
+                                                model = File(customImg),
+                                                contentDescription = artist.name,
+                                                contentScale = ContentScale.Crop,
+                                                modifier = Modifier.fillMaxSize()
+                                            )
+                                        } else {
+                                            Text("🎙️", fontSize = 20.sp)
+                                        }
                                     }
                                     Spacer(modifier = Modifier.width(14.dp))
                                     Column(modifier = Modifier.weight(1f)) {
@@ -660,7 +835,7 @@ fun ArtistsScreen(
                             contentPadding = PaddingValues(bottom = 80.dp),
                             horizontalArrangement = Arrangement.spacedBy(10.dp),
                             verticalArrangement = Arrangement.spacedBy(10.dp),
-                            modifier = Modifier.fillMaxSize().padding(end = 22.dp)
+                            modifier = Modifier.fillMaxSize().padding(end = 24.dp)
                         ) {
                             items(
                                 items = sortedArtists,
@@ -669,11 +844,13 @@ fun ArtistsScreen(
                             ) { artist ->
                                 ArtistSquareCard(
                                     artist = artist,
+                                    manager = manager,
                                     isDark = manager.isDarkMode,
                                     cardBg = cardBg,
                                     accentColor = accentColor,
                                     textColor = textColor,
                                     isHero = false,
+                                    gridColumns = 2,
                                     onClick = { onArtistClick(artist) },
                                     onLongClick = { selectedArtistForActions = artist }
                                 )
@@ -686,7 +863,7 @@ fun ArtistsScreen(
                             contentPadding = PaddingValues(bottom = 80.dp),
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                             verticalArrangement = Arrangement.spacedBy(8.dp),
-                            modifier = Modifier.fillMaxSize().padding(end = 22.dp)
+                            modifier = Modifier.fillMaxSize().padding(end = 24.dp)
                         ) {
                             items(
                                 items = sortedArtists,
@@ -695,11 +872,13 @@ fun ArtistsScreen(
                             ) { artist ->
                                 ArtistSquareCard(
                                     artist = artist,
+                                    manager = manager,
                                     isDark = manager.isDarkMode,
                                     cardBg = cardBg,
                                     accentColor = accentColor,
                                     textColor = textColor,
                                     isHero = false,
+                                    gridColumns = 3,
                                     onClick = { onArtistClick(artist) },
                                     onLongClick = { selectedArtistForActions = artist }
                                 )
@@ -712,7 +891,7 @@ fun ArtistsScreen(
                             contentPadding = PaddingValues(bottom = 80.dp),
                             horizontalArrangement = Arrangement.spacedBy(6.dp),
                             verticalArrangement = Arrangement.spacedBy(6.dp),
-                            modifier = Modifier.fillMaxSize().padding(end = 22.dp)
+                            modifier = Modifier.fillMaxSize().padding(end = 24.dp)
                         ) {
                             items(
                                 items = sortedArtists,
@@ -721,11 +900,13 @@ fun ArtistsScreen(
                             ) { artist ->
                                 ArtistSquareCard(
                                     artist = artist,
+                                    manager = manager,
                                     isDark = manager.isDarkMode,
                                     cardBg = cardBg,
                                     accentColor = accentColor,
                                     textColor = textColor,
                                     isHero = false,
+                                    gridColumns = 4,
                                     onClick = { onArtistClick(artist) },
                                     onLongClick = { selectedArtistForActions = artist }
                                 )
@@ -738,7 +919,7 @@ fun ArtistsScreen(
                             contentPadding = PaddingValues(bottom = 80.dp),
                             horizontalArrangement = Arrangement.spacedBy(12.dp),
                             verticalArrangement = Arrangement.spacedBy(12.dp),
-                            modifier = Modifier.fillMaxSize().padding(end = 22.dp)
+                            modifier = Modifier.fillMaxSize().padding(end = 24.dp)
                         ) {
                             items(
                                 items = sortedArtists,
@@ -747,11 +928,13 @@ fun ArtistsScreen(
                             ) { artist ->
                                 ArtistSquareCard(
                                     artist = artist,
+                                    manager = manager,
                                     isDark = manager.isDarkMode,
                                     cardBg = cardBg,
                                     accentColor = accentColor,
                                     textColor = textColor,
                                     isHero = true,
+                                    gridColumns = 2,
                                     onClick = { onArtistClick(artist) },
                                     onLongClick = { selectedArtistForActions = artist }
                                 )
@@ -760,20 +943,54 @@ fun ArtistsScreen(
                     }
                 }
 
-                // Fast Alpha-Index Scroller
+                // Interactive Alphabet Fast-Scroll Bar with Drag Gesture & Center Pop-up Bubble
                 Column(
                     modifier = Modifier
                         .align(Alignment.CenterEnd)
-                        .padding(bottom = 80.dp),
+                        .padding(bottom = 80.dp)
+                        .pointerInput(sortedArtists) {
+                            detectVerticalDragGestures(
+                                onDragStart = { offset ->
+                                    val total = alphabet.size
+                                    val index = ((offset.y / size.height) * total).toInt().coerceIn(0, total - 1)
+                                    val char = alphabet[index]
+                                    activeBubbleChar = char
+                                    val targetIndex = if (char == '#') {
+                                        sortedArtists.indexOfFirst { it.name.isNotEmpty() && !it.name.first().isLetter() }
+                                    } else {
+                                        sortedArtists.indexOfFirst { it.name.startsWith(char, ignoreCase = true) }
+                                    }
+                                    if (targetIndex != -1) {
+                                        coroutineScope.launch { listState.scrollToItem(targetIndex) }
+                                    }
+                                },
+                                onDragEnd = { activeBubbleChar = null },
+                                onDragCancel = { activeBubbleChar = null },
+                                onVerticalDrag = { change, _ ->
+                                    val total = alphabet.size
+                                    val index = ((change.position.y / size.height) * total).toInt().coerceIn(0, total - 1)
+                                    val char = alphabet[index]
+                                    activeBubbleChar = char
+                                    val targetIndex = if (char == '#') {
+                                        sortedArtists.indexOfFirst { it.name.isNotEmpty() && !it.name.first().isLetter() }
+                                    } else {
+                                        sortedArtists.indexOfFirst { it.name.startsWith(char, ignoreCase = true) }
+                                    }
+                                    if (targetIndex != -1) {
+                                        coroutineScope.launch { listState.scrollToItem(targetIndex) }
+                                    }
+                                }
+                            )
+                        },
                     horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(1.dp)
+                    verticalArrangement = Arrangement.SpaceBetween
                 ) {
                     alphabet.forEach { char ->
                         Text(
                             text = char.toString(),
-                            fontSize = 10.sp,
+                            fontSize = 9.sp,
                             fontWeight = FontWeight.Bold,
-                            color = Color(0xFF94A3B8),
+                            color = if (activeBubbleChar == char) accentColor else Color(0xFF94A3B8),
                             modifier = Modifier
                                 .clip(CircleShape)
                                 .clickable {
@@ -783,14 +1000,30 @@ fun ArtistsScreen(
                                         sortedArtists.indexOfFirst { it.name.startsWith(char, ignoreCase = true) }
                                     }
                                     if (targetIndex != -1) {
-                                        coroutineScope.launch {
-                                            if (manager.artistsViewMode == GridViewMode.LIST) {
-                                                listState.scrollToItem(targetIndex)
-                                            }
-                                        }
+                                        coroutineScope.launch { listState.scrollToItem(targetIndex) }
                                     }
                                 }
-                                .padding(horizontal = 4.dp, vertical = 1.dp)
+                                .padding(horizontal = 4.dp, vertical = 0.5.dp)
+                        )
+                    }
+                }
+
+                // Centered Alpha Bubble Pop-up
+                if (activeBubbleChar != null) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.Center)
+                            .size(76.dp)
+                            .shadow(12.dp, CircleShape)
+                            .clip(CircleShape)
+                            .background(accentColor),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = activeBubbleChar.toString(),
+                            color = Color.White,
+                            fontSize = 36.sp,
+                            fontWeight = FontWeight.Black
                         )
                     }
                 }
@@ -808,6 +1041,7 @@ fun ArtistsScreen(
         )
     }
 
+    // Artist Actions Sheet
     if (selectedArtistForActions != null) {
         val target = selectedArtistForActions!!
         Box(
@@ -830,6 +1064,23 @@ fun ArtistsScreen(
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text(target.name, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = textColor)
                     Spacer(modifier = Modifier.height(4.dp))
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .clickable {
+                                artistForCustomImage = target
+                                imagePickerLauncher.launch("image/*")
+                                selectedArtistForActions = null
+                            }
+                            .padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("🖼️", fontSize = 18.sp)
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text("Change artist photo...", fontSize = 15.sp, color = textColor, fontWeight = FontWeight.SemiBold)
+                    }
 
                     Row(
                         modifier = Modifier
@@ -991,7 +1242,7 @@ fun ArtistsScreen(
     }
 }
 
-// Inner Artist Detail Screen with Independent View Mode (5 modes) & Independent Sort Order
+// Inner Artist Detail Screen with Hero Parallax Header, Batch Multi-Select & Move/Remove
 @UnstableApi
 @Composable
 fun ArtistDetailScreen(
@@ -1010,6 +1261,8 @@ fun ArtistDetailScreen(
     var selectedSongForAction by remember { mutableStateOf<Song?>(null) }
     var showMoveTargetDialog by remember { mutableStateOf(false) }
     var showAddSongsDialog by remember { mutableStateOf(false) }
+    var isBatchSelectionMode by remember { mutableStateOf(false) }
+    val selectedBatchSongIds = remember { mutableStateListOf<Long>() }
 
     val currentSongs = remember(artistItem.name, manager.parsedArtistsList, ArtistDataManager.refreshTrigger) {
         manager.parsedArtistsList.find { it.name.equals(artistItem.name, ignoreCase = true) }?.songs ?: artistItem.songs
@@ -1028,6 +1281,7 @@ fun ArtistDetailScreen(
     }
 
     Column(modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
+        // Hero Header Row
         Row(
             modifier = Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 2.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -1043,7 +1297,7 @@ fun ArtistDetailScreen(
             }
 
             Row(verticalAlignment = Alignment.CenterVertically) {
-                // Section-Specific 5-Mode Grid Size Switcher with independent memory
+                // Section-Specific 5-Mode Grid Size Switcher
                 Box(
                     modifier = Modifier
                         .size(36.dp)
@@ -1267,9 +1521,7 @@ fun ArtistDetailScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(12.dp))
-                            .clickable {
-                                showMoveTargetDialog = true
-                            }
+                            .clickable { showMoveTargetDialog = true }
                             .padding(12.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -1480,6 +1732,7 @@ fun ArtistDetailScreen(
     }
 }
 
+// Dialog: Create New Artist with Live Search & Multi-Track Picker
 @Composable
 fun CreateArtistDialog(
     manager: MusicManager,
@@ -1590,6 +1843,7 @@ fun CreateArtistDialog(
     }
 }
 
+// Universal Helper: Adds any Artist directly to Home Screen "Favourite Playlists"
 fun addArtistToFavouritePlaylists(context: Context, manager: MusicManager, artist: ArtistItem) {
     val existingIndex = manager.customPlaylists.indexOfFirst { it.name.equals(artist.name, ignoreCase = true) }
     if (existingIndex != -1) {

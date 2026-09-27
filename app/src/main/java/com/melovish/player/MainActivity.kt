@@ -15,7 +15,6 @@ import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -108,6 +107,7 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
@@ -1664,7 +1664,7 @@ fun FolderColourPickerDialog(
     }
 }
 
-// 1:1 Perfect Square Folder Card for Library Grid Modes
+// 1:1 Dynamic Square Folder Card for Library Grid Modes with Bottom Banner Overlay
 @Composable
 fun LibraryFolderSquareCard(
     folderName: String,
@@ -1674,6 +1674,7 @@ fun LibraryFolderSquareCard(
     isDark: Boolean,
     cardBg: Color,
     isHero: Boolean,
+    gridColumns: Int,
     onClick: () -> Unit,
     onLongClick: () -> Unit
 ) {
@@ -1682,46 +1683,86 @@ fun LibraryFolderSquareCard(
         modifier = Modifier
             .fillMaxWidth()
             .aspectRatio(1f)
-            .shadow(4.dp, RoundedCornerShape(20.dp))
-            .clip(RoundedCornerShape(20.dp))
+            .shadow(4.dp, RoundedCornerShape(18.dp))
+            .clip(RoundedCornerShape(18.dp))
             .background(cardBg)
-            .border(1.dp, if (isDark) Color(0x22FFFFFF) else Color(0xFFECEFF3), RoundedCornerShape(20.dp))
+            .border(1.dp, if (isDark) Color(0x22FFFFFF) else Color(0xFFECEFF3), RoundedCornerShape(18.dp))
             .combinedClickable(
                 onClick = onClick,
                 onLongClick = onLongClick
-            )
-            .padding(12.dp),
+            ),
         contentAlignment = Alignment.Center
     ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center,
-            modifier = Modifier.fillMaxSize()
+        // Dynamic Icon Sizing filling ~55-60% of card width for consistent proportions
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(bottom = if (gridColumns == 4) 20.dp else 28.dp),
+            contentAlignment = Alignment.Center
         ) {
-            GlassmorphicFolderIcon(
-                folderColor = folderColor,
-                modifier = Modifier.size(if (isHero) 64.dp else 46.dp)
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = folderName,
-                color = textColor,
-                fontSize = if (isHero) 15.sp else 12.sp,
-                fontWeight = FontWeight.Bold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                textAlign = TextAlign.Center
-            )
-            if (!isHero) {
-                Spacer(modifier = Modifier.height(2.dp))
-                Text(
-                    text = "${songCount} songs • ${formatFileSize(totalSize)}",
-                    color = Color(0xFF64748B),
-                    fontSize = 10.sp,
-                    textAlign = TextAlign.Center,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+            val iconFraction = when (gridColumns) {
+                2 -> 0.58f
+                3 -> 0.56f
+                else -> 0.54f
+            }
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(iconFraction)
+                    .aspectRatio(1f),
+                contentAlignment = Alignment.Center
+            ) {
+                GlassmorphicFolderIcon(
+                    folderColor = folderColor,
+                    modifier = Modifier.fillMaxSize()
                 )
+            }
+        }
+
+        // Bottom Banner Overlay (Unclipped text presentation)
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .background(
+                    Brush.verticalGradient(
+                        listOf(
+                            Color.Transparent,
+                            (if (isDark) Color(0xCC131B2E) else Color(0xEEFFFFFF)),
+                            cardBg
+                        )
+                    )
+                )
+                .padding(horizontal = 4.dp, vertical = if (gridColumns == 4) 3.dp else 6.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    text = folderName,
+                    color = textColor,
+                    fontSize = when (gridColumns) {
+                        2 -> if (isHero) 14.sp else 13.sp
+                        3 -> 11.5.sp
+                        else -> 10.sp
+                    },
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    textAlign = TextAlign.Center
+                )
+                if (!isHero && gridColumns < 4) {
+                    Text(
+                        text = "$songCount songs • ${formatFileSize(totalSize)}",
+                        color = Color(0xFF64748B),
+                        fontSize = if (gridColumns == 2) 10.sp else 9.sp,
+                        textAlign = TextAlign.Center,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
             }
         }
     }
@@ -1854,6 +1895,7 @@ fun LibraryScreen(manager: MusicManager, listState: LazyListState, onFolderClick
                             isDark = isDark,
                             cardBg = cardBg,
                             isHero = false,
+                            gridColumns = 2,
                             onClick = { onFolderClick(folderName) },
                             onLongClick = { customizingFolder = folderName }
                         )
@@ -1885,6 +1927,7 @@ fun LibraryScreen(manager: MusicManager, listState: LazyListState, onFolderClick
                             isDark = isDark,
                             cardBg = cardBg,
                             isHero = false,
+                            gridColumns = 3,
                             onClick = { onFolderClick(folderName) },
                             onLongClick = { customizingFolder = folderName }
                         )
@@ -1916,6 +1959,7 @@ fun LibraryScreen(manager: MusicManager, listState: LazyListState, onFolderClick
                             isDark = isDark,
                             cardBg = cardBg,
                             isHero = false,
+                            gridColumns = 4,
                             onClick = { onFolderClick(folderName) },
                             onLongClick = { customizingFolder = folderName }
                         )
@@ -1947,6 +1991,7 @@ fun LibraryScreen(manager: MusicManager, listState: LazyListState, onFolderClick
                             isDark = isDark,
                             cardBg = cardBg,
                             isHero = true,
+                            gridColumns = 2,
                             onClick = { onFolderClick(folderName) },
                             onLongClick = { customizingFolder = folderName }
                         )
@@ -3030,7 +3075,6 @@ fun UniversalSongCard(song: Song, manager: MusicManager, isDark: Boolean, onPlay
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .aspectRatio(1f)
             .clip(RoundedCornerShape(18.dp))
             .background(cardBg)
             .border(1.dp, if (isPlayingThis) accent else if (isDark) Color(0x22FFFFFF) else Color(0xFFECEFF3), RoundedCornerShape(18.dp))
