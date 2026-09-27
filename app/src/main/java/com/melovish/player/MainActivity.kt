@@ -1058,7 +1058,7 @@ fun FavouritePlaylistLongPressDialog(
                                 .background(Brush.sweepGradient(listOf(Color.Red, Color.Yellow, Color.Green, Color.Cyan, Color.Blue, Color.Magenta, Color.Red)))
                                 .border(2.dp, Color.White, CircleShape)
                                 .clickable {
-                                    onDismiss()
+                                    // Instantly transition to Rainbow Picker without clearing state
                                     onOpenRainbowPicker()
                                 },
                             contentAlignment = Alignment.Center
@@ -1419,13 +1419,17 @@ fun HomeScreen(
         onDismiss = { showGridSizeDialog = false }
     )
 
-    if (longPressPlaylist != null) {
+    // Mutual exclusivity between Playlist Long-Press Dialog and Rainbow Picker
+    if (longPressPlaylist != null && !showRainbowWheelForPl) {
         val pl = longPressPlaylist!!
         FavouritePlaylistLongPressDialog(
             playlist = pl,
             manager = manager,
             isDark = isDark,
-            onOpenRainbowPicker = { showRainbowWheelForPl = true },
+            onOpenRainbowPicker = {
+                // Immediately transition to the rainbow picker without clearing the target playlist
+                showRainbowWheelForPl = true
+            },
             onDismiss = { longPressPlaylist = null }
         )
     }
@@ -1437,8 +1441,12 @@ fun HomeScreen(
             onColorSelected = { newColor ->
                 manager.updatePlaylistColorOnly(pl, newColor.toArgb().toLong())
                 showRainbowWheelForPl = false
+                longPressPlaylist = null
             },
-            onDismiss = { showRainbowWheelForPl = false }
+            onDismiss = {
+                showRainbowWheelForPl = false
+                longPressPlaylist = null
+            }
         )
     }
 }
