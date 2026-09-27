@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -47,6 +48,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
@@ -63,7 +65,6 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.util.Locale
 
-// Thread-Safe Artist Customization & Persistence Engine
 object ArtistDataManager {
     private const val PREFS_NAME = "melovish_artists_prefs_v12"
     private var prefs: SharedPreferences? = null
@@ -174,24 +175,6 @@ object ArtistDataManager {
         refreshTrigger++
     }
 
-    fun isCardView(): Boolean = prefs?.getBoolean("is_card_view", false) ?: false
-    fun setCardView(isCard: Boolean) {
-        prefs?.edit()?.putBoolean("is_card_view", isCard)?.apply()
-    }
-
-    fun getSortOrder(): ArtistSortOrder {
-        val saved = prefs?.getString("artist_sort_order", ArtistSortOrder.NAME_A_TO_Z.name)
-        return try {
-            ArtistSortOrder.valueOf(saved ?: ArtistSortOrder.NAME_A_TO_Z.name)
-        } catch (_: Exception) {
-            ArtistSortOrder.NAME_A_TO_Z
-        }
-    }
-
-    fun setSortOrder(order: ArtistSortOrder) {
-        prefs?.edit()?.putString("artist_sort_order", order.name)?.apply()
-    }
-
     fun togglePinArtist(name: String) {
         if (pinnedArtists.contains(name)) {
             pinnedArtists.remove(name)
@@ -244,7 +227,6 @@ object ArtistDataManager {
     }
 }
 
-// Phase 1 Invariant: Fully-Vectorized, Pre-Compiled Regex Parsing on Worker Dispatchers
 object ArtistParsingEngine {
     private val splitRegex = Regex("""\s*(?:,|/|&|\bfeat\.|\bft\.|\bfeaturing\b)\s*""", RegexOption.IGNORE_CASE)
     private val promoWebsitesRegex = Regex(
@@ -265,10 +247,6 @@ object ArtistParsingEngine {
         return clean
     }
 
-    /**
-     * O(N) Canonical Artist Grouping with O(1) HashSet Lookups.
-     * Guarantees zero main-thread allocation and safe circular-dependency resolution.
-     */
     fun parseAndGroupArtists(allSongs: List<Song>): List<ArtistItem> {
         if (allSongs.isEmpty()) return emptyList()
 
@@ -390,7 +368,86 @@ object ArtistParsingEngine {
     }
 }
 
-// Phase 2 Invariant: Zero-Recomposition Artists Screen with Immutable Lists & Explicit ContentTypes
+// 1:1 Perfect Square Artist Card for Grid and Hero Modes
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+fun ArtistSquareCard(
+    artist: ArtistItem,
+    isDark: Boolean,
+    cardBg: Color,
+    accentColor: Color,
+    textColor: Color,
+    isHero: Boolean,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .aspectRatio(1f)
+            .shadow(4.dp, RoundedCornerShape(20.dp))
+            .clip(RoundedCornerShape(20.dp))
+            .background(cardBg)
+            .border(
+                1.2.dp,
+                if (artist.isPinned) accentColor else if (isDark) Color(0x22FFFFFF) else Color(0xFFECEFF3),
+                RoundedCornerShape(20.dp)
+            )
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = onLongClick
+            )
+            .padding(12.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        if (artist.isPinned) {
+            Text("📌", fontSize = 12.sp, modifier = Modifier.align(Alignment.TopEnd))
+        }
+
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+            modifier = Modifier.fillMaxSize()
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(if (isHero) 68.dp else 52.dp)
+                    .clip(CircleShape)
+                    .background(accentColor.copy(alpha = 0.15f))
+                    .border(1.5.dp, accentColor.copy(alpha = 0.5f), CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                Text("🎙️", fontSize = if (isHero) 32.sp else 24.sp)
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Text(
+                text = artist.name,
+                color = textColor,
+                fontSize = if (isHero) 15.sp else 12.sp,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.Center
+            )
+
+            if (!isHero) {
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = "${artist.songs.size} tracks",
+                    color = Color(0xFF64748B),
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    textAlign = TextAlign.Center,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+    }
+}
+
 @OptIn(ExperimentalFoundationApi::class)
 @UnstableApi
 @Composable
@@ -408,10 +465,8 @@ fun ArtistsScreen(
     val coroutineScope = rememberCoroutineScope()
 
     var query by remember { mutableStateOf("") }
-    var isCardView by remember { mutableStateOf(ArtistDataManager.isCardView()) }
-    var sortOrder by remember { mutableStateOf(ArtistDataManager.getSortOrder()) }
-
     var showSortMenu by remember { mutableStateOf(false) }
+    var showGridSizeDialog by remember { mutableStateOf(false) }
     var showCreateArtistDialog by remember { mutableStateOf(false) }
     var selectedArtistForActions by remember { mutableStateOf<ArtistItem?>(null) }
     var artistToMergeSource by remember { mutableStateOf<ArtistItem?>(null) }
@@ -424,23 +479,23 @@ fun ArtistsScreen(
         }
     }
 
-    val sortedArtists: ImmutableList<ArtistItem> = remember(artistsList, query, sortOrder, ArtistDataManager.refreshTrigger) {
+    val sortedArtists: ImmutableList<ArtistItem> = remember(artistsList, query, manager.artistsSortOrder, ArtistDataManager.refreshTrigger) {
         val filtered = if (query.isBlank()) artistsList
         else artistsList.filter { it.name.contains(query, ignoreCase = true) }
 
-        val comparator = when (sortOrder) {
-            ArtistSortOrder.NAME_A_TO_Z -> Comparator<ArtistItem> { a, b ->
+        val comparator = when (manager.artistsSortOrder) {
+            ArtistSortOrder.A_TO_Z -> Comparator<ArtistItem> { a, b ->
                 if (a.name.equals("Unknown Artist", true)) 1
                 else if (b.name.equals("Unknown Artist", true)) -1
                 else a.name.compareTo(b.name, true)
             }
-            ArtistSortOrder.NAME_Z_TO_A -> Comparator<ArtistItem> { a, b ->
+            ArtistSortOrder.Z_TO_A -> Comparator<ArtistItem> { a, b ->
                 if (a.name.equals("Unknown Artist", true)) 1
                 else if (b.name.equals("Unknown Artist", true)) -1
                 else b.name.compareTo(a.name, true)
             }
-            ArtistSortOrder.MOST_TRACKS -> compareByDescending<ArtistItem> { it.songs.size }
-            ArtistSortOrder.FEWEST_TRACKS -> compareBy<ArtistItem> { it.songs.size }
+            ArtistSortOrder.MOST_SONGS -> compareByDescending<ArtistItem> { it.songs.size }
+            ArtistSortOrder.MOST_PLAYED -> compareByDescending<ArtistItem> { item -> item.songs.sumOf { it.playCount } }
         }
 
         val pinned = filtered.filter { it.isPinned }.sortedWith(comparator)
@@ -462,19 +517,19 @@ fun ArtistsScreen(
             }
 
             Row(verticalAlignment = Alignment.CenterVertically) {
+                // Section-Specific 5-Mode Grid View Switcher with independent memory
                 Box(
                     modifier = Modifier
                         .size(38.dp)
                         .clip(CircleShape)
                         .background(if (manager.isDarkMode) Color(0x22FFFFFF) else Color(0xFFF1F5F9))
-                        .clickable {
-                            val newMode = !isCardView
-                            isCardView = newMode
-                            ArtistDataManager.setCardView(newMode)
-                        },
+                        .combinedClickable(
+                            onClick = { manager.cycleNextArtistsViewMode() },
+                            onLongClick = { showGridSizeDialog = true }
+                        ),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text(if (isCardView) "☰" else "⊞", fontSize = 18.sp, color = textColor, fontWeight = FontWeight.Bold)
+                    GridViewModeVectorIcon(mode = manager.artistsViewMode, tint = textColor, modifier = Modifier.size(18.dp))
                 }
 
                 Spacer(modifier = Modifier.width(8.dp))
@@ -493,23 +548,19 @@ fun ArtistsScreen(
 
                     DropdownMenu(expanded = showSortMenu, onDismissRequest = { showSortMenu = false }) {
                         DropdownMenuItem(text = { Text("Name (A to Z)") }, onClick = {
-                            sortOrder = ArtistSortOrder.NAME_A_TO_Z
-                            ArtistDataManager.setSortOrder(sortOrder)
+                            manager.setPersistentArtistsSort(ArtistSortOrder.A_TO_Z)
                             showSortMenu = false
                         })
                         DropdownMenuItem(text = { Text("Name (Z to A)") }, onClick = {
-                            sortOrder = ArtistSortOrder.NAME_Z_TO_A
-                            ArtistDataManager.setSortOrder(sortOrder)
+                            manager.setPersistentArtistsSort(ArtistSortOrder.Z_TO_A)
                             showSortMenu = false
                         })
-                        DropdownMenuItem(text = { Text("Most Tracks") }, onClick = {
-                            sortOrder = ArtistSortOrder.MOST_TRACKS
-                            ArtistDataManager.setSortOrder(sortOrder)
+                        DropdownMenuItem(text = { Text("Most Songs") }, onClick = {
+                            manager.setPersistentArtistsSort(ArtistSortOrder.MOST_SONGS)
                             showSortMenu = false
                         })
-                        DropdownMenuItem(text = { Text("Fewest Tracks") }, onClick = {
-                            sortOrder = ArtistSortOrder.FEWEST_TRACKS
-                            ArtistDataManager.setSortOrder(sortOrder)
+                        DropdownMenuItem(text = { Text("Most Played") }, onClick = {
+                            manager.setPersistentArtistsSort(ArtistSortOrder.MOST_PLAYED)
                             showSortMenu = false
                         })
                     }
@@ -546,122 +597,163 @@ fun ArtistsScreen(
             }
         } else {
             Box(modifier = Modifier.fillMaxSize()) {
-                if (isCardView) {
-                    LazyVerticalGrid(
-                        columns = GridCells.Fixed(2),
-                        contentPadding = PaddingValues(bottom = 80.dp),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp),
-                        modifier = Modifier.fillMaxSize().padding(end = 22.dp)
-                    ) {
-                        items(
-                            items = sortedArtists,
-                            key = { it.name },
-                            contentType = { "artist_grid_card" }
-                        ) { artist ->
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(20.dp))
-                                    .background(cardBg)
-                                    .border(
-                                        1.2.dp,
-                                        if (artist.isPinned) accentColor else if (manager.isDarkMode) Color(0x22FFFFFF) else Color(0xFFECEFF3),
-                                        RoundedCornerShape(20.dp)
-                                    )
-                                    .combinedClickable(
-                                        onClick = { onArtistClick(artist) },
-                                        onLongClick = { selectedArtistForActions = artist }
-                                    )
-                                    .padding(16.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                if (artist.isPinned) {
-                                    Text("📌", fontSize = 12.sp, modifier = Modifier.align(Alignment.TopEnd))
-                                }
-                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                when (manager.artistsViewMode) {
+                    GridViewMode.LIST -> {
+                        LazyColumn(
+                            state = listState,
+                            modifier = Modifier.fillMaxSize().padding(end = 22.dp),
+                            contentPadding = PaddingValues(bottom = 80.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            items(
+                                items = sortedArtists,
+                                key = { it.name },
+                                contentType = { "artist_list_row" }
+                            ) { artist ->
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(18.dp))
+                                        .background(cardBg)
+                                        .border(
+                                            1.2.dp,
+                                            if (artist.isPinned) accentColor else if (manager.isDarkMode) Color(0x22FFFFFF) else Color(0xFFECEFF3),
+                                            RoundedCornerShape(18.dp)
+                                        )
+                                        .combinedClickable(
+                                            onClick = { onArtistClick(artist) },
+                                            onLongClick = { selectedArtistForActions = artist }
+                                        )
+                                        .padding(14.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
                                     Box(
                                         modifier = Modifier
-                                            .size(54.dp)
+                                            .size(46.dp)
                                             .clip(CircleShape)
                                             .background(accentColor.copy(alpha = 0.15f))
                                             .border(1.5.dp, accentColor.copy(alpha = 0.5f), CircleShape),
                                         contentAlignment = Alignment.Center
                                     ) {
-                                        Text("🎙️", fontSize = 24.sp)
+                                        Text("🎙️", fontSize = 20.sp)
                                     }
-                                    Spacer(modifier = Modifier.height(10.dp))
-                                    Text(
-                                        artist.name,
-                                        color = textColor,
-                                        fontSize = 14.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                        textAlign = TextAlign.Center
-                                    )
-                                    Spacer(modifier = Modifier.height(2.dp))
-                                    Text(
-                                        "${artist.songs.size} tracks",
-                                        color = Color(0xFF64748B),
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.SemiBold
-                                    )
+                                    Spacer(modifier = Modifier.width(14.dp))
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Text(artist.name, color = textColor, fontSize = 15.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                            if (artist.isPinned) {
+                                                Spacer(modifier = Modifier.width(6.dp))
+                                                Text("📌", fontSize = 11.sp)
+                                            }
+                                        }
+                                        Text("${artist.songs.size} ${if (artist.songs.size == 1) "track" else "tracks"}", color = Color(0xFF64748B), fontSize = 12.sp)
+                                    }
+                                    Text("⋮", fontSize = 20.sp, color = textColor, modifier = Modifier.clickable { selectedArtistForActions = artist }.padding(4.dp))
                                 }
                             }
                         }
                     }
-                } else {
-                    LazyColumn(
-                        state = listState,
-                        modifier = Modifier.fillMaxSize().padding(end = 22.dp),
-                        contentPadding = PaddingValues(bottom = 80.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        items(
-                            items = sortedArtists,
-                            key = { it.name },
-                            contentType = { "artist_list_row" }
-                        ) { artist ->
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(18.dp))
-                                    .background(cardBg)
-                                    .border(
-                                        1.2.dp,
-                                        if (artist.isPinned) accentColor else if (manager.isDarkMode) Color(0x22FFFFFF) else Color(0xFFECEFF3),
-                                        RoundedCornerShape(18.dp)
-                                    )
-                                    .combinedClickable(
-                                        onClick = { onArtistClick(artist) },
-                                        onLongClick = { selectedArtistForActions = artist }
-                                    )
-                                    .padding(14.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(46.dp)
-                                        .clip(CircleShape)
-                                        .background(accentColor.copy(alpha = 0.15f))
-                                        .border(1.5.dp, accentColor.copy(alpha = 0.5f), CircleShape),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text("🎙️", fontSize = 20.sp)
-                                }
-                                Spacer(modifier = Modifier.width(14.dp))
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Text(artist.name, color = textColor, fontSize = 15.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                        if (artist.isPinned) {
-                                            Spacer(modifier = Modifier.width(6.dp))
-                                            Text("📌", fontSize = 11.sp)
-                                        }
-                                    }
-                                    Text("${artist.songs.size} ${if (artist.songs.size == 1) "track" else "tracks"}", color = Color(0xFF64748B), fontSize = 12.sp)
-                                }
-                                Text("⋮", fontSize = 20.sp, color = textColor, modifier = Modifier.clickable { selectedArtistForActions = artist }.padding(4.dp))
+                    GridViewMode.GRID_2 -> {
+                        LazyVerticalGrid(
+                            columns = GridCells.Fixed(2),
+                            contentPadding = PaddingValues(bottom = 80.dp),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp),
+                            modifier = Modifier.fillMaxSize().padding(end = 22.dp)
+                        ) {
+                            items(
+                                items = sortedArtists,
+                                key = { it.name },
+                                contentType = { "artist_grid_card_2" }
+                            ) { artist ->
+                                ArtistSquareCard(
+                                    artist = artist,
+                                    isDark = manager.isDarkMode,
+                                    cardBg = cardBg,
+                                    accentColor = accentColor,
+                                    textColor = textColor,
+                                    isHero = false,
+                                    onClick = { onArtistClick(artist) },
+                                    onLongClick = { selectedArtistForActions = artist }
+                                )
+                            }
+                        }
+                    }
+                    GridViewMode.GRID_3 -> {
+                        LazyVerticalGrid(
+                            columns = GridCells.Fixed(3),
+                            contentPadding = PaddingValues(bottom = 80.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.fillMaxSize().padding(end = 22.dp)
+                        ) {
+                            items(
+                                items = sortedArtists,
+                                key = { it.name },
+                                contentType = { "artist_grid_card_3" }
+                            ) { artist ->
+                                ArtistSquareCard(
+                                    artist = artist,
+                                    isDark = manager.isDarkMode,
+                                    cardBg = cardBg,
+                                    accentColor = accentColor,
+                                    textColor = textColor,
+                                    isHero = false,
+                                    onClick = { onArtistClick(artist) },
+                                    onLongClick = { selectedArtistForActions = artist }
+                                )
+                            }
+                        }
+                    }
+                    GridViewMode.GRID_4 -> {
+                        LazyVerticalGrid(
+                            columns = GridCells.Fixed(4),
+                            contentPadding = PaddingValues(bottom = 80.dp),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp),
+                            modifier = Modifier.fillMaxSize().padding(end = 22.dp)
+                        ) {
+                            items(
+                                items = sortedArtists,
+                                key = { it.name },
+                                contentType = { "artist_grid_card_4" }
+                            ) { artist ->
+                                ArtistSquareCard(
+                                    artist = artist,
+                                    isDark = manager.isDarkMode,
+                                    cardBg = cardBg,
+                                    accentColor = accentColor,
+                                    textColor = textColor,
+                                    isHero = false,
+                                    onClick = { onArtistClick(artist) },
+                                    onLongClick = { selectedArtistForActions = artist }
+                                )
+                            }
+                        }
+                    }
+                    GridViewMode.HERO_GRID -> {
+                        LazyVerticalGrid(
+                            columns = GridCells.Fixed(2),
+                            contentPadding = PaddingValues(bottom = 80.dp),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp),
+                            modifier = Modifier.fillMaxSize().padding(end = 22.dp)
+                        ) {
+                            items(
+                                items = sortedArtists,
+                                key = { it.name },
+                                contentType = { "artist_grid_hero" }
+                            ) { artist ->
+                                ArtistSquareCard(
+                                    artist = artist,
+                                    isDark = manager.isDarkMode,
+                                    cardBg = cardBg,
+                                    accentColor = accentColor,
+                                    textColor = textColor,
+                                    isHero = true,
+                                    onClick = { onArtistClick(artist) },
+                                    onLongClick = { selectedArtistForActions = artist }
+                                )
                             }
                         }
                     }
@@ -691,7 +783,9 @@ fun ArtistsScreen(
                                     }
                                     if (targetIndex != -1) {
                                         coroutineScope.launch {
-                                            if (!isCardView) listState.scrollToItem(targetIndex)
+                                            if (manager.artistsViewMode == GridViewMode.LIST) {
+                                                listState.scrollToItem(targetIndex)
+                                            }
                                         }
                                     }
                                 }
@@ -701,6 +795,16 @@ fun ArtistsScreen(
                 }
             }
         }
+    }
+
+    if (showGridSizeDialog) {
+        GridSizeDialog(
+            currentMode = manager.artistsViewMode,
+            isDark = manager.isDarkMode,
+            accent = manager.accentColor,
+            onSelectMode = { manager.updateArtistsViewMode(it) },
+            onDismiss = { showGridSizeDialog = false }
+        )
     }
 
     if (selectedArtistForActions != null) {
@@ -886,7 +990,7 @@ fun ArtistsScreen(
     }
 }
 
-// Inner Artist Detail Screen with Inside Sorting, Move & Remove
+// Inner Artist Detail Screen with Independent View Mode (5 modes) & Independent Sort Order
 @UnstableApi
 @Composable
 fun ArtistDetailScreen(
@@ -900,8 +1004,8 @@ fun ArtistDetailScreen(
     val textColor = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A)
     val accent = manager.accentColor
 
-    var sortOrder by remember { mutableStateOf(ArtistSongSortOrder.TITLE_A_TO_Z) }
     var showSortMenu by remember { mutableStateOf(false) }
+    var showGridSizeDialog by remember { mutableStateOf(false) }
     var selectedSongForAction by remember { mutableStateOf<Song?>(null) }
     var showMoveTargetDialog by remember { mutableStateOf(false) }
     var showAddSongsDialog by remember { mutableStateOf(false) }
@@ -910,12 +1014,15 @@ fun ArtistDetailScreen(
         manager.parsedArtistsList.find { it.name.equals(artistItem.name, ignoreCase = true) }?.songs ?: artistItem.songs
     }
 
-    val sortedSongs: ImmutableList<Song> = remember(currentSongs, sortOrder) {
-        when (sortOrder) {
-            ArtistSongSortOrder.TITLE_A_TO_Z -> currentSongs.sortedBy { it.title.lowercase(Locale.getDefault()) }
-            ArtistSongSortOrder.DURATION -> currentSongs.sortedByDescending { it.duration }
-            ArtistSongSortOrder.FILE_SIZE -> currentSongs.sortedByDescending { it.size }
-            ArtistSongSortOrder.NEWEST -> currentSongs.sortedByDescending { it.id }
+    val sortedSongs: ImmutableList<Song> = remember(currentSongs, manager.artistInnerSortOrder) {
+        when (manager.artistInnerSortOrder) {
+            SongSortOrder.A_TO_Z -> currentSongs.sortedBy { it.title.lowercase(Locale.getDefault()) }
+            SongSortOrder.Z_TO_A -> currentSongs.sortedByDescending { it.title.lowercase(Locale.getDefault()) }
+            SongSortOrder.DURATION -> currentSongs.sortedByDescending { it.duration }
+            SongSortOrder.FILE_SIZE -> currentSongs.sortedByDescending { it.size }
+            SongSortOrder.NEWEST -> currentSongs.sortedByDescending { it.id }
+            SongSortOrder.OLDEST -> currentSongs.sortedBy { it.id }
+            SongSortOrder.ARTIST -> currentSongs.sortedBy { it.artist.lowercase(Locale.getDefault()) }
         }.toImmutableList()
     }
 
@@ -935,15 +1042,19 @@ fun ArtistDetailScreen(
             }
 
             Row(verticalAlignment = Alignment.CenterVertically) {
+                // Section-Specific 5-Mode Grid Size Switcher with independent memory
                 Box(
                     modifier = Modifier
                         .size(36.dp)
                         .clip(CircleShape)
                         .background(if (isDark) Color(0x22FFFFFF) else Color(0xFFF1F5F9))
-                        .clickable { addArtistToFavouritePlaylists(context, manager, artistItem) },
+                        .combinedClickable(
+                            onClick = { manager.cycleNextArtistInnerViewMode() },
+                            onLongClick = { showGridSizeDialog = true }
+                        ),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text("⭐", fontSize = 16.sp)
+                    GridViewModeVectorIcon(mode = manager.artistInnerViewMode, tint = textColor, modifier = Modifier.size(16.dp))
                 }
 
                 Spacer(modifier = Modifier.width(6.dp))
@@ -961,10 +1072,11 @@ fun ArtistDetailScreen(
                     }
 
                     DropdownMenu(expanded = showSortMenu, onDismissRequest = { showSortMenu = false }) {
-                        DropdownMenuItem(text = { Text("Title (A to Z)") }, onClick = { sortOrder = ArtistSongSortOrder.TITLE_A_TO_Z; showSortMenu = false })
-                        DropdownMenuItem(text = { Text("Duration") }, onClick = { sortOrder = ArtistSongSortOrder.DURATION; showSortMenu = false })
-                        DropdownMenuItem(text = { Text("File Size") }, onClick = { sortOrder = ArtistSongSortOrder.FILE_SIZE; showSortMenu = false })
-                        DropdownMenuItem(text = { Text("Newest First") }, onClick = { sortOrder = ArtistSongSortOrder.NEWEST; showSortMenu = false })
+                        DropdownMenuItem(text = { Text("A to Z") }, onClick = { manager.setPersistentArtistInnerSort(SongSortOrder.A_TO_Z); showSortMenu = false })
+                        DropdownMenuItem(text = { Text("Z to A") }, onClick = { manager.setPersistentArtistInnerSort(SongSortOrder.Z_TO_A); showSortMenu = false })
+                        DropdownMenuItem(text = { Text("Duration") }, onClick = { manager.setPersistentArtistInnerSort(SongSortOrder.DURATION); showSortMenu = false })
+                        DropdownMenuItem(text = { Text("File Size") }, onClick = { manager.setPersistentArtistInnerSort(SongSortOrder.FILE_SIZE); showSortMenu = false })
+                        DropdownMenuItem(text = { Text("Newest First") }, onClick = { manager.setPersistentArtistInnerSort(SongSortOrder.NEWEST); showSortMenu = false })
                     }
                 }
 
@@ -1000,25 +1112,131 @@ fun ArtistDetailScreen(
                 Text("No tracks available for this artist.", color = Color(0xFF64748B))
             }
         } else {
-            LazyColumn(
-                contentPadding = PaddingValues(bottom = 80.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                items(
-                    items = sortedSongs,
-                    key = { it.id },
-                    contentType = { "universal_song_row" }
-                ) { song ->
-                    UniversalSongRow(
-                        song = song,
-                        manager = manager,
-                        isDark = isDark,
-                        onPlay = { manager.playSong(song, sortedSongs, artistItem.name) },
-                        onMenuClick = { selectedSongForAction = song }
-                    )
+            when (manager.artistInnerViewMode) {
+                GridViewMode.LIST -> {
+                    LazyColumn(
+                        contentPadding = PaddingValues(bottom = 80.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        items(
+                            items = sortedSongs,
+                            key = { it.id },
+                            contentType = { "universal_song_row" }
+                        ) { song ->
+                            UniversalSongRow(
+                                song = song,
+                                manager = manager,
+                                isDark = isDark,
+                                onPlay = { manager.playSong(song, sortedSongs, artistItem.name) },
+                                onMenuClick = { selectedSongForAction = song }
+                            )
+                        }
+                    }
+                }
+                GridViewMode.GRID_2 -> {
+                    LazyVerticalGrid(
+                        columns = GridCells.Fixed(2),
+                        contentPadding = PaddingValues(bottom = 80.dp),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                        modifier = Modifier.fillMaxSize()
+                    ) {
+                        items(
+                            items = sortedSongs,
+                            key = { it.id },
+                            contentType = { "artist_inner_card_2" }
+                        ) { song ->
+                            SquareAlbumOverlayCard(
+                                song = song,
+                                manager = manager,
+                                isDark = isDark,
+                                onPlay = { manager.playSong(song, sortedSongs, artistItem.name) },
+                                onMenuClick = { selectedSongForAction = song }
+                            )
+                        }
+                    }
+                }
+                GridViewMode.GRID_3 -> {
+                    LazyVerticalGrid(
+                        columns = GridCells.Fixed(3),
+                        contentPadding = PaddingValues(bottom = 80.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.fillMaxSize()
+                    ) {
+                        items(
+                            items = sortedSongs,
+                            key = { it.id },
+                            contentType = { "artist_inner_card_3" }
+                        ) { song ->
+                            SquareAlbumOverlayCard(
+                                song = song,
+                                manager = manager,
+                                isDark = isDark,
+                                onPlay = { manager.playSong(song, sortedSongs, artistItem.name) },
+                                onMenuClick = { selectedSongForAction = song }
+                            )
+                        }
+                    }
+                }
+                GridViewMode.GRID_4 -> {
+                    LazyVerticalGrid(
+                        columns = GridCells.Fixed(4),
+                        contentPadding = PaddingValues(bottom = 80.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                        modifier = Modifier.fillMaxSize()
+                    ) {
+                        items(
+                            items = sortedSongs,
+                            key = { it.id },
+                            contentType = { "artist_inner_card_4" }
+                        ) { song ->
+                            SquareAlbumOverlayCard(
+                                song = song,
+                                manager = manager,
+                                isDark = isDark,
+                                onPlay = { manager.playSong(song, sortedSongs, artistItem.name) },
+                                onMenuClick = { selectedSongForAction = song }
+                            )
+                        }
+                    }
+                }
+                GridViewMode.HERO_GRID -> {
+                    LazyVerticalGrid(
+                        columns = GridCells.Fixed(2),
+                        contentPadding = PaddingValues(bottom = 80.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                        modifier = Modifier.fillMaxSize()
+                    ) {
+                        items(
+                            items = sortedSongs,
+                            key = { it.id },
+                            contentType = { "artist_inner_card_hero" }
+                        ) { song ->
+                            HeroAlbumCard(
+                                song = song,
+                                manager = manager,
+                                isDark = isDark,
+                                onPlay = { manager.playSong(song, sortedSongs, artistItem.name) },
+                                onMenuClick = { selectedSongForAction = song }
+                            )
+                        }
+                    }
                 }
             }
         }
+    }
+
+    if (showGridSizeDialog) {
+        GridSizeDialog(
+            currentMode = manager.artistInnerViewMode,
+            isDark = isDark,
+            accent = manager.accentColor,
+            onSelectMode = { manager.updateArtistInnerViewMode(it) },
+            onDismiss = { showGridSizeDialog = false }
+        )
     }
 
     if (selectedSongForAction != null) {
@@ -1261,7 +1479,6 @@ fun ArtistDetailScreen(
     }
 }
 
-// Dialog: Create New Artist with Fast Filter
 @Composable
 fun CreateArtistDialog(
     manager: MusicManager,
@@ -1372,7 +1589,6 @@ fun CreateArtistDialog(
     }
 }
 
-// Universal Helper: Adds any Artist directly to Home Screen "Favourite Playlists"
 fun addArtistToFavouritePlaylists(context: Context, manager: MusicManager, artist: ArtistItem) {
     val existingIndex = manager.customPlaylists.indexOfFirst { it.name.equals(artist.name, ignoreCase = true) }
     if (existingIndex != -1) {

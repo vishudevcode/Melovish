@@ -77,6 +77,10 @@ enum class GridViewMode {
     LIST, GRID_2, GRID_3, GRID_4, HERO_GRID
 }
 
+enum class ArtistSortOrder {
+    A_TO_Z, Z_TO_A, MOST_SONGS, MOST_PLAYED
+}
+
 @UnstableApi
 class MusicManager(private val context: Context) {
 
@@ -161,13 +165,90 @@ class MusicManager(private val context: Context) {
     val folderColors = mutableStateMapOf<String, Long>()
     val parsedArtistsList = mutableStateListOf<ArtistItem>()
 
-    // Global unified View Mode State
-    var homeViewMode by mutableStateOf(
-        try {
-            val saved = prefs.getString("home_view_mode", GridViewMode.LIST.name) ?: GridViewMode.LIST.name
-            if (saved == "DETAILED_LIST") GridViewMode.LIST else GridViewMode.valueOf(saved)
+    // ==========================================
+    // SEPARATE VIEW MODES WITH PER-SCREEN MEMORY
+    // ==========================================
+    private fun parseGridViewMode(saved: String?): GridViewMode {
+        return try {
+            if (saved == null || saved == "DETAILED_LIST") GridViewMode.LIST
+            else GridViewMode.valueOf(saved)
         } catch (_: Exception) {
             GridViewMode.LIST
+        }
+    }
+
+    // 1. Home Screen (All Songs) View Mode
+    var homeViewMode by mutableStateOf(parseGridViewMode(prefs.getString("pref_view_home", GridViewMode.LIST.name)))
+
+    // 2. Library (Folders Root) View Mode
+    var libraryFoldersViewMode by mutableStateOf(parseGridViewMode(prefs.getString("pref_view_library_folders", GridViewMode.LIST.name)))
+
+    // 3. Inside Any Folder View Mode
+    var folderInnerViewMode by mutableStateOf(parseGridViewMode(prefs.getString("pref_view_folder_inner", GridViewMode.LIST.name)))
+
+    // 4. Artists Section Root View Mode
+    var artistsViewMode by mutableStateOf(parseGridViewMode(prefs.getString("pref_view_artists", GridViewMode.LIST.name)))
+
+    // 5. Inside Artist Detail View Mode
+    var artistInnerViewMode by mutableStateOf(parseGridViewMode(prefs.getString("pref_view_artist_inner", GridViewMode.LIST.name)))
+
+    // 6. Inside Any Playlist View Mode
+    var playlistInnerViewMode by mutableStateOf(parseGridViewMode(prefs.getString("pref_view_playlist_inner", GridViewMode.LIST.name)))
+
+    // ==========================================
+    // SEPARATE SORT ORDERS WITH PER-SCREEN MEMORY
+    // ==========================================
+    // 1. Home Song Sort
+    var currentSortOrder by mutableStateOf(
+        try {
+            SongSortOrder.valueOf(prefs.getString("saved_song_sort", SongSortOrder.A_TO_Z.name) ?: SongSortOrder.A_TO_Z.name)
+        } catch (_: Exception) {
+            SongSortOrder.A_TO_Z
+        }
+    )
+
+    // 2. Library Folders Sort
+    var currentFolderSortOrder by mutableStateOf(
+        try {
+            FolderSortOrder.valueOf(prefs.getString("saved_folder_sort", FolderSortOrder.A_TO_Z.name) ?: FolderSortOrder.A_TO_Z.name)
+        } catch (_: Exception) {
+            FolderSortOrder.A_TO_Z
+        }
+    )
+
+    // 3. Inside Folder Sort
+    var folderInnerSortOrder by mutableStateOf(
+        try {
+            SongSortOrder.valueOf(prefs.getString("folder_inner_sort", SongSortOrder.A_TO_Z.name) ?: SongSortOrder.A_TO_Z.name)
+        } catch (_: Exception) {
+            SongSortOrder.A_TO_Z
+        }
+    )
+
+    // 4. Artists Root Sort
+    var artistsSortOrder by mutableStateOf(
+        try {
+            ArtistSortOrder.valueOf(prefs.getString("pref_sort_artists", ArtistSortOrder.A_TO_Z.name) ?: ArtistSortOrder.A_TO_Z.name)
+        } catch (_: Exception) {
+            ArtistSortOrder.A_TO_Z
+        }
+    )
+
+    // 5. Inside Artist Detail Sort
+    var artistInnerSortOrder by mutableStateOf(
+        try {
+            SongSortOrder.valueOf(prefs.getString("pref_sort_artist_inner", SongSortOrder.A_TO_Z.name) ?: SongSortOrder.A_TO_Z.name)
+        } catch (_: Exception) {
+            SongSortOrder.A_TO_Z
+        }
+    )
+
+    // 6. Inside Playlist Sort
+    var playlistInnerSortOrder by mutableStateOf(
+        try {
+            SongSortOrder.valueOf(prefs.getString("playlist_inner_sort", SongSortOrder.A_TO_Z.name) ?: SongSortOrder.A_TO_Z.name)
+        } catch (_: Exception) {
+            SongSortOrder.A_TO_Z
         }
     )
 
@@ -184,35 +265,6 @@ class MusicManager(private val context: Context) {
             )
         } catch (_: Exception) {
             PagerTransitionEffect.CASCADE
-        }
-    )
-
-    var currentSortOrder by mutableStateOf(
-        try {
-            SongSortOrder.valueOf(prefs.getString("saved_song_sort", SongSortOrder.A_TO_Z.name) ?: SongSortOrder.A_TO_Z.name)
-        } catch (_: Exception) {
-            SongSortOrder.A_TO_Z
-        }
-    )
-    var currentFolderSortOrder by mutableStateOf(
-        try {
-            FolderSortOrder.valueOf(prefs.getString("saved_folder_sort", FolderSortOrder.A_TO_Z.name) ?: FolderSortOrder.A_TO_Z.name)
-        } catch (_: Exception) {
-            FolderSortOrder.A_TO_Z
-        }
-    )
-    var folderInnerSortOrder by mutableStateOf(
-        try {
-            SongSortOrder.valueOf(prefs.getString("folder_inner_sort", SongSortOrder.A_TO_Z.name) ?: SongSortOrder.A_TO_Z.name)
-        } catch (_: Exception) {
-            SongSortOrder.A_TO_Z
-        }
-    )
-    var playlistInnerSortOrder by mutableStateOf(
-        try {
-            SongSortOrder.valueOf(prefs.getString("playlist_inner_sort", SongSortOrder.A_TO_Z.name) ?: SongSortOrder.A_TO_Z.name)
-        } catch (_: Exception) {
-            SongSortOrder.A_TO_Z
         }
     )
 
@@ -818,11 +870,13 @@ class MusicManager(private val context: Context) {
         }
     }
 
-    // Unified 5 view mode update
+    // ========================================================
+    // PER-SCREEN INDEPENDENT VIEW MODE PERSISTENCE METHODS
+    // ========================================================
     fun updateHomeViewMode(mode: GridViewMode) {
         homeViewMode = mode
         managerScope.launch(Dispatchers.IO) {
-            prefs.edit().putString("home_view_mode", mode.name).apply()
+            prefs.edit().putString("pref_view_home", mode.name).apply()
         }
     }
 
@@ -830,6 +884,125 @@ class MusicManager(private val context: Context) {
         val modes = GridViewMode.values()
         val nextIdx = (homeViewMode.ordinal + 1) % modes.size
         updateHomeViewMode(modes[nextIdx])
+    }
+
+    fun updateLibraryFoldersViewMode(mode: GridViewMode) {
+        libraryFoldersViewMode = mode
+        managerScope.launch(Dispatchers.IO) {
+            prefs.edit().putString("pref_view_library_folders", mode.name).apply()
+        }
+    }
+
+    fun cycleNextLibraryFoldersViewMode() {
+        val modes = GridViewMode.values()
+        val nextIdx = (libraryFoldersViewMode.ordinal + 1) % modes.size
+        updateLibraryFoldersViewMode(modes[nextIdx])
+    }
+
+    fun updateFolderInnerViewMode(mode: GridViewMode) {
+        folderInnerViewMode = mode
+        managerScope.launch(Dispatchers.IO) {
+            prefs.edit().putString("pref_view_folder_inner", mode.name).apply()
+        }
+    }
+
+    fun cycleNextFolderInnerViewMode() {
+        val modes = GridViewMode.values()
+        val nextIdx = (folderInnerViewMode.ordinal + 1) % modes.size
+        updateFolderInnerViewMode(modes[nextIdx])
+    }
+
+    fun updateArtistsViewMode(mode: GridViewMode) {
+        artistsViewMode = mode
+        managerScope.launch(Dispatchers.IO) {
+            prefs.edit().putString("pref_view_artists", mode.name).apply()
+        }
+    }
+
+    fun cycleNextArtistsViewMode() {
+        val modes = GridViewMode.values()
+        val nextIdx = (artistsViewMode.ordinal + 1) % modes.size
+        updateArtistsViewMode(modes[nextIdx])
+    }
+
+    fun updateArtistInnerViewMode(mode: GridViewMode) {
+        artistInnerViewMode = mode
+        managerScope.launch(Dispatchers.IO) {
+            prefs.edit().putString("pref_view_artist_inner", mode.name).apply()
+        }
+    }
+
+    fun cycleNextArtistInnerViewMode() {
+        val modes = GridViewMode.values()
+        val nextIdx = (artistInnerViewMode.ordinal + 1) % modes.size
+        updateArtistInnerViewMode(modes[nextIdx])
+    }
+
+    fun updatePlaylistInnerViewMode(mode: GridViewMode) {
+        playlistInnerViewMode = mode
+        managerScope.launch(Dispatchers.IO) {
+            prefs.edit().putString("pref_view_playlist_inner", mode.name).apply()
+        }
+    }
+
+    fun cycleNextPlaylistInnerViewMode() {
+        val modes = GridViewMode.values()
+        val nextIdx = (playlistInnerViewMode.ordinal + 1) % modes.size
+        updatePlaylistInnerViewMode(modes[nextIdx])
+    }
+
+    // ========================================================
+    // PER-SCREEN INDEPENDENT SORT ORDER PERSISTENCE METHODS
+    // ========================================================
+    fun setPersistentSongSort(order: SongSortOrder) {
+        currentSortOrder = order
+        managerScope.launch(Dispatchers.IO) {
+            prefs.edit().putString("saved_song_sort", order.name).apply()
+        }
+    }
+
+    fun setPersistentFolderSort(order: FolderSortOrder) {
+        currentFolderSortOrder = order
+        managerScope.launch(Dispatchers.IO) {
+            prefs.edit().putString("saved_folder_sort", order.name).apply()
+        }
+    }
+
+    fun setPersistentFolderInnerSort(order: SongSortOrder) {
+        folderInnerSortOrder = order
+        managerScope.launch(Dispatchers.IO) {
+            prefs.edit().putString("folder_inner_sort", order.name).apply()
+        }
+    }
+
+    fun setPersistentArtistsSort(order: ArtistSortOrder) {
+        artistsSortOrder = order
+        managerScope.launch(Dispatchers.IO) {
+            prefs.edit().putString("pref_sort_artists", order.name).apply()
+        }
+    }
+
+    fun setPersistentArtistInnerSort(order: SongSortOrder) {
+        artistInnerSortOrder = order
+        managerScope.launch(Dispatchers.IO) {
+            prefs.edit().putString("pref_sort_artist_inner", order.name).apply()
+        }
+    }
+
+    fun setPersistentPlaylistInnerSort(order: SongSortOrder) {
+        playlistInnerSortOrder = order
+        managerScope.launch(Dispatchers.IO) {
+            prefs.edit().putString("playlist_inner_sort", order.name).apply()
+        }
+    }
+
+    fun getSortedArtists(): List<ArtistItem> {
+        return when (artistsSortOrder) {
+            ArtistSortOrder.A_TO_Z -> parsedArtistsList.sortedBy { it.name.lowercase(Locale.getDefault()) }
+            ArtistSortOrder.Z_TO_A -> parsedArtistsList.sortedByDescending { it.name.lowercase(Locale.getDefault()) }
+            ArtistSortOrder.MOST_SONGS -> parsedArtistsList.sortedByDescending { it.songs.size }
+            ArtistSortOrder.MOST_PLAYED -> parsedArtistsList.sortedByDescending { item -> item.songs.sumOf { it.playCount } }
+        }
     }
 
     fun setPagerTransition(effect: PagerTransitionEffect) {
@@ -1800,222 +1973,6 @@ class MusicManager(private val context: Context) {
             true
         } catch (_: Exception) {
             false
-        }
-    }
-
-    fun setPersistentSongSort(order: SongSortOrder) {
-        currentSortOrder = order
-        managerScope.launch(Dispatchers.IO) {
-            prefs.edit().putString("saved_song_sort", order.name).apply()
-        }
-    }
-
-    fun setPersistentFolderSort(order: FolderSortOrder) {
-        currentFolderSortOrder = order
-        managerScope.launch(Dispatchers.IO) {
-            prefs.edit().putString("saved_folder_sort", order.name).apply()
-        }
-    }
-
-    fun setPersistentFolderInnerSort(order: SongSortOrder) {
-        folderInnerSortOrder = order
-        managerScope.launch(Dispatchers.IO) {
-            prefs.edit().putString("folder_inner_sort", order.name).apply()
-        }
-    }
-
-    fun setPersistentPlaylistInnerSort(order: SongSortOrder) {
-        playlistInnerSortOrder = order
-        managerScope.launch(Dispatchers.IO) {
-            prefs.edit().putString("playlist_inner_sort", order.name).apply()
-        }
-    }
-
-    fun movePlaylistItem(fromIndex: Int, toIndex: Int) {
-        if (fromIndex in customPlaylists.indices && toIndex in customPlaylists.indices && fromIndex != toIndex) {
-            val moved = customPlaylists.removeAt(fromIndex)
-            customPlaylists.add(toIndex, moved)
-            savePlaylists()
-        }
-    }
-
-    fun getCachedAlbumArt(songId: Long): Bitmap? = memoryCache.get(songId)
-
-    suspend fun loadAlbumArtAsync(song: Song): Bitmap? = withContext(Dispatchers.IO) {
-        val cached = memoryCache.get(song.id)
-        if (cached != null) return@withContext cached
-
-        var resultBitmap: Bitmap? = null
-
-        if (song.customCoverPath != null) {
-            val file = File(song.customCoverPath)
-            if (file.exists()) {
-                val opts = BitmapFactory.Options().apply {
-                    inJustDecodeBounds = true
-                    BitmapFactory.decodeFile(file.absolutePath, this)
-                    inSampleSize = calculateInSampleSize(this, 256, 256)
-                    inJustDecodeBounds = false
-                    inPreferredConfig = Bitmap.Config.RGB_565
-                }
-                resultBitmap = BitmapFactory.decodeFile(file.absolutePath, opts)
-            }
-        }
-
-        if (resultBitmap == null) {
-            try {
-                val sArtworkUri = Uri.parse("content://media/external/audio/albumart")
-                val uri = ContentUris.withAppendedId(sArtworkUri, song.albumId)
-                context.contentResolver.openInputStream(uri)?.use { stream ->
-                    val opts = BitmapFactory.Options().apply {
-                        inSampleSize = 2
-                        inPreferredConfig = Bitmap.Config.RGB_565
-                    }
-                    resultBitmap = BitmapFactory.decodeStream(stream, null, opts)
-                }
-            } catch (_: Exception) {}
-        }
-
-        if (resultBitmap == null) {
-            try {
-                val retriever = MediaMetadataRetriever()
-                retriever.setDataSource(context, song.uri)
-                val artBytes = retriever.embeddedPicture
-                if (artBytes != null) {
-                    val opts = BitmapFactory.Options().apply {
-                        inJustDecodeBounds = true
-                        BitmapFactory.decodeByteArray(artBytes, 0, artBytes.size, this)
-                        inSampleSize = calculateInSampleSize(this, 256, 256)
-                        inJustDecodeBounds = false
-                        inPreferredConfig = Bitmap.Config.RGB_565
-                    }
-                    resultBitmap = BitmapFactory.decodeByteArray(artBytes, 0, artBytes.size, opts)
-                }
-                retriever.release()
-            } catch (_: Exception) {}
-        }
-
-        val finalBmp = resultBitmap
-        if (finalBmp != null) {
-            memoryCache.put(song.id, finalBmp)
-            return@withContext finalBmp
-        }
-        null
-    }
-
-    private fun calculateInSampleSize(options: BitmapFactory.Options, reqWidth: Int, reqHeight: Int): Int {
-        val (height: Int, width: Int) = options.outHeight to options.outWidth
-        var inSampleSize = 1
-        if (height > reqHeight || width > reqWidth) {
-            val halfHeight: Int = height / 2
-            val halfWidth: Int = width / 2
-            while (halfHeight / inSampleSize >= reqHeight && halfWidth / inSampleSize >= reqWidth) {
-                inSampleSize *= 2
-            }
-        }
-        return inSampleSize
-    }
-
-    fun updateNotification() {
-        val song = currentSong ?: return
-        val session = mediaSession ?: return
-        val art = getCachedAlbumArt(song.id)
-
-        try {
-            val serviceIntent = Intent(context, MediaPlaybackService::class.java)
-            ContextCompat.startForegroundService(context, serviceIntent)
-        } catch (_: Exception) {}
-
-        val launchIntent = Intent(context, MainActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
-        }
-        val contentPendingIntent = PendingIntent.getActivity(
-            context, 0, launchIntent,
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
-        )
-
-        val prevIntent = PendingIntent.getService(
-            context, 1, Intent(context, MediaPlaybackService::class.java).apply { action = MediaPlaybackService.ACTION_PREV },
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
-        )
-        val playPauseIntent = PendingIntent.getService(
-            context, 2, Intent(context, MediaPlaybackService::class.java).apply {
-                action = if (isPlaying) MediaPlaybackService.ACTION_PAUSE else MediaPlaybackService.ACTION_PLAY
-            },
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
-        )
-        val nextIntent = PendingIntent.getService(
-            context, 3, Intent(context, MediaPlaybackService::class.java).apply { action = MediaPlaybackService.ACTION_NEXT },
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
-        )
-
-        val playPauseIcon = if (isPlaying) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play
-        val playPauseTitle = if (isPlaying) "Pause" else "Play"
-
-        val mediaStyle = MediaStyleNotificationHelper.MediaStyle(session)
-            .setShowActionsInCompactView(0, 1, 2)
-
-        val builder = NotificationCompat.Builder(context, MediaPlaybackService.NOTIF_CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.ic_media_play)
-            .setContentTitle(song.title)
-            .setContentText(if (song.artist.isNotBlank()) song.artist else "Unknown Artist")
-            .setSubText(song.album)
-            .setContentIntent(contentPendingIntent)
-            .setStyle(mediaStyle)
-            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-            .setPriority(NotificationCompat.PRIORITY_LOW)
-            .setOngoing(isPlaying)
-            .addAction(android.R.drawable.ic_media_previous, "Previous", prevIntent)
-            .addAction(playPauseIcon, playPauseTitle, playPauseIntent)
-            .addAction(android.R.drawable.ic_media_next, "Next", nextIntent)
-
-        if (art != null) {
-            builder.setLargeIcon(art)
-        }
-
-        try {
-            notificationManager.notify(MediaPlaybackService.NOTIF_ID, builder.build())
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
-    }
-
-    private fun loadPreferences() {
-        hiddenFolders.clear()
-        hiddenFolders.addAll(prefs.getStringSet("hidden_folders", emptySet()) ?: emptySet())
-        hiddenAudioIds.clear()
-        hiddenAudioIds.addAll(
-            prefs.getStringSet("hidden_audio", emptySet())?.mapNotNull { it.toLongOrNull() } ?: emptyList()
-        )
-
-        val plJson = prefs.getString("custom_playlists", null)
-        customPlaylists.clear()
-        if (plJson != null) {
-            try {
-                val arr = JSONArray(plJson)
-                for (i in 0 until arr.length()) {
-                    val obj = arr.getJSONObject(i)
-                    val id = obj.getString("id")
-                    val name = obj.getString("name")
-                    val isFolder = obj.optBoolean("isFolder", false)
-                    val folderName = obj.optString("folderName", null)
-                    val icon = obj.optString("icon", "📁")
-                    val iconColorHex = obj.optLong("iconColorHex", 0xFFF59E0B)
-                    val idsArr = obj.getJSONArray("songIds")
-                    val songIds = ArrayList<Long>()
-                    for (j in 0 until idsArr.length()) songIds.add(idsArr.getLong(j))
-                    customPlaylists.add(
-                        Playlist(
-                            id = id,
-                            name = name,
-                            songIds = songIds.toImmutableList(),
-                            isFolderPinned = isFolder,
-                            folderName = folderName,
-                            icon = icon,
-                            iconColorHex = iconColorHex
-                        )
-                    )
-                }
-            } catch (_: Exception) {}
         }
     }
 }

@@ -247,7 +247,6 @@ fun MelovishRootApp(manager: MusicManager) {
     val searchListState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
 
-    // Discrete 1-Step Back Handler: returns precisely to origin screen
     BackHandler(enabled = isSettingsEqOpen || isPlayerExpanded || activeScreen == "settings" || activeScreen == "profile" || selectedArtist != null || selectedAlbum != null || selectedPlaylist != null || selectedFolder != null || activeScreen != "home") {
         when {
             isSettingsEqOpen -> isSettingsEqOpen = false
@@ -601,7 +600,7 @@ fun SquareAlbumOverlayCard(
     }
 }
 
-// 5th View Mode: Hero Album Card (Expansive 2-Column, Song Title Only, Zero Metadata)
+// 5th View Mode: Hero Album Card (Strict 1:1 Aspect Ratio, Song Title Only, Zero Metadata)
 @UnstableApi
 @Composable
 fun HeroAlbumCard(
@@ -621,14 +620,14 @@ fun HeroAlbumCard(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .aspectRatio(0.92f)
-            .shadow(6.dp, RoundedCornerShape(22.dp))
-            .clip(RoundedCornerShape(22.dp))
+            .aspectRatio(1f)
+            .shadow(6.dp, RoundedCornerShape(20.dp))
+            .clip(RoundedCornerShape(20.dp))
             .background(Color(0xFF1E293B))
             .border(
                 width = if (isPlayingThis) 2.5.dp else 1.dp,
                 color = if (isPlayingThis) accent else if (isDark) Color(0x28FFFFFF) else Color(0xFFE2E8F0),
-                shape = RoundedCornerShape(22.dp)
+                shape = RoundedCornerShape(20.dp)
             )
             .clickable { onPlay() }
     ) {
@@ -645,7 +644,6 @@ fun HeroAlbumCard(
             }
         }
 
-        // Frosted bottom banner showing strictly song title
         Box(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
@@ -761,7 +759,7 @@ fun GridSizeDialog(
                     Pair(GridViewMode.GRID_2, "Big (2 Cards Grid)"),
                     Pair(GridViewMode.GRID_3, "Medium (3 Cards Grid)"),
                     Pair(GridViewMode.GRID_4, "Small (4 Cards Grid)"),
-                    Pair(GridViewMode.HERO_GRID, "Hero Album Grid (Clean & Expansive)")
+                    Pair(GridViewMode.HERO_GRID, "Hero Album Grid")
                 ).forEach { (mode, name) ->
                     val isSel = currentMode == mode
                     Row(
@@ -1359,7 +1357,6 @@ fun HomeScreen(
                         }
                         Spacer(modifier = Modifier.width(6.dp))
 
-                        // Unified 5-Mode Grid Size Switcher
                         Box(
                             modifier = Modifier
                                 .size(36.dp)
@@ -1484,7 +1481,6 @@ fun HomeScreen(
                         }
                     }
                     GridViewMode.HERO_GRID -> {
-                        // 5th View Mode: Expansive 2-Column Hero Album Grid (Song Name Only, No Metadata)
                         items(
                             items = sortedSongs.chunked(2),
                             key = { it.first().id }
@@ -1668,6 +1664,70 @@ fun FolderColourPickerDialog(
     }
 }
 
+// 1:1 Perfect Square Folder Card for Library Grid Modes
+@Composable
+fun LibraryFolderSquareCard(
+    folderName: String,
+    totalSize: Long,
+    songCount: Int,
+    folderColor: Color,
+    isDark: Boolean,
+    cardBg: Color,
+    isHero: Boolean,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit
+) {
+    val textColor = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A)
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .aspectRatio(1f)
+            .shadow(4.dp, RoundedCornerShape(20.dp))
+            .clip(RoundedCornerShape(20.dp))
+            .background(cardBg)
+            .border(1.dp, if (isDark) Color(0x22FFFFFF) else Color(0xFFECEFF3), RoundedCornerShape(20.dp))
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = onLongClick
+            )
+            .padding(12.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+            modifier = Modifier.fillMaxSize()
+        ) {
+            GlassmorphicFolderIcon(
+                folderColor = folderColor,
+                modifier = Modifier.size(if (isHero) 64.dp else 46.dp)
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = folderName,
+                color = textColor,
+                fontSize = if (isHero) 15.sp else 12.sp,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.Center
+            )
+            if (!isHero) {
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = "${songCount} songs • ${formatFileSize(totalSize)}",
+                    color = Color(0xFF64748B),
+                    fontSize = 10.sp,
+                    textAlign = TextAlign.Center,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+    }
+}
+
+// Library Screen: Independent View Mode (5 modes) & Independent Sort Order with 1:1 Perfect Square Cards
 @OptIn(ExperimentalFoundationApi::class)
 @UnstableApi
 @Composable
@@ -1693,19 +1753,19 @@ fun LibraryScreen(manager: MusicManager, listState: LazyListState, onFolderClick
         ) {
             Text("Folders & Storage", color = textColor, fontSize = 22.sp, fontWeight = FontWeight.Bold)
             Row(verticalAlignment = Alignment.CenterVertically) {
-                // Unified 5-Mode Grid Size Switcher
+                // Section-Specific 5-Mode View Switcher with independent memory
                 Box(
                     modifier = Modifier
                         .size(36.dp)
                         .clip(CircleShape)
                         .background(if (isDark) Color(0x22FFFFFF) else Color(0xFFF1F5F9))
                         .combinedClickable(
-                            onClick = { manager.cycleNextHomeViewMode() },
+                            onClick = { manager.cycleNextLibraryFoldersViewMode() },
                             onLongClick = { showGridSizeDialog = true }
                         ),
                     contentAlignment = Alignment.Center
                 ) {
-                    GridViewModeVectorIcon(mode = manager.homeViewMode, tint = textColor, modifier = Modifier.size(16.dp))
+                    GridViewModeVectorIcon(mode = manager.libraryFoldersViewMode, tint = textColor, modifier = Modifier.size(16.dp))
                 }
 
                 Spacer(modifier = Modifier.width(6.dp))
@@ -1731,7 +1791,7 @@ fun LibraryScreen(manager: MusicManager, listState: LazyListState, onFolderClick
             }
         }
 
-        when (manager.homeViewMode) {
+        when (manager.libraryFoldersViewMode) {
             GridViewMode.LIST -> {
                 LazyColumn(
                     state = listState,
@@ -1769,7 +1829,7 @@ fun LibraryScreen(manager: MusicManager, listState: LazyListState, onFolderClick
                     }
                 }
             }
-            GridViewMode.GRID_2, GridViewMode.HERO_GRID -> {
+            GridViewMode.GRID_2 -> {
                 LazyVerticalGrid(
                     columns = GridCells.Fixed(2),
                     contentPadding = PaddingValues(bottom = 80.dp),
@@ -1786,30 +1846,17 @@ fun LibraryScreen(manager: MusicManager, listState: LazyListState, onFolderClick
                         val totalSize = remember(songs) { songs.sumOf { it.size } }
                         val fColor = manager.getFolderColor(folderName)
 
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(20.dp))
-                                .background(cardBg)
-                                .border(1.dp, if (isDark) Color(0x22FFFFFF) else Color(0xFFECEFF3), RoundedCornerShape(20.dp))
-                                .combinedClickable(
-                                    onClick = { onFolderClick(folderName) },
-                                    onLongClick = { customizingFolder = folderName }
-                                )
-                                .padding(16.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Column(
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.Center
-                            ) {
-                                GlassmorphicFolderIcon(folderColor = fColor, modifier = Modifier.size(54.dp))
-                                Spacer(modifier = Modifier.height(10.dp))
-                                Text(folderName, color = textColor, fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
-                                Spacer(modifier = Modifier.height(2.dp))
-                                Text("${songs.size} songs • ${formatFileSize(totalSize)}", color = Color(0xFF64748B), fontSize = 11.sp, textAlign = TextAlign.Center)
-                            }
-                        }
+                        LibraryFolderSquareCard(
+                            folderName = folderName,
+                            totalSize = totalSize,
+                            songCount = songs.size,
+                            folderColor = fColor,
+                            isDark = isDark,
+                            cardBg = cardBg,
+                            isHero = false,
+                            onClick = { onFolderClick(folderName) },
+                            onLongClick = { customizingFolder = folderName }
+                        )
                     }
                 }
             }
@@ -1827,31 +1874,20 @@ fun LibraryScreen(manager: MusicManager, listState: LazyListState, onFolderClick
                         contentType = { "folder_grid_card_3" }
                     ) { folderName ->
                         val songs = folderMap[folderName] ?: emptyList()
+                        val totalSize = remember(songs) { songs.sumOf { it.size } }
                         val fColor = manager.getFolderColor(folderName)
 
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(16.dp))
-                                .background(cardBg)
-                                .border(1.dp, if (isDark) Color(0x22FFFFFF) else Color(0xFFECEFF3), RoundedCornerShape(16.dp))
-                                .combinedClickable(
-                                    onClick = { onFolderClick(folderName) },
-                                    onLongClick = { customizingFolder = folderName }
-                                )
-                                .padding(10.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Column(
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.Center
-                            ) {
-                                GlassmorphicFolderIcon(folderColor = fColor, modifier = Modifier.size(42.dp))
-                                Spacer(modifier = Modifier.height(6.dp))
-                                Text(folderName, color = textColor, fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
-                                Text("${songs.size}", color = Color(0xFF64748B), fontSize = 10.sp, textAlign = TextAlign.Center)
-                            }
-                        }
+                        LibraryFolderSquareCard(
+                            folderName = folderName,
+                            totalSize = totalSize,
+                            songCount = songs.size,
+                            folderColor = fColor,
+                            isDark = isDark,
+                            cardBg = cardBg,
+                            isHero = false,
+                            onClick = { onFolderClick(folderName) },
+                            onLongClick = { customizingFolder = folderName }
+                        )
                     }
                 }
             }
@@ -1869,31 +1905,51 @@ fun LibraryScreen(manager: MusicManager, listState: LazyListState, onFolderClick
                         contentType = { "folder_grid_card_4" }
                     ) { folderName ->
                         val songs = folderMap[folderName] ?: emptyList()
+                        val totalSize = remember(songs) { songs.sumOf { it.size } }
                         val fColor = manager.getFolderColor(folderName)
 
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(14.dp))
-                                .background(cardBg)
-                                .border(1.dp, if (isDark) Color(0x22FFFFFF) else Color(0xFFECEFF3), RoundedCornerShape(14.dp))
-                                .combinedClickable(
-                                    onClick = { onFolderClick(folderName) },
-                                    onLongClick = { customizingFolder = folderName }
-                                )
-                                .padding(6.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Column(
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.Center
-                            ) {
-                                GlassmorphicFolderIcon(folderColor = fColor, modifier = Modifier.size(34.dp))
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Text(folderName, color = textColor, fontSize = 10.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
-                                Text("${songs.size}", color = Color(0xFF64748B), fontSize = 9.sp, textAlign = TextAlign.Center)
-                            }
-                        }
+                        LibraryFolderSquareCard(
+                            folderName = folderName,
+                            totalSize = totalSize,
+                            songCount = songs.size,
+                            folderColor = fColor,
+                            isDark = isDark,
+                            cardBg = cardBg,
+                            isHero = false,
+                            onClick = { onFolderClick(folderName) },
+                            onLongClick = { customizingFolder = folderName }
+                        )
+                    }
+                }
+            }
+            GridViewMode.HERO_GRID -> {
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(2),
+                    contentPadding = PaddingValues(bottom = 80.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    modifier = Modifier.fillMaxSize()
+                ) {
+                    items(
+                        items = sortedFolders,
+                        key = { it },
+                        contentType = { "folder_grid_hero" }
+                    ) { folderName ->
+                        val songs = folderMap[folderName] ?: emptyList()
+                        val totalSize = remember(songs) { songs.sumOf { it.size } }
+                        val fColor = manager.getFolderColor(folderName)
+
+                        LibraryFolderSquareCard(
+                            folderName = folderName,
+                            totalSize = totalSize,
+                            songCount = songs.size,
+                            folderColor = fColor,
+                            isDark = isDark,
+                            cardBg = cardBg,
+                            isHero = true,
+                            onClick = { onFolderClick(folderName) },
+                            onLongClick = { customizingFolder = folderName }
+                        )
                     }
                 }
             }
@@ -1902,10 +1958,10 @@ fun LibraryScreen(manager: MusicManager, listState: LazyListState, onFolderClick
 
     if (showGridSizeDialog) {
         GridSizeDialog(
-            currentMode = manager.homeViewMode,
+            currentMode = manager.libraryFoldersViewMode,
             isDark = isDark,
             accent = manager.accentColor,
-            onSelectMode = { manager.updateHomeViewMode(it) },
+            onSelectMode = { manager.updateLibraryFoldersViewMode(it) },
             onDismiss = { showGridSizeDialog = false }
         )
     }
@@ -1983,6 +2039,7 @@ fun SearchScreen(manager: MusicManager, listState: LazyListState, onSongMenuClic
     }
 }
 
+// Playlist Detail Screen: Independent View Mode (5 modes) & Independent Sort Order with 1:1 Perfect Squares
 @UnstableApi
 @Composable
 fun PlaylistDetailScreen(
@@ -2031,19 +2088,19 @@ fun PlaylistDetailScreen(
             }
 
             Row(verticalAlignment = Alignment.CenterVertically) {
-                // Unified 5-Mode Grid Size Switcher
+                // Section-Specific 5-Mode Grid Size Switcher with independent memory
                 Box(
                     modifier = Modifier
                         .size(36.dp)
                         .clip(CircleShape)
                         .background(if (isDark) Color(0x22FFFFFF) else Color(0xFFF1F5F9))
                         .combinedClickable(
-                            onClick = { manager.cycleNextHomeViewMode() },
+                            onClick = { manager.cycleNextPlaylistInnerViewMode() },
                             onLongClick = { showGridSizeDialog = true }
                         ),
                     contentAlignment = Alignment.Center
                 ) {
-                    GridViewModeVectorIcon(mode = manager.homeViewMode, tint = textColor, modifier = Modifier.size(16.dp))
+                    GridViewModeVectorIcon(mode = manager.playlistInnerViewMode, tint = textColor, modifier = Modifier.size(16.dp))
                 }
 
                 Spacer(modifier = Modifier.width(6.dp))
@@ -2090,7 +2147,7 @@ fun PlaylistDetailScreen(
                 Text("Playlist is empty. Tap '+ Add' to search and add tracks.", color = Color(0xFF64748B))
             }
         } else {
-            when (manager.homeViewMode) {
+            when (manager.playlistInnerViewMode) {
                 GridViewMode.LIST -> {
                     LazyColumn(contentPadding = PaddingValues(bottom = 80.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         items(
@@ -2176,10 +2233,10 @@ fun PlaylistDetailScreen(
 
     if (showGridSizeDialog) {
         GridSizeDialog(
-            currentMode = manager.homeViewMode,
+            currentMode = manager.playlistInnerViewMode,
             isDark = isDark,
             accent = manager.accentColor,
-            onSelectMode = { manager.updateHomeViewMode(it) },
+            onSelectMode = { manager.updatePlaylistInnerViewMode(it) },
             onDismiss = { showGridSizeDialog = false }
         )
     }
@@ -2333,6 +2390,7 @@ fun FilteredSongsScreen(title: String, songs: ImmutableList<Song>, manager: Musi
     }
 }
 
+// Inside Folder Screen: Independent View Mode (5 modes) & Independent Sort Order with 1:1 Perfect Squares
 @UnstableApi
 @Composable
 fun FolderSongsScreen(folderName: String, manager: MusicManager, isDark: Boolean, onBack: () -> Unit, onSongMenuClick: (Song) -> Unit) {
@@ -2370,19 +2428,19 @@ fun FolderSongsScreen(folderName: String, manager: MusicManager, isDark: Boolean
             }
 
             Row(verticalAlignment = Alignment.CenterVertically) {
-                // Unified 5-Mode Grid Size Switcher
+                // Section-Specific 5-Mode Grid Size Switcher with independent memory
                 Box(
                     modifier = Modifier
                         .size(36.dp)
                         .clip(CircleShape)
                         .background(if (isDark) Color(0x22FFFFFF) else Color(0xFFF1F5F9))
                         .combinedClickable(
-                            onClick = { manager.cycleNextHomeViewMode() },
+                            onClick = { manager.cycleNextFolderInnerViewMode() },
                             onLongClick = { showGridSizeDialog = true }
                         ),
                     contentAlignment = Alignment.Center
                 ) {
-                    GridViewModeVectorIcon(mode = manager.homeViewMode, tint = textColor, modifier = Modifier.size(16.dp))
+                    GridViewModeVectorIcon(mode = manager.folderInnerViewMode, tint = textColor, modifier = Modifier.size(16.dp))
                 }
 
                 Spacer(modifier = Modifier.width(6.dp))
@@ -2430,7 +2488,7 @@ fun FolderSongsScreen(folderName: String, manager: MusicManager, isDark: Boolean
                 Text("Folder is empty.", color = Color(0xFF64748B))
             }
         } else {
-            when (manager.homeViewMode) {
+            when (manager.folderInnerViewMode) {
                 GridViewMode.LIST -> {
                     LazyColumn(contentPadding = PaddingValues(bottom = 80.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         items(
@@ -2516,10 +2574,10 @@ fun FolderSongsScreen(folderName: String, manager: MusicManager, isDark: Boolean
 
     if (showGridSizeDialog) {
         GridSizeDialog(
-            currentMode = manager.homeViewMode,
+            currentMode = manager.folderInnerViewMode,
             isDark = isDark,
             accent = manager.accentColor,
-            onSelectMode = { manager.updateHomeViewMode(it) },
+            onSelectMode = { manager.updateFolderInnerViewMode(it) },
             onDismiss = { showGridSizeDialog = false }
         )
     }
@@ -2972,6 +3030,7 @@ fun UniversalSongCard(song: Song, manager: MusicManager, isDark: Boolean, onPlay
     Box(
         modifier = Modifier
             .fillMaxWidth()
+            .aspectRatio(1f)
             .clip(RoundedCornerShape(18.dp))
             .background(cardBg)
             .border(1.dp, if (isPlayingThis) accent else if (isDark) Color(0x22FFFFFF) else Color(0xFFECEFF3), RoundedCornerShape(18.dp))
