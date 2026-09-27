@@ -197,7 +197,7 @@ fun GlassmorphicFolderIcon(folderColor: Color, modifier: Modifier = Modifier) {
                 quadraticBezierTo(w * 0.48f, h * 0.14f, w * 0.52f, h * 0.22f)
                 lineTo(w * 0.56f, h * 0.28f)
                 lineTo(w * 0.82f, h * 0.28f)
-                quadraticBezierTo(w * 0.88f, h * 0.82f, w * 0.88f, h * 0.35f)
+                quadraticBezierTo(w * 0.88f, h * 0.28f, w * 0.88f, h * 0.35f)
                 lineTo(w * 0.88f, h * 0.82f)
                 quadraticBezierTo(w * 0.88f, h * 0.88f, w * 0.80f, h * 0.88f)
                 lineTo(w * 0.18f, h * 0.88f)
@@ -580,6 +580,137 @@ fun HeartIconVector(isFavorite: Boolean, defaultTint: Color, modifier: Modifier 
                 } else {
                     drawPath(path, color = defaultTint, style = strokeStyle)
                 }
+            }
+        }
+    )
+}
+
+// Vector Sleep Timer Icon Matching Custom Clock + Zzz + Crescent Moon Badge
+@Composable
+fun SleepTimerIconVector(tint: Color, modifier: Modifier = Modifier) {
+    Spacer(
+        modifier = modifier.drawWithCache {
+            val w = size.width
+            val h = size.height
+            val strokeW = 1.75f.dp.toPx()
+            val strokeStyle = Stroke(width = strokeW, cap = StrokeCap.Round, join = StrokeJoin.Round)
+
+            val clockCenterX = w * 0.44f
+            val clockCenterY = h * 0.48f
+            val clockRadius = w * 0.32f
+            val outerRadius = w * 0.43f
+
+            onDrawBehind {
+                // 1. Concentric outer arc along the left & top
+                drawArc(
+                    color = tint,
+                    startAngle = 105f,
+                    sweepAngle = 225f,
+                    useCenter = false,
+                    topLeft = Offset(clockCenterX - outerRadius, clockCenterY - outerRadius),
+                    size = Size(outerRadius * 2f, outerRadius * 2f),
+                    style = strokeStyle
+                )
+
+                // 2. Main clock dial contour (leaving space for bottom right moon badge)
+                drawArc(
+                    color = tint,
+                    startAngle = 330f,
+                    sweepAngle = 270f,
+                    useCenter = false,
+                    topLeft = Offset(clockCenterX - clockRadius, clockCenterY - clockRadius),
+                    size = Size(clockRadius * 2f, clockRadius * 2f),
+                    style = strokeStyle
+                )
+
+                // 3. Hands: Pivot dot, 12 o'clock (vertical), and 9 o'clock (horizontal)
+                drawCircle(
+                    color = tint,
+                    radius = strokeW * 1.15f,
+                    center = Offset(clockCenterX, clockCenterY)
+                )
+                drawLine(
+                    color = tint,
+                    start = Offset(clockCenterX, clockCenterY),
+                    end = Offset(clockCenterX, clockCenterY - clockRadius * 0.58f),
+                    strokeWidth = strokeW * 1.15f,
+                    cap = StrokeCap.Round
+                )
+                drawLine(
+                    color = tint,
+                    start = Offset(clockCenterX, clockCenterY),
+                    end = Offset(clockCenterX - clockRadius * 0.44f, clockCenterY),
+                    strokeWidth = strokeW * 1.15f,
+                    cap = StrokeCap.Round
+                )
+
+                // 4. Dial ticks / dots
+                val dotRadius = strokeW * 0.45f
+                val tickDist = clockRadius * 0.72f
+                val angles = listOf(150.0, 210.0, 240.0, 300.0)
+                for (deg in angles) {
+                    val rad = Math.toRadians(deg)
+                    val dx = clockCenterX + (tickDist * cos(rad)).toFloat()
+                    val dy = clockCenterY + (tickDist * sin(rad)).toFloat()
+                    drawCircle(color = tint, radius = dotRadius, center = Offset(dx, dy))
+                }
+
+                // 5. Floating "Z"s at top right
+                // Big Z
+                val z1X = w * 0.71f
+                val z1Y = h * 0.11f
+                val z1Size = w * 0.16f
+                val pathZ1 = Path().apply {
+                    moveTo(z1X, z1Y)
+                    lineTo(z1X + z1Size, z1Y)
+                    lineTo(z1X, z1Y + z1Size)
+                    lineTo(z1X + z1Size, z1Y + z1Size)
+                }
+                drawPath(pathZ1, color = tint, style = strokeStyle)
+
+                // Small Z
+                val z2X = w * 0.58f
+                val z2Y = h * 0.23f
+                val z2Size = w * 0.11f
+                val pathZ2 = Path().apply {
+                    moveTo(z2X, z2Y)
+                    lineTo(z2X + z2Size, z2Y)
+                    lineTo(z2X, z2Y + z2Size)
+                    lineTo(z2X + z2Size, z2Y + z2Size)
+                }
+                drawPath(pathZ2, color = tint, style = strokeStyle)
+
+                // 6. Bottom Right Badge with Crescent Moon
+                val badgeCenterX = w * 0.72f
+                val badgeCenterY = h * 0.72f
+                val badgeRadius = w * 0.24f
+
+                drawCircle(
+                    color = tint,
+                    radius = badgeRadius,
+                    center = Offset(badgeCenterX, badgeCenterY),
+                    style = strokeStyle
+                )
+
+                // Crescent moon inside badge
+                val moonPath = Path().apply {
+                    val mX = badgeCenterX
+                    val mY = badgeCenterY
+                    val r = badgeRadius * 0.65f
+                    moveTo(mX - r * 0.2f, mY - r * 0.75f)
+                    cubicTo(
+                        mX + r * 0.8f, mY - r * 0.5f,
+                        mX + r * 0.8f, mY + r * 0.5f,
+                        mX - r * 0.2f, mY + r * 0.75f
+                    )
+                    cubicTo(
+                        mX + r * 0.25f, mY + r * 0.4f,
+                        mX + r * 0.25f, mY - r * 0.4f,
+                        mX - r * 0.2f, mY - r * 0.75f
+                    )
+                    close()
+                }
+                drawPath(moonPath, color = tint, style = Fill)
             }
         }
     )
@@ -1056,7 +1187,7 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                         )
                     }
 
-                    // Bottom Dock
+                    // Bottom Dock: Synchronized Icons with Custom Sleep Timer Vector
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -1067,15 +1198,39 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("❝≡", fontSize = 24.sp, fontWeight = FontWeight.Black, color = animTextPrimary, modifier = Modifier.clickable { showLyricsDialog = true })
-
                         Text(
-                            text = if (manager.sleepTimerRemainingSeconds > 0) "${manager.sleepTimerRemainingSeconds / 60}m" else "☾",
-                            fontSize = 22.sp,
-                            color = if (manager.sleepTimerRemainingSeconds > 0) userAccent else animTextPrimary,
+                            text = "❝≡",
+                            fontSize = 24.sp,
                             fontWeight = FontWeight.Black,
-                            modifier = Modifier.clickable { showSleepDialog = true }
+                            color = animTextPrimary,
+                            modifier = Modifier.clickable { showLyricsDialog = true }
                         )
+
+                        // Custom Sleep Timer Vector Button
+                        Box(
+                            modifier = Modifier.clickable { showSleepDialog = true },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            if (manager.sleepTimerRemainingSeconds > 0) {
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    SleepTimerIconVector(
+                                        tint = userAccent,
+                                        modifier = Modifier.size(22.dp)
+                                    )
+                                    Text(
+                                        text = "${manager.sleepTimerRemainingSeconds / 60}m",
+                                        color = userAccent,
+                                        fontSize = 9.sp,
+                                        fontWeight = FontWeight.ExtraBold
+                                    )
+                                }
+                            } else {
+                                SleepTimerIconVector(
+                                    tint = animTextPrimary,
+                                    modifier = Modifier.size(24.dp)
+                                )
+                            }
+                        }
 
                         val isTrackFavorite = manager.allSongs.find { it.id == pageSong.id }?.isFavorite
                             ?: (pageSong.id == manager.currentSong?.id && manager.currentSong?.isFavorite == true)
@@ -1089,9 +1244,21 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                             }
                         )
 
-                        Text("≡♪", fontSize = 24.sp, fontWeight = FontWeight.Black, color = animTextPrimary, modifier = Modifier.clickable { showQueueSheet = true })
+                        Text(
+                            text = "≡♪",
+                            fontSize = 24.sp,
+                            fontWeight = FontWeight.Black,
+                            color = animTextPrimary,
+                            modifier = Modifier.clickable { showQueueSheet = true }
+                        )
 
-                        Text("•••", fontSize = 24.sp, fontWeight = FontWeight.Black, color = animTextPrimary, modifier = Modifier.clickable { showMenuModal = true })
+                        Text(
+                            text = "•••",
+                            fontSize = 24.sp,
+                            fontWeight = FontWeight.Black,
+                            color = animTextPrimary,
+                            modifier = Modifier.clickable { showMenuModal = true }
+                        )
                     }
                 }
             }
@@ -1218,7 +1385,6 @@ fun QueueSheet(
     var draggingIndex by remember { mutableStateOf<Int?>(null) }
     var draggingOffsetPx by remember { mutableFloatStateOf(0f) }
 
-    // Intercept downward drag gestures across the entire screen (including over songs) when at the top of the queue
     val nestedScrollConnection = remember {
         object : NestedScrollConnection {
             override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
@@ -1232,7 +1398,6 @@ fun QueueSheet(
             }
 
             override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
-                // If scrolling down reached the very top of the list and user keeps dragging down anywhere on cards
                 if (available.y > 15f && draggingSongId == null) {
                     onDismiss()
                     return available
@@ -2321,4 +2486,3 @@ fun ShuffleControlIcon(isShuffleOn: Boolean, tint: Color, modifier: Modifier = M
         }
     )
 }
-
