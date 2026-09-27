@@ -193,10 +193,8 @@ fun MoonClockSleepIcon(tint: Color, modifier: Modifier = Modifier) {
             val strokeW = 2.1f.dp.toPx()
             val strokeStyle = Stroke(width = strokeW, cap = StrokeCap.Round, join = StrokeJoin.Round)
 
-            // Center of the clock face
             val clockCenter = Offset(w * 0.48f, h * 0.48f)
 
-            // 1. Crescent Moon contour outlining the left side
             val moonPath = Path().apply {
                 moveTo(w * 0.32f, h * 0.20f)
                 cubicTo(w * 0.08f, h * 0.20f, w * 0.10f, h * 0.80f, w * 0.70f, h * 0.78f)
@@ -204,21 +202,17 @@ fun MoonClockSleepIcon(tint: Color, modifier: Modifier = Modifier) {
                 close()
             }
 
-            // 2. Uniform Clock Hour Tick Lines (12, 1, 2, 3, 4, 5 o'clock)
             val anglesDeg = floatArrayOf(-90f, -60f, -30f, 0f, 30f, 60f)
             val tickInnerRadius = w * 0.36f
             val tickOuterRadius = w * 0.46f
 
-            // 3. Clock Hands: Hour hand pointing at ~2 o'clock, Minute hand pointing straight up at 12
             val minHandLength = w * 0.26f
             val hourHandLength = w * 0.17f
             val centerPivotRadius = w * 0.055f
 
             onDrawBehind {
-                // Draw Crescent Moon
                 drawPath(moonPath, color = tint, style = strokeStyle)
 
-                // Draw Clock Center Pivot Circle
                 drawCircle(
                     color = tint,
                     radius = centerPivotRadius,
@@ -226,7 +220,6 @@ fun MoonClockSleepIcon(tint: Color, modifier: Modifier = Modifier) {
                     style = strokeStyle
                 )
 
-                // Minute Hand (Straight up towards 12 o'clock)
                 drawLine(
                     color = tint,
                     start = Offset(clockCenter.x, clockCenter.y - centerPivotRadius),
@@ -235,7 +228,6 @@ fun MoonClockSleepIcon(tint: Color, modifier: Modifier = Modifier) {
                     cap = StrokeCap.Round
                 )
 
-                // Hour Hand (Towards ~2:15 o'clock)
                 val hourAngleRad = Math.toRadians(-26.0)
                 val hourHandEnd = Offset(
                     clockCenter.x + (hourHandLength * cos(hourAngleRad)).toFloat(),
@@ -253,7 +245,6 @@ fun MoonClockSleepIcon(tint: Color, modifier: Modifier = Modifier) {
                     cap = StrokeCap.Round
                 )
 
-                // Uniform Hour Ticks
                 for (angle in anglesDeg) {
                     val rad = Math.toRadians(angle.toDouble())
                     val pStart = Offset(
@@ -277,6 +268,38 @@ fun MoonClockSleepIcon(tint: Color, modifier: Modifier = Modifier) {
     )
 }
 
+// Bolder, Wider Triple-Line Drag Handle Icon
+@Composable
+fun ReorderDragHandle(tint: Color, modifier: Modifier = Modifier) {
+    Canvas(modifier = modifier) {
+        val w = size.width
+        val h = size.height
+        val strokeW = 3.2f.dp.toPx()
+
+        drawLine(
+            color = tint,
+            start = Offset(w * 0.10f, h * 0.25f),
+            end = Offset(w * 0.90f, h * 0.25f),
+            strokeWidth = strokeW,
+            cap = StrokeCap.Round
+        )
+        drawLine(
+            color = tint,
+            start = Offset(w * 0.10f, h * 0.50f),
+            end = Offset(w * 0.90f, h * 0.50f),
+            strokeWidth = strokeW,
+            cap = StrokeCap.Round
+        )
+        drawLine(
+            color = tint,
+            start = Offset(w * 0.10f, h * 0.75f),
+            end = Offset(w * 0.90f, h * 0.75f),
+            strokeWidth = strokeW,
+            cap = StrokeCap.Round
+        )
+    }
+}
+
 // Glassmorphic Folder Icon
 @Composable
 fun GlassmorphicFolderIcon(folderColor: Color, modifier: Modifier = Modifier) {
@@ -291,7 +314,7 @@ fun GlassmorphicFolderIcon(folderColor: Color, modifier: Modifier = Modifier) {
                 quadraticBezierTo(w * 0.48f, h * 0.14f, w * 0.52f, h * 0.22f)
                 lineTo(w * 0.56f, h * 0.28f)
                 lineTo(w * 0.82f, h * 0.28f)
-                quadraticBezierTo(w * 0.88f, h * 0.28f, w * 0.88f, h * 0.35f)
+                quadraticBezierTo(w * 0.88f, h * 0.82f, w * 0.88f, h * 0.35f)
                 lineTo(w * 0.88f, h * 0.82f)
                 quadraticBezierTo(w * 0.88f, h * 0.88f, w * 0.80f, h * 0.88f)
                 lineTo(w * 0.18f, h * 0.88f)
@@ -770,7 +793,6 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
         }
     }
 
-    // Dialogs & Sheets
     var showMenuModal by remember { mutableStateOf(false) }
     var showSpeedDialog by remember { mutableStateOf(false) }
     var showSleepDialog by remember { mutableStateOf(false) }
@@ -780,7 +802,6 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
     var showLyricsDialog by remember { mutableStateOf(false) }
     var showAddToPlaylistDialog by remember { mutableStateOf(false) }
 
-    // Double-tap Seek Animation State
     var showSeekLeftAnim by remember { mutableStateOf(false) }
     var showSeekRightAnim by remember { mutableStateOf(false) }
 
@@ -1117,7 +1138,7 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                         )
                     }
 
-                    // Bottom Dock with New Moon Clock Vector Icon for Sleep Timer
+                    // Bottom Dock with Moon Clock Sleep Timer Icon
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -1130,7 +1151,6 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                     ) {
                         Text("❝≡", fontSize = 24.sp, fontWeight = FontWeight.Black, color = animTextPrimary, modifier = Modifier.clickable { showLyricsDialog = true })
 
-                        // Sleep Timer: Shows remaining minutes if active, or exact Crescent Moon Clock icon if inactive
                         Box(
                             modifier = Modifier
                                 .size(32.dp)
@@ -1293,7 +1313,6 @@ fun QueueSheet(
     var draggingIndex by remember { mutableStateOf<Int?>(null) }
     var draggingOffsetPx by remember { mutableFloatStateOf(0f) }
 
-    // Intercept downward drag gestures across the entire screen (including over songs) when at the top of the queue
     val nestedScrollConnection = remember {
         object : NestedScrollConnection {
             override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
