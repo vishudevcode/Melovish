@@ -80,7 +80,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -184,153 +183,6 @@ fun GlassBackButton(isDark: Boolean, onClick: () -> Unit, modifier: Modifier = M
     }
 }
 
-// Moon Clock Sleep Timer Icon (Exact Match with Sharp Cusps & Balanced Hands)
-@Composable
-fun MoonClockSleepIcon(tint: Color, modifier: Modifier = Modifier) {
-    Spacer(
-        modifier = modifier.drawWithCache {
-            val w = size.width
-            val h = size.height
-            val strokeW = 1.9f.dp.toPx()
-            val strokeStyle = Stroke(width = strokeW, cap = StrokeCap.Round, join = StrokeJoin.Round)
-
-            val clockCenter = Offset(w * 0.50f, h * 0.50f)
-
-            // Outer circle definition
-            val rOuter = w * 0.42f
-            val cOuter = clockCenter
-
-            // Inner circle definition (shifted right-upward)
-            val rInner = w * 0.36f
-            val cInner = Offset(w * 0.58f, h * 0.42f)
-
-            // Exact mathematical intersection of two circles
-            val d = (cInner - cOuter).getDistance()
-            val a = (rOuter * rOuter - rInner * rInner + d * d) / (2 * d)
-            val hVal = sqrt((rOuter * rOuter - a * a).coerceAtLeast(0f))
-
-            val p2 = Offset(
-                cOuter.x + a * (cInner.x - cOuter.x) / d,
-                cOuter.y + a * (cInner.y - cOuter.y) / d
-            )
-
-            val cuspTop = Offset(
-                p2.x + hVal * (cInner.y - cOuter.y) / d,
-                p2.y - hVal * (cInner.x - cOuter.x) / d
-            )
-            val cuspBottom = Offset(
-                p2.x - hVal * (cInner.y - cOuter.y) / d,
-                p2.y + hVal * (cInner.x - cOuter.x) / d
-            )
-
-            var startAngleOuter = Math.toDegrees(atan2((cuspTop.y - cOuter.y).toDouble(), (cuspTop.x - cOuter.x).toDouble())).toFloat()
-            var endAngleOuter = Math.toDegrees(atan2((cuspBottom.y - cOuter.y).toDouble(), (cuspBottom.x - cOuter.x).toDouble())).toFloat()
-            var sweepOuter = endAngleOuter - startAngleOuter
-            if (sweepOuter < 0) sweepOuter += 360f
-
-            var startAngleInner = Math.toDegrees(atan2((cuspBottom.y - cInner.y).toDouble(), (cuspBottom.x - cInner.x).toDouble())).toFloat()
-            var endAngleInner = Math.toDegrees(atan2((cuspTop.y - cInner.y).toDouble(), (cuspTop.x - cInner.x).toDouble())).toFloat()
-            var sweepInner = endAngleInner - startAngleInner
-            if (sweepInner < 0) sweepInner += 360f
-
-            val outerRect = Rect(cOuter.x - rOuter, cOuter.y - rOuter, cOuter.x + rOuter, cOuter.y + rOuter)
-            val innerRect = Rect(cInner.x - rInner, cInner.y - rInner, cInner.x + rInner, cInner.y + rInner)
-
-            val moonPath = Path().apply {
-                arcTo(outerRect, startAngleOuter, sweepOuter, false)
-                arcTo(innerRect, startAngleInner, sweepInner, false)
-                close()
-            }
-
-            // Radial Clock Hour Ticks at 12, 1, 2, and 3 o'clock
-            val tickAngles = floatArrayOf(-90f, -60f, -30f, 0f)
-            val tickInnerRadius = w * 0.35f
-            val tickOuterRadius = w * 0.44f
-
-            // Both hands equal length with clear space to 12 o'clock tick
-            val handLength = w * 0.17f
-            val hourAngleRad = Math.toRadians(45.0) // ~4:30 position
-
-            onDrawBehind {
-                drawPath(moonPath, color = tint, style = strokeStyle)
-
-                // Minute Hand (Pointing up to 12)
-                drawLine(
-                    color = tint,
-                    start = clockCenter,
-                    end = Offset(clockCenter.x, clockCenter.y - handLength),
-                    strokeWidth = strokeW,
-                    cap = StrokeCap.Round
-                )
-
-                // Hour Hand (Pointing downward-right at ~4:30)
-                drawLine(
-                    color = tint,
-                    start = clockCenter,
-                    end = Offset(
-                        clockCenter.x + (handLength * cos(hourAngleRad)).toFloat(),
-                        clockCenter.y + (handLength * sin(hourAngleRad)).toFloat()
-                    ),
-                    strokeWidth = strokeW,
-                    cap = StrokeCap.Round
-                )
-
-                // 4 Clock Hour Ticks
-                for (deg in tickAngles) {
-                    val rad = Math.toRadians(deg.toDouble())
-                    val pStart = Offset(
-                        clockCenter.x + (tickInnerRadius * cos(rad)).toFloat(),
-                        clockCenter.y + (tickInnerRadius * sin(rad)).toFloat()
-                    )
-                    val pEnd = Offset(
-                        clockCenter.x + (tickOuterRadius * cos(rad)).toFloat(),
-                        clockCenter.y + (tickOuterRadius * sin(rad)).toFloat()
-                    )
-                    drawLine(
-                        color = tint,
-                        start = pStart,
-                        end = pEnd,
-                        strokeWidth = strokeW,
-                        cap = StrokeCap.Round
-                    )
-                }
-            }
-        }
-    )
-}
-
-// Bolder, Wider Triple-Line Drag Handle Icon
-@Composable
-fun ReorderDragHandle(tint: Color, modifier: Modifier = Modifier) {
-    Canvas(modifier = modifier) {
-        val w = size.width
-        val h = size.height
-        val strokeW = 3.2f.dp.toPx()
-
-        drawLine(
-            color = tint,
-            start = Offset(w * 0.10f, h * 0.25f),
-            end = Offset(w * 0.90f, h * 0.25f),
-            strokeWidth = strokeW,
-            cap = StrokeCap.Round
-        )
-        drawLine(
-            color = tint,
-            start = Offset(w * 0.10f, h * 0.50f),
-            end = Offset(w * 0.90f, h * 0.50f),
-            strokeWidth = strokeW,
-            cap = StrokeCap.Round
-        )
-        drawLine(
-            color = tint,
-            start = Offset(w * 0.10f, h * 0.75f),
-            end = Offset(w * 0.90f, h * 0.75f),
-            strokeWidth = strokeW,
-            cap = StrokeCap.Round
-        )
-    }
-}
-
 // Glassmorphic Folder Icon
 @Composable
 fun GlassmorphicFolderIcon(folderColor: Color, modifier: Modifier = Modifier) {
@@ -345,7 +197,7 @@ fun GlassmorphicFolderIcon(folderColor: Color, modifier: Modifier = Modifier) {
                 quadraticBezierTo(w * 0.48f, h * 0.14f, w * 0.52f, h * 0.22f)
                 lineTo(w * 0.56f, h * 0.28f)
                 lineTo(w * 0.82f, h * 0.28f)
-                quadraticBezierTo(w * 0.88f, h * 0.82f, w * 0.88f, h * 0.35f)
+                quadraticBezierTo(w * 0.88f, h * 0.28f, w * 0.88f, h * 0.35f)
                 lineTo(w * 0.88f, h * 0.82f)
                 quadraticBezierTo(w * 0.88f, h * 0.88f, w * 0.80f, h * 0.88f)
                 lineTo(w * 0.18f, h * 0.88f)
@@ -733,6 +585,75 @@ fun HeartIconVector(isFavorite: Boolean, defaultTint: Color, modifier: Modifier 
     )
 }
 
+// Vector Bold Clock Icon with Top Timer Crown
+@Composable
+fun SleepTimerClockIcon(
+    isActive: Boolean,
+    tint: Color,
+    modifier: Modifier = Modifier
+) {
+    Spacer(
+        modifier = modifier.size(24.dp).drawWithCache {
+            val w = size.width
+            val h = size.height
+            val center = Offset(w * 0.5f, h * 0.54f)
+            val radius = w * 0.40f
+            val strokeW = 2.3f.dp.toPx()
+
+            onDrawBehind {
+                // Top timer crown / stop-button
+                drawLine(
+                    color = tint,
+                    start = Offset(w * 0.40f, h * 0.06f),
+                    end = Offset(w * 0.60f, h * 0.06f),
+                    strokeWidth = strokeW,
+                    cap = StrokeCap.Round
+                )
+                drawLine(
+                    color = tint,
+                    start = Offset(w * 0.50f, h * 0.06f),
+                    end = Offset(w * 0.50f, h * 0.14f),
+                    strokeWidth = strokeW,
+                    cap = StrokeCap.Round
+                )
+
+                // Main Clock Circle Body
+                drawCircle(
+                    color = tint,
+                    radius = radius,
+                    center = center,
+                    style = Stroke(width = strokeW)
+                )
+
+                // Hour Hand (Pointing towards 10 o'clock)
+                drawLine(
+                    color = tint,
+                    start = center,
+                    end = Offset(center.x - radius * 0.42f, center.y - radius * 0.35f),
+                    strokeWidth = strokeW,
+                    cap = StrokeCap.Round
+                )
+
+                // Minute Hand (Pointing towards 2 o'clock)
+                drawLine(
+                    color = tint,
+                    start = center,
+                    end = Offset(center.x + radius * 0.52f, center.y - radius * 0.48f),
+                    strokeWidth = strokeW,
+                    cap = StrokeCap.Round
+                )
+
+                // Center Core Pivot Dot
+                drawCircle(
+                    color = tint,
+                    radius = 2.4f.dp.toPx(),
+                    center = center
+                )
+            }
+        }
+    )
+}
+
 // Lyrics Dialog
 @Composable
 fun LyricsDialog(song: Song, isDark: Boolean, onDismiss: () -> Unit) {
@@ -771,6 +692,38 @@ fun LyricsDialog(song: Song, isDark: Boolean, onDismiss: () -> Unit) {
                 }
             }
         }
+    }
+}
+
+// Bolder, Wider Triple-Line Drag Handle Icon
+@Composable
+fun ReorderDragHandle(tint: Color, modifier: Modifier = Modifier) {
+    Canvas(modifier = modifier) {
+        val w = size.width
+        val h = size.height
+        val strokeW = 3.2f.dp.toPx()
+
+        drawLine(
+            color = tint,
+            start = Offset(w * 0.10f, h * 0.25f),
+            end = Offset(w * 0.90f, h * 0.25f),
+            strokeWidth = strokeW,
+            cap = StrokeCap.Round
+        )
+        drawLine(
+            color = tint,
+            start = Offset(w * 0.10f, h * 0.50f),
+            end = Offset(w * 0.90f, h * 0.50f),
+            strokeWidth = strokeW,
+            cap = StrokeCap.Round
+        )
+        drawLine(
+            color = tint,
+            start = Offset(w * 0.10f, h * 0.75f),
+            end = Offset(w * 0.90f, h * 0.75f),
+            strokeWidth = strokeW,
+            cap = StrokeCap.Round
+        )
     }
 }
 
@@ -824,6 +777,7 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
         }
     }
 
+    // Dialogs & Sheets
     var showMenuModal by remember { mutableStateOf(false) }
     var showSpeedDialog by remember { mutableStateOf(false) }
     var showSleepDialog by remember { mutableStateOf(false) }
@@ -833,6 +787,7 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
     var showLyricsDialog by remember { mutableStateOf(false) }
     var showAddToPlaylistDialog by remember { mutableStateOf(false) }
 
+    // Double-tap Seek Animation State
     var showSeekLeftAnim by remember { mutableStateOf(false) }
     var showSeekRightAnim by remember { mutableStateOf(false) }
 
@@ -899,6 +854,7 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
             .fillMaxSize()
             .background(Brush.verticalGradient(listOf(animBgTop, animBgBottom)))
             .statusBarsPadding()
+            // Gestures: Swipe down to minimize player; swipe up to open Queue
             .pointerInput(Unit) {
                 detectVerticalDragGestures { _, dragAmount ->
                     if (dragAmount > 38f) {
@@ -1169,7 +1125,7 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                         )
                     }
 
-                    // Bottom Dock with Moon Clock Sleep Timer Icon
+                    // Bottom Dock
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -1182,23 +1138,25 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                     ) {
                         Text("❝≡", fontSize = 24.sp, fontWeight = FontWeight.Black, color = animTextPrimary, modifier = Modifier.clickable { showLyricsDialog = true })
 
-                        Box(
-                            modifier = Modifier
-                                .size(32.dp)
-                                .clickable { showSleepDialog = true },
-                            contentAlignment = Alignment.Center
+                        val isTimerActive = manager.sleepTimerRemainingSeconds > 0
+                        val timerTint = if (isTimerActive) userAccent else animTextPrimary
+
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            modifier = Modifier.clickable { showSleepDialog = true }
                         ) {
-                            if (manager.sleepTimerRemainingSeconds > 0) {
+                            SleepTimerClockIcon(
+                                isActive = isTimerActive,
+                                tint = timerTint,
+                                modifier = Modifier.size(24.dp)
+                            )
+                            if (isTimerActive) {
                                 Text(
                                     text = "${manager.sleepTimerRemainingSeconds / 60}m",
-                                    fontSize = 15.sp,
+                                    fontSize = 13.sp,
                                     color = userAccent,
                                     fontWeight = FontWeight.ExtraBold
-                                )
-                            } else {
-                                MoonClockSleepIcon(
-                                    tint = animTextPrimary,
-                                    modifier = Modifier.size(26.dp)
                                 )
                             }
                         }
@@ -1230,9 +1188,9 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                     .fillMaxSize()
                     .background(Color.Transparent)
                     .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null
-            ) { showMenuModal = false },
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null
+                    ) { showMenuModal = false },
                 contentAlignment = Alignment.BottomCenter
             ) {
                 Box(
