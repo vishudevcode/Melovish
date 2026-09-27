@@ -15,10 +15,13 @@ import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
@@ -28,6 +31,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
@@ -68,6 +72,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -86,16 +91,20 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.media3.common.util.UnstableApi
@@ -108,11 +117,6 @@ import java.util.Locale
 import kotlin.math.cos
 import kotlin.math.sin
 
-/**
- * Phase 3 Invariant: Android Architecture Component ViewModel.
- * Retains the MusicManager instance across all Activity recreation events (screen rotations,
- * foldable unfolding/folding, split-screen multi-window resizing, and system dark mode toggles).
- */
 @UnstableApi
 class MusicViewModel(application: Application) : AndroidViewModel(application) {
     val manager: MusicManager = MusicManager.activeInstance ?: MusicManager(application.applicationContext)
@@ -170,11 +174,6 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    /**
-     * Phase 3 Invariant: LMK (Low Memory Killer) Defensive Interceptor.
-     * Hooks directly into Android runtime memory trim callbacks. When OS signals memory pressure,
-     * non-essential cached bitmaps are evicted immediately to protect the process from termination.
-     */
     override fun onTrimMemory(level: Int) {
         super.onTrimMemory(level)
         if (level >= ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW) {
@@ -238,10 +237,13 @@ fun MelovishRootApp(manager: MusicManager) {
     val searchListState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
 
-    BackHandler(enabled = isSettingsEqOpen || isPlayerExpanded || selectedArtist != null || selectedAlbum != null || selectedPlaylist != null || selectedFolder != null || activeScreen != "home") {
+    // Strict 1-Step Back Navigation Handler
+    BackHandler(enabled = isSettingsEqOpen || isPlayerExpanded || activeScreen == "settings" || activeScreen == "profile" || selectedArtist != null || selectedAlbum != null || selectedPlaylist != null || selectedFolder != null || activeScreen != "home") {
         when {
             isSettingsEqOpen -> isSettingsEqOpen = false
             isPlayerExpanded -> isPlayerExpanded = false
+            activeScreen == "settings" -> activeScreen = "home"
+            activeScreen == "profile" -> activeScreen = "home"
             selectedArtist != null -> selectedArtist = null
             selectedAlbum != null -> selectedAlbum = null
             selectedPlaylist != null -> selectedPlaylist = null
@@ -261,8 +263,19 @@ fun MelovishRootApp(manager: MusicManager) {
                     onSettingsClick = { activeScreen = "settings" }
                 )
 
+                // Foreground Settings Priority Ladder
                 Box(modifier = Modifier.weight(1f)) {
                     when {
+                        activeScreen == "settings" -> SettingsScreen(
+                            manager = manager,
+                            onBackClick = { activeScreen = "home" },
+                            onOpenProfile = { activeScreen = "profile" },
+                            onOpenEqualizer = { isSettingsEqOpen = true }
+                        )
+                        activeScreen == "profile" -> ProfileScreen(
+                            manager = manager,
+                            onBackClick = { activeScreen = "home" }
+                        )
                         selectedArtist != null -> {
                             ArtistDetailScreen(
                                 artistItem = selectedArtist!!,
@@ -301,16 +314,6 @@ fun MelovishRootApp(manager: MusicManager) {
                                 onSongMenuClick = { activeSongForMenu = it }
                             )
                         }
-                        activeScreen == "settings" -> SettingsScreen(
-                            manager = manager,
-                            onBackClick = { activeScreen = "home" },
-                            onOpenProfile = { activeScreen = "profile" },
-                            onOpenEqualizer = { isSettingsEqOpen = true }
-                        )
-                        activeScreen == "profile" -> ProfileScreen(
-                            manager = manager,
-                            onBackClick = { activeScreen = "home" }
-                        )
                         activeScreen == "artists" -> ArtistsScreen(
                             manager = manager,
                             listState = artistsListState,
@@ -441,9 +444,74 @@ fun MelovishRootApp(manager: MusicManager) {
     }
 }
 
+// Shimmer Effect Modifier for Instant Backbone Loading Skeleton
+@Composable
+fun shimmerBrush(isDark: Boolean): Brush {
+    val transition = rememberInfiniteTransition(label = "shimmer")
+    val translateAnim by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1000f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1200, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "shimmerFloat"
+    )
+    val shimmerColors = if (isDark) {
+        listOf(
+            Color(0xFF1E293B).copy(alpha = 0.6f),
+            Color(0xFF334155).copy(alpha = 0.25f),
+            Color(0xFF1E293B).copy(alpha = 0.6f)
+        )
+    } else {
+        listOf(
+            Color(0xFFE2E8F0).copy(alpha = 0.6f),
+            Color(0xFFF8FAFC).copy(alpha = 0.85f),
+            Color(0xFFE2E8F0).copy(alpha = 0.6f)
+        )
+    }
+    return Brush.linearGradient(
+        colors = shimmerColors,
+        start = Offset(translateAnim - 400f, translateAnim - 400f),
+        end = Offset(translateAnim, translateAnim)
+    )
+}
+
+@Composable
+fun ShimmerSkeletonRow(isDark: Boolean) {
+    val brush = shimmerBrush(isDark)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(if (isDark) Color(0xFF131B2E) else Color.White)
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(modifier = Modifier.size(46.dp).clip(RoundedCornerShape(10.dp)).background(brush))
+        Spacer(modifier = Modifier.width(12.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Box(modifier = Modifier.fillMaxWidth(0.65f).height(14.dp).clip(RoundedCornerShape(4.dp)).background(brush))
+            Spacer(modifier = Modifier.height(6.dp))
+            Box(modifier = Modifier.fillMaxWidth(0.40f).height(10.dp).clip(RoundedCornerShape(4.dp)).background(brush))
+        }
+        Spacer(modifier = Modifier.width(8.dp))
+        Box(modifier = Modifier.size(36.dp, 12.dp).clip(RoundedCornerShape(4.dp)).background(brush))
+    }
+}
+
+// 1:1 Perfect Square Audio Card with Bottom Gradient Overlay
 @UnstableApi
 @Composable
-fun RecentlyPlayedCard(song: Song, manager: MusicManager, onClick: () -> Unit) {
+fun SquareAlbumOverlayCard(
+    song: Song,
+    manager: MusicManager,
+    isDark: Boolean,
+    onPlay: () -> Unit,
+    onMenuClick: () -> Unit
+) {
+    val isPlayingThis = manager.currentSong?.id == song.id
+    val accent = manager.accentColor
     var albumArtBitmap by remember(song.id) { mutableStateOf(manager.getCachedAlbumArt(song.id)) }
     LaunchedEffect(song.id) {
         if (albumArtBitmap == null) albumArtBitmap = manager.loadAlbumArtAsync(song)
@@ -451,241 +519,581 @@ fun RecentlyPlayedCard(song: Song, manager: MusicManager, onClick: () -> Unit) {
 
     Box(
         modifier = Modifier
-            .width(116.dp)
-            .height(116.dp)
-            .clip(RoundedCornerShape(20.dp))
+            .fillMaxWidth()
+            .aspectRatio(1f)
+            .clip(RoundedCornerShape(18.dp))
             .background(Color(0xFF1E293B))
-            .clickable { onClick() }
+            .border(
+                width = if (isPlayingThis) 2.dp else 1.dp,
+                color = if (isPlayingThis) accent else if (isDark) Color(0x22FFFFFF) else Color(0xFFECEFF3),
+                shape = RoundedCornerShape(18.dp)
+            )
+            .clickable { onPlay() }
     ) {
         if (albumArtBitmap != null) {
-            Image(bitmap = albumArtBitmap!!.asImageBitmap(), contentDescription = song.title, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+            Image(
+                bitmap = albumArtBitmap!!.asImageBitmap(),
+                contentDescription = song.title,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize()
+            )
         } else {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Text("🎵", fontSize = 36.sp)
             }
         }
 
+        // Bottom Gradient Overlay for Title & Artist
         Box(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
-                .background(Brush.verticalGradient(listOf(Color.Transparent, Color(0x88000000), Color(0xDE000000))))
-                .padding(horizontal = 6.dp, vertical = 6.dp),
-            contentAlignment = Alignment.Center
+                .background(
+                    Brush.verticalGradient(
+                        listOf(Color.Transparent, Color(0x88000000), Color(0xDE000000))
+                    )
+                )
+                .padding(horizontal = 8.dp, vertical = 6.dp)
         ) {
-            Text(text = song.title, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = song.title,
+                        color = if (isPlayingThis) accent else Color.White,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = if (song.artist.isNotBlank()) song.artist else "Unknown",
+                        color = Color(0xFFCBD5E1),
+                        fontSize = 10.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                Box(modifier = Modifier.clickable { onMenuClick() }.padding(start = 4.dp)) {
+                    Text("⋮", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                }
+            }
         }
     }
 }
 
+// View Mode Selector Vector Icon
 @Composable
-fun LiveMechanicalGearIcon(isDark: Boolean, modifier: Modifier = Modifier) {
-    val infiniteTransition = rememberInfiniteTransition(label = "gearRotation")
-    val rotation by infiniteTransition.animateFloat(0f, 360f, infiniteRepeatable(tween(12000, easing = LinearEasing)), label = "gearAngle")
-
-    Box(
-        modifier = modifier
-            .size(42.dp)
-            .clip(CircleShape)
-            .shadow(6.dp, CircleShape)
-            .background(if (isDark) Color(0x33FFFFFF) else Color(0x1A000000))
-            .border(1.5.dp, if (isDark) Color(0x44FFFFFF) else Color(0x22000000), CircleShape),
-        contentAlignment = Alignment.Center
-    ) {
-        Spacer(
-            modifier = Modifier
-                .size(34.dp)
-                .rotate(rotation)
-                .drawWithCache {
-                    val center = Offset(size.width / 2f, size.height / 2f)
-                    val outerRadius = size.width / 2f
-                    val toothDepth = outerRadius * 0.22f
-                    val innerRingRadius = outerRadius - toothDepth
-                    val teethCount = 12
-                    val gearColor = if (isDark) Color(0xFFE2E8F0) else Color(0xFF334155)
-
-                    val path = Path().apply {
-                        for (i in 0 until teethCount) {
-                            val angleStep = (2.0 * Math.PI / teethCount).toFloat()
-                            val a1 = i * angleStep
-                            val a2 = a1 + (angleStep * 0.35f)
-                            val a3 = a1 + (angleStep * 0.65f)
-                            val a4 = (i + 1) * angleStep
-
-                            val p1 = Offset(center.x + (innerRingRadius * cos(a1)), center.y + (innerRingRadius * sin(a1)))
-                            val p2 = Offset(center.x + (outerRadius * cos(a2)), center.y + (outerRadius * sin(a2)))
-                            val p3 = Offset(center.x + (outerRadius * cos(a3)), center.y + (outerRadius * sin(a3)))
-                            val p4 = Offset(center.x + (innerRingRadius * cos(a4)), center.y + (innerRingRadius * sin(a4)))
-
-                            if (i == 0) moveTo(p1.x, p1.y) else lineTo(p1.x, p1.y)
-                            lineTo(p2.x, p2.y)
-                            lineTo(p3.x, p3.y)
-                            lineTo(p4.x, p4.y)
-                        }
-                        close()
-                    }
-
-                    val cavityRadius = innerRingRadius * 0.72f
-                    val hubRadius = innerRingRadius * 0.32f
-                    val spokeStrokeWidth = 2.5f.dp.toPx()
-                    val bgColor = if (isDark) Color(0xFF0F172A) else Color(0xFFE2E8F0)
-
-                    onDrawBehind {
-                        drawPath(path, gearColor)
-                        drawCircle(color = bgColor, radius = cavityRadius, center = center)
-                        drawCircle(color = gearColor, radius = hubRadius, center = center)
-                        for (s in 0 until 3) {
-                            val spAngle = (s * 2.0 * Math.PI / 3.0).toFloat()
-                            val spokeEnd = Offset(center.x + (cavityRadius * cos(spAngle)), center.y + (cavityRadius * sin(spAngle)))
-                            drawLine(color = gearColor, start = center, end = spokeEnd, strokeWidth = spokeStrokeWidth)
-                        }
+fun GridViewModeVectorIcon(mode: GridViewMode, tint: Color, modifier: Modifier = Modifier) {
+    Canvas(modifier = modifier) {
+        val w = size.width
+        val h = size.height
+        val s = 2.dp.toPx()
+        when (mode) {
+            GridViewMode.LIST, GridViewMode.DETAILED_LIST -> {
+                drawLine(tint, Offset(0f, h * 0.20f), Offset(w, h * 0.20f), s)
+                drawLine(tint, Offset(0f, h * 0.50f), Offset(w, h * 0.50f), s)
+                drawLine(tint, Offset(0f, h * 0.80f), Offset(w, h * 0.80f), s)
+            }
+            GridViewMode.GRID_2 -> {
+                drawRoundRect(tint, Offset(0f, 0f), androidx.compose.ui.geometry.Size(w * 0.44f, h * 0.44f), androidx.compose.ui.geometry.CornerRadius(4f, 4f))
+                drawRoundRect(tint, Offset(w * 0.56f, 0f), androidx.compose.ui.geometry.Size(w * 0.44f, h * 0.44f), androidx.compose.ui.geometry.CornerRadius(4f, 4f))
+                drawRoundRect(tint, Offset(0f, h * 0.56f), androidx.compose.ui.geometry.Size(w * 0.44f, h * 0.44f), androidx.compose.ui.geometry.CornerRadius(4f, 4f))
+                drawRoundRect(tint, Offset(w * 0.56f, h * 0.56f), androidx.compose.ui.geometry.Size(w * 0.44f, h * 0.44f), androidx.compose.ui.geometry.CornerRadius(4f, 4f))
+            }
+            GridViewMode.GRID_3 -> {
+                val step = w / 3.4f
+                for (r in 0..2) {
+                    for (c in 0..2) {
+                        drawCircle(tint, 2.5f.dp.toPx(), Offset(c * step + step * 0.5f, r * step + step * 0.5f))
                     }
                 }
-        )
+            }
+            GridViewMode.GRID_4, GridViewMode.HERO_GRID -> {
+                val step = w / 4.4f
+                for (r in 0..3) {
+                    for (c in 0..3) {
+                        drawCircle(tint, 1.8f.dp.toPx(), Offset(c * step + step * 0.5f, r * step + step * 0.5f))
+                    }
+                }
+            }
+        }
     }
 }
 
+// "Grid Size" Modal Dialog
 @Composable
-fun TopBar(manager: MusicManager, onProfileClick: () -> Unit, onSettingsClick: () -> Unit) {
-    val isDark = manager.isDarkMode
+fun GridSizeDialog(
+    currentMode: GridViewMode,
+    isDark: Boolean,
+    accent: Color,
+    onSelectMode: (GridViewMode) -> Unit,
+    onDismiss: () -> Unit
+) {
     val textColor = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A)
-    val avatarPath = manager.profileImagePath
-
-    Row(
+    Box(
         modifier = Modifier
-            .fillMaxWidth()
-            .statusBarsPadding()
-            .padding(horizontal = 20.dp, vertical = 10.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
+            .fillMaxSize()
+            .background(Color.Transparent)
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null
+            ) { onDismiss() },
+        contentAlignment = Alignment.BottomCenter
     ) {
         Box(
             modifier = Modifier
-                .size(42.dp)
-                .shadow(6.dp, CircleShape)
-                .clip(CircleShape)
-                .background(Color(0xFF030712))
-                .border(2.dp, manager.accentColor, CircleShape)
-                .clickable { onProfileClick() },
-            contentAlignment = Alignment.Center
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
+                .background(if (isDark) Color(0xFF1E293B) else Color.White)
+                .clickable(enabled = false) {}
+                .padding(22.dp)
         ) {
-            if (!avatarPath.isNullOrBlank() && File(avatarPath).exists()) {
-                AsyncImage(
-                    model = File(avatarPath),
-                    contentDescription = "Avatar",
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize()
-                )
-            } else {
-                DefaultProfileAvatar(modifier = Modifier.fillMaxSize())
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Grid Size", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = textColor)
+                Spacer(modifier = Modifier.height(4.dp))
+
+                listOf(
+                    Pair(GridViewMode.LIST, "Standard List View"),
+                    Pair(GridViewMode.DETAILED_LIST, "Compact Row List"),
+                    Pair(GridViewMode.GRID_2, "Big (2 Cards Grid)"),
+                    Pair(GridViewMode.GRID_3, "Medium (3 Cards Grid)"),
+                    Pair(GridViewMode.GRID_4, "Small (4 Cards Grid)"),
+                    Pair(GridViewMode.HERO_GRID, "Hero Album Grid")
+                ).forEach { (mode, name) ->
+                    val isSel = currentMode == mode
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(if (isSel) accent.copy(alpha = 0.15f) else Color.Transparent)
+                            .clickable {
+                                onSelectMode(mode)
+                                onDismiss()
+                            }
+                            .padding(horizontal = 14.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            GridViewModeVectorIcon(mode = mode, tint = if (isSel) accent else textColor, modifier = Modifier.size(22.dp))
+                            Spacer(modifier = Modifier.width(14.dp))
+                            Text(name, color = if (isSel) accent else textColor, fontSize = 14.sp, fontWeight = if (isSel) FontWeight.Bold else FontWeight.Medium)
+                        }
+                        if (isSel) {
+                            Text("✓", color = accent, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+                Button(
+                    onClick = onDismiss,
+                    modifier = Modifier.fillMaxWidth().height(48.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = if (isDark) Color(0x22FFFFFF) else Color(0xFFF1F5F9)),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text("Close", color = textColor, fontWeight = FontWeight.Bold)
+                }
             }
         }
-
-        Text(text = "Melovish", color = textColor, fontSize = 24.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 0.5.sp)
-
-        LiveMechanicalGearIcon(isDark = isDark, modifier = Modifier.clickable { onSettingsClick() })
     }
 }
 
-@UnstableApi
+// Favourite Playlists Manage Dialog (Add, Remove & Instant Reorder)
 @Composable
-fun UniversalSongRow(song: Song, manager: MusicManager, isDark: Boolean, onPlay: () -> Unit, onMenuClick: () -> Unit) {
-    val isPlayingThis = manager.currentSong?.id == song.id
+fun ManagePlaylistsDialog(
+    manager: MusicManager,
+    isDark: Boolean,
+    onAddNew: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    val textColor = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A)
     val accent = manager.accentColor
 
-    val textColor = if (isPlayingThis) accent else if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A)
-    val cardBg = if (isPlayingThis) accent.copy(alpha = 0.08f) else if (isDark) Color(0xFF131B2E) else Color.White
-    val borderColor = if (isPlayingThis) accent.copy(alpha = 0.6f) else if (isDark) Color(0x1AFFFFFF) else Color(0xFFECEFF3)
-
-    var albumArtBitmap by remember(song.id) { mutableStateOf(manager.getCachedAlbumArt(song.id)) }
-    LaunchedEffect(song.id) {
-        if (albumArtBitmap == null) albumArtBitmap = manager.loadAlbumArtAsync(song)
-    }
-
-    Row(
+    Box(
         modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
-            .background(cardBg)
-            .border(1.2.dp, borderColor, RoundedCornerShape(16.dp))
-            .clickable { onPlay() }
-            .padding(horizontal = 12.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically
+            .fillMaxSize()
+            .background(Color.Transparent)
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null
+            ) { onDismiss() },
+        contentAlignment = Alignment.BottomCenter
     ) {
-        Box(modifier = Modifier.size(46.dp).clip(RoundedCornerShape(10.dp)).background(Color(0xFF1E293B)), contentAlignment = Alignment.Center) {
-            if (albumArtBitmap != null) {
-                Image(bitmap = albumArtBitmap!!.asImageBitmap(), contentDescription = "Art", modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-            } else {
-                Text("🎵", fontSize = 20.sp)
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .fillMaxHeight(0.75f)
+                .clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
+                .background(if (isDark) Color(0xFF1E293B) else Color.White)
+                .clickable(enabled = false) {}
+                .padding(22.dp)
+        ) {
+            Column(modifier = Modifier.fillMaxSize()) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text("Manage Playlists", color = textColor, fontSize = 19.sp, fontWeight = FontWeight.Bold)
+                        Text("Add, remove or reorder favourite items", color = Color(0xFF64748B), fontSize = 12.sp)
+                    }
+                    Button(
+                        onClick = {
+                            onDismiss()
+                            onAddNew()
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = accent),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Text("+ New", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                LazyColumn(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    itemsIndexed(
+                        items = manager.customPlaylists,
+                        key = { _, pl -> pl.id }
+                    ) { index, pl ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(14.dp))
+                                .background(if (isDark) Color(0x1AFFFFFF) else Color(0xFFF1F5F9))
+                                .padding(horizontal = 14.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                                GlassmorphicFolderIcon(folderColor = Color(pl.iconColorHex), modifier = Modifier.size(34.dp))
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Column {
+                                    Text(pl.name, color = textColor, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    Text("${pl.songIds.size} songs", color = Color(0xFF64748B), fontSize = 11.sp)
+                                }
+                            }
+
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(32.dp)
+                                        .clip(CircleShape)
+                                        .background(Color(0x1AEF4444))
+                                        .clickable { manager.removePlaylist(pl) },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text("🗑️", fontSize = 14.sp)
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+                Button(
+                    onClick = onDismiss,
+                    modifier = Modifier.fillMaxWidth().height(48.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = if (isDark) Color(0x22FFFFFF) else Color(0xFFF1F5F9)),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text("Done", color = textColor, fontWeight = FontWeight.Bold)
+                }
             }
-        }
-        Spacer(modifier = Modifier.width(12.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(text = song.title, color = textColor, fontSize = 14.sp, fontWeight = if (isPlayingThis) FontWeight.ExtraBold else FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(text = "${formatFileSize(song.size)} • ${if (song.artist.isNotBlank()) song.artist else "Unknown"}", color = Color(0xFF64748B), fontSize = 11.sp, maxLines = 1)
-        }
-
-        if (isPlayingThis) {
-            LiveAudioWaveEqualizer(isAnimating = manager.isPlaying, accentColor = accent)
-        } else {
-            Text(formatTime(song.duration), color = Color(0xFF94A3B8), fontSize = 12.sp)
-        }
-
-        Spacer(modifier = Modifier.width(6.dp))
-
-        Box(modifier = Modifier.size(36.dp).clip(CircleShape).clickable { onMenuClick() }, contentAlignment = Alignment.Center) {
-            Text("⋮", color = if (isDark) Color.White else Color(0xFF0F172A), fontSize = 20.sp, fontWeight = FontWeight.ExtraBold)
         }
     }
 }
 
-@UnstableApi
+// Favourite Playlists Dedicated Arrange Dialog (Fast Drag & Drop Snapping with Save Button)
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun UniversalSongCard(song: Song, manager: MusicManager, isDark: Boolean, onPlay: () -> Unit, onMenuClick: () -> Unit) {
-    val isPlayingThis = manager.currentSong?.id == song.id
+fun ArrangePlaylistsDialog(
+    manager: MusicManager,
+    isDark: Boolean,
+    onDismiss: () -> Unit
+) {
+    val textColor = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A)
     val accent = manager.accentColor
-    val cardBg = if (isPlayingThis) accent.copy(alpha = 0.12f) else if (isDark) Color(0xFF131B2E) else Color.White
-    val textColor = if (isPlayingThis) accent else if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A)
+    val tempList = remember { manager.customPlaylists.toMutableList() }
+    val density = LocalDensity.current
+    val itemHeightPx = with(density) { 64.dp.toPx() }
 
-    var albumArtBitmap by remember(song.id) { mutableStateOf(manager.getCachedAlbumArt(song.id)) }
-    LaunchedEffect(song.id) {
-        if (albumArtBitmap == null) albumArtBitmap = manager.loadAlbumArtAsync(song)
+    var draggingIndex by remember { mutableStateOf<Int?>(null) }
+    var draggingOffsetPx by remember { mutableFloatStateOf(0f) }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Transparent)
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null
+            ) { onDismiss() },
+        contentAlignment = Alignment.BottomCenter
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .fillMaxHeight(0.78f)
+                .clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
+                .background(if (isDark) Color(0xFF1E293B) else Color.White)
+                .clickable(enabled = false) {}
+                .padding(22.dp)
+        ) {
+            Column(modifier = Modifier.fillMaxSize()) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text("Arrange Playlists", color = textColor, fontSize = 19.sp, fontWeight = FontWeight.Bold)
+                        Text("Hold & drag items to arrange sequence", color = Color(0xFF64748B), fontSize = 12.sp)
+                    }
+                    Button(
+                        onClick = {
+                            manager.reorderCustomPlaylists(tempList)
+                            onDismiss()
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = accent),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Text("Save", color = Color.White, fontWeight = FontWeight.Bold)
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                LazyColumn(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    itemsIndexed(
+                        items = tempList,
+                        key = { _, pl -> pl.id }
+                    ) { index, pl ->
+                        val isDragging = draggingIndex == index
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .animateItemPlacement(spring(stiffness = 550f, dampingRatio = 0.85f))
+                                .zIndex(if (isDragging) 10f else 1f)
+                                .graphicsLayer {
+                                    if (isDragging) {
+                                        translationY = draggingOffsetPx
+                                        scaleX = 1.03f
+                                        scaleY = 1.03f
+                                    }
+                                }
+                                .clip(RoundedCornerShape(14.dp))
+                                .background(if (isDragging) accent.copy(alpha = 0.2f) else if (isDark) Color(0x1AFFFFFF) else Color(0xFFF1F5F9))
+                                .padding(horizontal = 14.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                                GlassmorphicFolderIcon(folderColor = Color(pl.iconColorHex), modifier = Modifier.size(32.dp))
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Text(pl.name, color = textColor, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
+
+                            Box(
+                                modifier = Modifier
+                                    .size(40.dp)
+                                    .pointerInput(pl.id) {
+                                        detectDragGesturesAfterLongPress(
+                                            onDragStart = {
+                                                draggingIndex = index
+                                                draggingOffsetPx = 0f
+                                            },
+                                            onDrag = { change, dragAmount ->
+                                                change.consume()
+                                                draggingOffsetPx += dragAmount.y
+                                                val curIdx = draggingIndex ?: return@detectDragGesturesAfterLongPress
+                                                val threshold = itemHeightPx * 0.65f
+
+                                                if (draggingOffsetPx > threshold && curIdx < tempList.size - 1) {
+                                                    val item = tempList.removeAt(curIdx)
+                                                    tempList.add(curIdx + 1, item)
+                                                    draggingIndex = curIdx + 1
+                                                    draggingOffsetPx -= itemHeightPx
+                                                } else if (draggingOffsetPx < -threshold && curIdx > 0) {
+                                                    val item = tempList.removeAt(curIdx)
+                                                    tempList.add(curIdx - 1, item)
+                                                    draggingIndex = curIdx - 1
+                                                    draggingOffsetPx += itemHeightPx
+                                                }
+                                            },
+                                            onDragEnd = {
+                                                draggingIndex = null
+                                                draggingOffsetPx = 0f
+                                            },
+                                            onDragCancel = {
+                                                draggingIndex = null
+                                                draggingOffsetPx = 0f
+                                            }
+                                        )
+                                    },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                ReorderDragHandle(tint = if (isDragging) accent else Color(0xFF64748B), modifier = Modifier.size(20.dp))
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+                Button(
+                    onClick = {
+                        manager.reorderCustomPlaylists(tempList)
+                        onDismiss()
+                    },
+                    modifier = Modifier.fillMaxWidth().height(48.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = accent),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text("Save Order", color = Color.White, fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+    }
+}
+
+// Favourite Playlist Long-Press Actions Dialog (Colour Changing + Delete)
+@Composable
+fun FavouritePlaylistLongPressDialog(
+    playlist: Playlist,
+    manager: MusicManager,
+    isDark: Boolean,
+    onOpenRainbowPicker: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    val textColor = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A)
+    val preset9Colors = remember {
+        listOf(
+            Color(0xFFF59E0B), Color(0xFF00B4D8), Color(0xFF10B981), Color(0xFF39FF14), Color(0xFFFF2A85),
+            Color(0xFFEF4444), Color(0xFF8B5CF6), Color(0xFF3B82F6), Color(0xFFFF6B35)
+        )
     }
 
     Box(
         modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(18.dp))
-            .background(cardBg)
-            .border(1.dp, if (isPlayingThis) accent else if (isDark) Color(0x22FFFFFF) else Color(0xFFECEFF3), RoundedCornerShape(18.dp))
-            .clickable { onPlay() }
-            .padding(12.dp)
+            .fillMaxSize()
+            .background(Color.Transparent)
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null
+            ) { onDismiss() },
+        contentAlignment = Alignment.BottomCenter
     ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center,
-            modifier = Modifier.fillMaxWidth()
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
+                .background(if (isDark) Color(0xFF1E293B) else Color.White)
+                .clickable(enabled = false) {}
+                .padding(22.dp)
         ) {
-            Box(
-                modifier = Modifier
-                    .size(72.dp)
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(Color(0xFF1E293B)),
-                contentAlignment = Alignment.Center
-            ) {
-                if (albumArtBitmap != null) {
-                    Image(bitmap = albumArtBitmap!!.asImageBitmap(), contentDescription = song.title, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
-                } else {
-                    Text("🎵", fontSize = 30.sp)
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(
+                    text = playlist.name,
+                    color = textColor,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Spacer(modifier = Modifier.height(14.dp))
+                Box(
+                    modifier = Modifier.size(68.dp).clip(RoundedCornerShape(16.dp)).background(if (isDark) Color(0x14FFFFFF) else Color(0xFFF8FAFC)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    GlassmorphicFolderIcon(folderColor = Color(playlist.iconColorHex), modifier = Modifier.size(52.dp))
+                }
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Presets & Rainbow Circle
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        preset9Colors.take(5).forEach { color ->
+                            Box(
+                                modifier = Modifier
+                                    .size(38.dp)
+                                    .clip(CircleShape)
+                                    .background(color)
+                                    .border(2.dp, if (Color(playlist.iconColorHex) == color) Color.White else Color.Transparent, CircleShape)
+                                    .clickable {
+                                        manager.updatePlaylistColorOnly(playlist, color.toArgb().toLong())
+                                        onDismiss()
+                                    }
+                            )
+                        }
+                    }
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                        preset9Colors.drop(5).take(4).forEach { color ->
+                            Box(
+                                modifier = Modifier
+                                    .size(38.dp)
+                                    .clip(CircleShape)
+                                    .background(color)
+                                    .border(2.dp, if (Color(playlist.iconColorHex) == color) Color.White else Color.Transparent, CircleShape)
+                                    .clickable {
+                                        manager.updatePlaylistColorOnly(playlist, color.toArgb().toLong())
+                                        onDismiss()
+                                    }
+                            )
+                        }
+                        Box(
+                            modifier = Modifier
+                                .size(38.dp)
+                                .clip(CircleShape)
+                                .background(Brush.sweepGradient(listOf(Color.Red, Color.Yellow, Color.Green, Color.Cyan, Color.Blue, Color.Magenta, Color.Red)))
+                                .border(2.dp, Color.White, CircleShape)
+                                .clickable {
+                                    onDismiss()
+                                    onOpenRainbowPicker()
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Box(modifier = Modifier.size(12.dp).clip(CircleShape).background(Color.White))
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(18.dp))
+
+                // Delete Playlist from Favourite Section
+                Button(
+                    onClick = {
+                        manager.removePlaylist(playlist)
+                        onDismiss()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0x22EF4444)),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth().height(48.dp)
+                ) {
+                    Text("🗑️ Remove from Favourites", color = Color(0xFFEF4444), fontWeight = FontWeight.Bold)
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+                Button(
+                    onClick = onDismiss,
+                    colors = ButtonDefaults.buttonColors(containerColor = if (isDark) Color(0x22FFFFFF) else Color(0xFFF1F5F9)),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth().height(48.dp)
+                ) {
+                    Text("Cancel", color = textColor, fontWeight = FontWeight.Bold)
                 }
             }
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(song.title, color = textColor, fontSize = 13.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
-            Spacer(modifier = Modifier.height(2.dp))
-            Text(if (song.artist.isNotBlank()) song.artist else "Unknown", color = Color(0xFF64748B), fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
-        }
-        Box(modifier = Modifier.align(Alignment.TopEnd).clickable { onMenuClick() }) {
-            Text("⋮", color = textColor, fontSize = 18.sp, fontWeight = FontWeight.Bold)
         }
     }
 }
@@ -705,8 +1113,11 @@ fun HomeScreen(
     val cardBg = if (isDark) Color(0xFF131B2E) else Color.White
     var showSortMenu by remember { mutableStateOf(false) }
     var showCreatePlaylistDialog by remember { mutableStateOf(false) }
-    var customizingPlaylist by remember { mutableStateOf<Playlist?>(null) }
+    var showManagePlaylistsDialog by remember { mutableStateOf(false) }
+    var showArrangePlaylistsDialog by remember { mutableStateOf(false) }
+    var longPressPlaylist by remember { mutableStateOf<Playlist?>(null) }
     var showRainbowWheelForPl by remember { mutableStateOf(false) }
+    var showGridSizeDialog by remember { mutableStateOf(false) }
 
     val sortedSongs: ImmutableList<Song> = remember(manager.allSongs.toList(), manager.currentSortOrder) {
         manager.getSortedSongs().toImmutableList()
@@ -725,11 +1136,25 @@ fun HomeScreen(
             contentPadding = PaddingValues(bottom = 80.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
+            // Recently Played Carousel / Instant Shimmer Backbone
             item(key = "home_recents_section", contentType = "recents_carousel") {
                 Text(text = "Recently Played", color = textColor, fontSize = 18.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp))
                 Spacer(modifier = Modifier.height(10.dp))
 
-                if (recents.isEmpty()) {
+                if (manager.isScanningStorage && manager.allSongs.isEmpty()) {
+                    val brush = shimmerBrush(isDark)
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        items(3) {
+                            Box(
+                                modifier = Modifier
+                                    .width(116.dp)
+                                    .height(116.dp)
+                                    .clip(RoundedCornerShape(20.dp))
+                                    .background(brush)
+                            )
+                        }
+                    }
+                } else if (recents.isEmpty()) {
                     Box(modifier = Modifier.fillMaxWidth().height(110.dp).clip(RoundedCornerShape(18.dp)).background(if (isDark) Color(0x14FFFFFF) else Color(0x14000000)), contentAlignment = Alignment.Center) {
                         Text("No recently played tracks yet.", color = Color(0xFF64748B), fontSize = 13.sp)
                     }
@@ -750,18 +1175,36 @@ fun HomeScreen(
                 }
             }
 
+            // Favourite Playlists Header with Arrange & Manage Dual Action Buttons
             item(key = "home_playlists_section", contentType = "playlists_carousel") {
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     Text("Favourite Playlists", color = textColor, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                    Button(onClick = { showCreatePlaylistDialog = true }, colors = ButtonDefaults.buttonColors(containerColor = manager.accentColor), shape = RoundedCornerShape(12.dp)) {
-                        Text("+ New", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Button(
+                            onClick = { showArrangePlaylistsDialog = true },
+                            colors = ButtonDefaults.buttonColors(containerColor = if (isDark) Color(0x22FFFFFF) else Color(0xFFF1F5F9)),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Text("Arrange", color = textColor, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
+                        Button(
+                            onClick = { showManagePlaylistsDialog = true },
+                            colors = ButtonDefaults.buttonColors(containerColor = manager.accentColor),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Text("Manage", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
                     }
                 }
                 Spacer(modifier = Modifier.height(10.dp))
 
                 if (manager.customPlaylists.isEmpty()) {
                     Box(modifier = Modifier.fillMaxWidth().height(90.dp).clip(RoundedCornerShape(18.dp)).background(if (isDark) Color(0x14FFFFFF) else Color(0x14000000)), contentAlignment = Alignment.Center) {
-                        Text("No playlists yet. Tap '+ New' to create one.", color = Color(0xFF64748B), fontSize = 13.sp)
+                        Text("No playlists yet. Tap 'Manage' to add.", color = Color(0xFF64748B), fontSize = 13.sp)
                     }
                 } else {
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -778,7 +1221,7 @@ fun HomeScreen(
                                     .border(1.dp, if (isDark) Color(0x22FFFFFF) else Color(0xFFE2E8F0), RoundedCornerShape(16.dp))
                                     .combinedClickable(
                                         onClick = { onPlaylistClick(pl) },
-                                        onLongClick = { customizingPlaylist = pl }
+                                        onLongClick = { longPressPlaylist = pl }
                                     )
                                     .padding(4.dp),
                                 contentAlignment = Alignment.Center
@@ -816,6 +1259,7 @@ fun HomeScreen(
                 }
             }
 
+            // All Songs Header with Sort and Grid Size View Mode Switcher
             item(key = "home_all_songs_header", contentType = "all_songs_header") {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                     Text("All Songs", color = textColor, fontSize = 18.sp, fontWeight = FontWeight.Bold)
@@ -823,7 +1267,24 @@ fun HomeScreen(
                         Box(modifier = Modifier.clip(RoundedCornerShape(12.dp)).background(if (isDark) Color(0x1FFFFFFF) else Color(0xFFF1F5F9)).padding(horizontal = 10.dp, vertical = 6.dp)) {
                             Text("${manager.allSongs.size} Songs", color = textColor, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                         }
-                        Spacer(modifier = Modifier.width(8.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+
+                        // Grid Size View Mode Button (Tap cycles, Long Press opens Dialog)
+                        Box(
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(CircleShape)
+                                .background(if (isDark) Color(0x1FFFFFFF) else Color(0xFFF1F5F9))
+                                .combinedClickable(
+                                    onClick = { manager.cycleNextHomeViewMode() },
+                                    onLongClick = { showGridSizeDialog = true }
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            GridViewModeVectorIcon(mode = manager.homeViewMode, tint = textColor, modifier = Modifier.size(16.dp))
+                        }
+
+                        Spacer(modifier = Modifier.width(6.dp))
                         Box {
                             Box(modifier = Modifier.size(36.dp).clip(CircleShape).background(if (isDark) Color(0x1FFFFFFF) else Color(0xFFF1F5F9)).clickable { showSortMenu = true }, contentAlignment = Alignment.Center) {
                                 Text("⇅", fontSize = 16.sp, color = textColor, fontWeight = FontWeight.Bold)
@@ -842,12 +1303,98 @@ fun HomeScreen(
                 }
             }
 
-            items(
-                items = sortedSongs,
-                key = { it.id },
-                contentType = { "home_song_row" }
-            ) { song ->
-                UniversalSongRow(song = song, manager = manager, isDark = isDark, onPlay = { manager.playSong(song, sortedSongs, "All Songs") }, onMenuClick = { onSongMenuClick(song) })
+            // Songs List or Grid Rendering depending on Grid Size View Mode
+            if (manager.isScanningStorage && manager.allSongs.isEmpty()) {
+                items(6) {
+                    ShimmerSkeletonRow(isDark = isDark)
+                }
+            } else {
+                when (manager.homeViewMode) {
+                    GridViewMode.LIST, GridViewMode.DETAILED_LIST -> {
+                        items(
+                            items = sortedSongs,
+                            key = { it.id },
+                            contentType = { "home_song_row" }
+                        ) { song ->
+                            UniversalSongRow(
+                                song = song,
+                                manager = manager,
+                                isDark = isDark,
+                                onPlay = { manager.playSong(song, sortedSongs, "All Songs") },
+                                onMenuClick = { onSongMenuClick(song) }
+                            )
+                        }
+                    }
+                    GridViewMode.GRID_2 -> {
+                        items(
+                            items = sortedSongs.chunked(2),
+                            key = { it.first().id }
+                        ) { rowSongs ->
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                rowSongs.forEach { song ->
+                                    Box(modifier = Modifier.weight(1f)) {
+                                        SquareAlbumOverlayCard(
+                                            song = song,
+                                            manager = manager,
+                                            isDark = isDark,
+                                            onPlay = { manager.playSong(song, sortedSongs, "All Songs") },
+                                            onMenuClick = { onSongMenuClick(song) }
+                                        )
+                                    }
+                                }
+                                if (rowSongs.size == 1) {
+                                    Spacer(modifier = Modifier.weight(1f))
+                                }
+                            }
+                        }
+                    }
+                    GridViewMode.GRID_3 -> {
+                        items(
+                            items = sortedSongs.chunked(3),
+                            key = { it.first().id }
+                        ) { rowSongs ->
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                rowSongs.forEach { song ->
+                                    Box(modifier = Modifier.weight(1f)) {
+                                        SquareAlbumOverlayCard(
+                                            song = song,
+                                            manager = manager,
+                                            isDark = isDark,
+                                            onPlay = { manager.playSong(song, sortedSongs, "All Songs") },
+                                            onMenuClick = { onSongMenuClick(song) }
+                                        )
+                                    }
+                                }
+                                for (i in rowSongs.size until 3) {
+                                    Spacer(modifier = Modifier.weight(1f))
+                                }
+                            }
+                        }
+                    }
+                    GridViewMode.GRID_4, GridViewMode.HERO_GRID -> {
+                        items(
+                            items = sortedSongs.chunked(4),
+                            key = { it.first().id }
+                        ) { rowSongs ->
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                rowSongs.forEach { song ->
+                                    Box(modifier = Modifier.weight(1f)) {
+                                        SquareAlbumOverlayCard(
+                                            song = song,
+                                            manager = manager,
+                                            isDark = isDark,
+                                            onPlay = { manager.playSong(song, sortedSongs, "All Songs") },
+                                            onMenuClick = { onSongMenuClick(song) }
+                                        )
+                                    }
+                                }
+                                for (i in rowSongs.size until 4) {
+                                    Spacer(modifier = Modifier.weight(1f))
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
 
@@ -869,20 +1416,130 @@ fun HomeScreen(
     }
 
     if (showCreatePlaylistDialog) CreatePlaylistDialog(manager = manager, onDismiss = { showCreatePlaylistDialog = false })
+    if (showManagePlaylistsDialog) ManagePlaylistsDialog(manager = manager, isDark = isDark, onAddNew = { showCreatePlaylistDialog = true }, onDismiss = { showManagePlaylistsDialog = false })
+    if (showArrangePlaylistsDialog) ArrangePlaylistsDialog(manager = manager, isDark = isDark, onDismiss = { showArrangePlaylistsDialog = false })
+    if (showGridSizeDialog) GridSizeDialog(currentMode = manager.homeViewMode, isDark = isDark, accent = manager.accentColor, onSelectMode = { manager.setHomeViewMode(it) }, onDismiss = { showGridSizeDialog = false })
 
-    if (customizingPlaylist != null) {
-        val pl = customizingPlaylist!!
-        FolderColorDialog(
-            folderName = pl.name,
-            currentColor = Color(pl.iconColorHex),
+    if (longPressPlaylist != null) {
+        val pl = longPressPlaylist!!
+        FavouritePlaylistLongPressDialog(
+            playlist = pl,
+            manager = manager,
             isDark = isDark,
-            onColorSelected = { newColor -> manager.updatePlaylistColorOnly(pl, newColor.toArgb().toLong()) },
             onOpenRainbowPicker = { showRainbowWheelForPl = true },
-            onDismiss = { customizingPlaylist = null }
+            onDismiss = { longPressPlaylist = null }
         )
     }
 
-    if (showRainbowWheelForPl) CircularColorPickerDialog(manager = manager, onDismiss = { showRainbowWheelForPl = false })
+    if (showRainbowWheelForPl && longPressPlaylist != null) {
+        val pl = longPressPlaylist!!
+        FolderColourPickerDialog(
+            title = "Colour Picker",
+            onColorSelected = { newColor ->
+                manager.updatePlaylistColorOnly(pl, newColor.toArgb().toLong())
+                showRainbowWheelForPl = false
+            },
+            onDismiss = { showRainbowWheelForPl = false }
+        )
+    }
+}
+
+// Global Reusable Circular Colour Picker strictly for Folders & Playlists
+@Composable
+fun FolderColourPickerDialog(
+    title: String = "Colour Picker",
+    onColorSelected: (Color) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var hue by remember { mutableFloatStateOf(0f) }
+    var sat by remember { mutableFloatStateOf(1f) }
+    var value by remember { mutableFloatStateOf(1f) }
+    val currentColor = remember(hue, sat, value) { Color(android.graphics.Color.HSVToColor(floatArrayOf(hue, sat, value))) }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Transparent)
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null
+            ) { onDismiss() },
+        contentAlignment = Alignment.Center
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth(0.92f)
+                .clip(RoundedCornerShape(28.dp))
+                .background(Color(0xFF1E293B))
+                .clickable(enabled = false) {}
+                .padding(20.dp)
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    Text(title, color = Color(0xFFF8FAFC), fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                    Text("✕", fontSize = 18.sp, color = Color(0xFF64748B), modifier = Modifier.clickable { onDismiss() })
+                }
+                Spacer(modifier = Modifier.height(16.dp))
+                Box(modifier = Modifier.size(230.dp), contentAlignment = Alignment.Center) {
+                    Canvas(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .pointerInput(Unit) {
+                                androidx.compose.foundation.gestures.detectDragGestures { change, _ ->
+                                    val center = Offset(size.width / 2f, size.height / 2f)
+                                    val touch = change.position
+                                    val dist = kotlin.math.sqrt((touch.x - center.x) * (touch.x - center.x) + (touch.y - center.y) * (touch.y - center.y))
+                                    val radius = size.width / 2f
+                                    if (dist >= radius * 0.65f) {
+                                        var angle = Math.toDegrees(kotlin.math.atan2(touch.y - center.y, touch.x - center.x).toDouble()).toFloat()
+                                        if (angle < 0) angle += 360f
+                                        hue = angle
+                                    } else {
+                                        val halfInner = (radius * 0.55f)
+                                        val normX = ((touch.x - (center.x - halfInner)) / (halfInner * 2f)).coerceIn(0f, 1f)
+                                        val normY = ((touch.y - (center.y - halfInner)) / (halfInner * 2f)).coerceIn(0f, 1f)
+                                        sat = normX
+                                        value = 1f - normY
+                                    }
+                                }
+                            }
+                    ) {
+                        val center = Offset(size.width / 2f, size.height / 2f)
+                        val radius = size.width / 2f
+                        val ringThickness = radius * 0.28f
+                        val sweepColors = (0..360 step 30).map { Color(android.graphics.Color.HSVToColor(floatArrayOf(it.toFloat(), 1f, 1f))) }
+                        drawCircle(brush = Brush.sweepGradient(sweepColors, center), radius = radius - (ringThickness / 2f), style = androidx.compose.ui.graphics.drawscope.Stroke(width = ringThickness))
+
+                        val thumbRad = Math.toRadians(hue.toDouble())
+                        val thumbDist = radius - (ringThickness / 2f)
+                        val thumbPos = Offset(center.x + (thumbDist * kotlin.math.cos(thumbRad)).toFloat(), center.y + (thumbDist * kotlin.math.sin(thumbRad)).toFloat())
+                        drawCircle(Color.White, radius = 12.dp.toPx(), center = thumbPos, style = androidx.compose.ui.graphics.drawscope.Stroke(3.dp.toPx()))
+                        drawCircle(Color(android.graphics.Color.HSVToColor(floatArrayOf(hue, 1f, 1f))), radius = 9.dp.toPx(), center = thumbPos)
+
+                        val halfBox = (radius * 0.55f)
+                        val boxTopLeft = Offset(center.x - halfBox, center.y - halfBox)
+                        val boxSize = androidx.compose.ui.geometry.Size(halfBox * 2f, halfBox * 2f)
+                        drawRect(brush = Brush.horizontalGradient(listOf(Color.White, Color(android.graphics.Color.HSVToColor(floatArrayOf(hue, 1f, 1f))))), topLeft = boxTopLeft, size = boxSize)
+                        drawRect(brush = Brush.verticalGradient(listOf(Color.Transparent, Color.Black)), topLeft = boxTopLeft, size = boxSize)
+                        val targetPos = Offset(boxTopLeft.x + (sat * boxSize.width), boxTopLeft.y + ((1f - value) * boxSize.height))
+                        drawCircle(Color.White, radius = 8.dp.toPx(), center = targetPos, style = androidx.compose.ui.graphics.drawscope.Stroke(2.5f.dp.toPx()))
+                    }
+                }
+                Spacer(modifier = Modifier.height(18.dp))
+                Button(
+                    onClick = {
+                        onColorSelected(currentColor)
+                        onDismiss()
+                    },
+                    modifier = Modifier.fillMaxWidth().height(48.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = currentColor)
+                ) {
+                    Text("Save", color = Color.White, fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+    }
 }
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -1037,7 +1694,17 @@ fun LibraryScreen(manager: MusicManager, listState: LazyListState, onFolderClick
         )
     }
 
-    if (showRainbowWheelForFolder) CircularColorPickerDialog(manager = manager, onDismiss = { showRainbowWheelForFolder = false })
+    if (showRainbowWheelForFolder && customizingFolder != null) {
+        val folder = customizingFolder!!
+        FolderColourPickerDialog(
+            title = "Colour Picker",
+            onColorSelected = { newColor ->
+                manager.updateFolderColorOnly(folder, newColor.toArgb().toLong())
+                showRainbowWheelForFolder = false
+            },
+            onDismiss = { showRainbowWheelForFolder = false }
+        )
+    }
 }
 
 @UnstableApi
@@ -1725,3 +2392,251 @@ fun BottomNavBar(manager: MusicManager, activeTab: String, onTabSelected: (Strin
     }
 }
 
+@UnstableApi
+@Composable
+fun RecentlyPlayedCard(song: Song, manager: MusicManager, onClick: () -> Unit) {
+    var albumArtBitmap by remember(song.id) { mutableStateOf(manager.getCachedAlbumArt(song.id)) }
+    LaunchedEffect(song.id) {
+        if (albumArtBitmap == null) albumArtBitmap = manager.loadAlbumArtAsync(song)
+    }
+
+    Box(
+        modifier = Modifier
+            .width(116.dp)
+            .height(116.dp)
+            .clip(RoundedCornerShape(20.dp))
+            .background(Color(0xFF1E293B))
+            .clickable { onClick() }
+    ) {
+        if (albumArtBitmap != null) {
+            Image(bitmap = albumArtBitmap!!.asImageBitmap(), contentDescription = song.title, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+        } else {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Text("🎵", fontSize = 36.sp)
+            }
+        }
+
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .background(Brush.verticalGradient(listOf(Color.Transparent, Color(0x88000000), Color(0xDE000000))))
+                .padding(horizontal = 6.dp, vertical = 6.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(text = song.title, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
+        }
+    }
+}
+
+@Composable
+fun LiveMechanicalGearIcon(isDark: Boolean, modifier: Modifier = Modifier) {
+    val infiniteTransition = rememberInfiniteTransition(label = "gearRotation")
+    val rotation by infiniteTransition.animateFloat(0f, 360f, infiniteRepeatable(tween(12000, easing = LinearEasing)), label = "gearAngle")
+
+    Box(
+        modifier = modifier
+            .size(42.dp)
+            .clip(CircleShape)
+            .shadow(6.dp, CircleShape)
+            .background(if (isDark) Color(0x33FFFFFF) else Color(0x1A000000))
+            .border(1.5.dp, if (isDark) Color(0x44FFFFFF) else Color(0x22000000), CircleShape),
+        contentAlignment = Alignment.Center
+    ) {
+        Spacer(
+            modifier = Modifier
+                .size(34.dp)
+                .rotate(rotation)
+                .drawWithCache {
+                    val center = Offset(size.width / 2f, size.height / 2f)
+                    val outerRadius = size.width / 2f
+                    val toothDepth = outerRadius * 0.22f
+                    val innerRingRadius = outerRadius - toothDepth
+                    val teethCount = 12
+                    val gearColor = if (isDark) Color(0xFFE2E8F0) else Color(0xFF334155)
+
+                    val path = Path().apply {
+                        for (i in 0 until teethCount) {
+                            val angleStep = (2.0 * Math.PI / teethCount).toFloat()
+                            val a1 = i * angleStep
+                            val a2 = a1 + (angleStep * 0.35f)
+                            val a3 = a1 + (angleStep * 0.65f)
+                            val a4 = (i + 1) * angleStep
+
+                            val p1 = Offset(center.x + (innerRingRadius * cos(a1)), center.y + (innerRingRadius * sin(a1)))
+                            val p2 = Offset(center.x + (outerRadius * cos(a2)), center.y + (outerRadius * sin(a2)))
+                            val p3 = Offset(center.x + (outerRadius * cos(a3)), center.y + (outerRadius * sin(a3)))
+                            val p4 = Offset(center.x + (innerRingRadius * cos(a4)), center.y + (innerRingRadius * sin(a4)))
+
+                            if (i == 0) moveTo(p1.x, p1.y) else lineTo(p1.x, p1.y)
+                            lineTo(p2.x, p2.y)
+                            lineTo(p3.x, p3.y)
+                            lineTo(p4.x, p4.y)
+                        }
+                        close()
+                    }
+
+                    val cavityRadius = innerRingRadius * 0.72f
+                    val hubRadius = innerRingRadius * 0.32f
+                    val spokeStrokeWidth = 2.5f.dp.toPx()
+                    val bgColor = if (isDark) Color(0xFF0F172A) else Color(0xFFE2E8F0)
+
+                    onDrawBehind {
+                        drawPath(path, gearColor)
+                        drawCircle(color = bgColor, radius = cavityRadius, center = center)
+                        drawCircle(color = gearColor, radius = hubRadius, center = center)
+                        for (s in 0 until 3) {
+                            val spAngle = (s * 2.0 * Math.PI / 3.0).toFloat()
+                            val spokeEnd = Offset(center.x + (cavityRadius * cos(spAngle)), center.y + (cavityRadius * sin(spAngle)))
+                            drawLine(color = gearColor, start = center, end = spokeEnd, strokeWidth = spokeStrokeWidth)
+                        }
+                    }
+                }
+        )
+    }
+}
+
+@Composable
+fun TopBar(manager: MusicManager, onProfileClick: () -> Unit, onSettingsClick: () -> Unit) {
+    val isDark = manager.isDarkMode
+    val textColor = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A)
+    val avatarPath = manager.profileImagePath
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .statusBarsPadding()
+            .padding(horizontal = 20.dp, vertical = 10.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .size(42.dp)
+                .shadow(6.dp, CircleShape)
+                .clip(CircleShape)
+                .background(Color(0xFF030712))
+                .border(2.dp, manager.accentColor, CircleShape)
+                .clickable { onProfileClick() },
+            contentAlignment = Alignment.Center
+        ) {
+            if (!avatarPath.isNullOrBlank() && File(avatarPath).exists()) {
+                AsyncImage(
+                    model = File(avatarPath),
+                    contentDescription = "Avatar",
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize()
+                )
+            } else {
+                DefaultProfileAvatar(modifier = Modifier.fillMaxSize())
+            }
+        }
+
+        Text(text = "Melovish", color = textColor, fontSize = 24.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 0.5.sp)
+
+        LiveMechanicalGearIcon(isDark = isDark, modifier = Modifier.clickable { onSettingsClick() })
+    }
+}
+
+@UnstableApi
+@Composable
+fun UniversalSongRow(song: Song, manager: MusicManager, isDark: Boolean, onPlay: () -> Unit, onMenuClick: () -> Unit) {
+    val isPlayingThis = manager.currentSong?.id == song.id
+    val accent = manager.accentColor
+
+    val textColor = if (isPlayingThis) accent else if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A)
+    val cardBg = if (isPlayingThis) accent.copy(alpha = 0.08f) else if (isDark) Color(0xFF131B2E) else Color.White
+    val borderColor = if (isPlayingThis) accent.copy(alpha = 0.6f) else if (isDark) Color(0x1AFFFFFF) else Color(0xFFECEFF3)
+
+    var albumArtBitmap by remember(song.id) { mutableStateOf(manager.getCachedAlbumArt(song.id)) }
+    LaunchedEffect(song.id) {
+        if (albumArtBitmap == null) albumArtBitmap = manager.loadAlbumArtAsync(song)
+    }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(cardBg)
+            .border(1.2.dp, borderColor, RoundedCornerShape(16.dp))
+            .clickable { onPlay() }
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(modifier = Modifier.size(46.dp).clip(RoundedCornerShape(10.dp)).background(Color(0xFF1E293B)), contentAlignment = Alignment.Center) {
+            if (albumArtBitmap != null) {
+                Image(bitmap = albumArtBitmap!!.asImageBitmap(), contentDescription = "Art", modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+            } else {
+                Text("🎵", fontSize = 20.sp)
+            }
+        }
+        Spacer(modifier = Modifier.width(12.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(text = song.title, color = textColor, fontSize = 14.sp, fontWeight = if (isPlayingThis) FontWeight.ExtraBold else FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(text = "${formatFileSize(song.size)} • ${if (song.artist.isNotBlank()) song.artist else "Unknown"}", color = Color(0xFF64748B), fontSize = 11.sp, maxLines = 1)
+        }
+
+        if (isPlayingThis) {
+            LiveAudioWaveEqualizer(isAnimating = manager.isPlaying, accentColor = accent)
+        } else {
+            Text(formatTime(song.duration), color = Color(0xFF94A3B8), fontSize = 12.sp)
+        }
+
+        Spacer(modifier = Modifier.width(6.dp))
+
+        Box(modifier = Modifier.size(36.dp).clip(CircleShape).clickable { onMenuClick() }, contentAlignment = Alignment.Center) {
+            Text("⋮", color = if (isDark) Color.White else Color(0xFF0F172A), fontSize = 20.sp, fontWeight = FontWeight.ExtraBold)
+        }
+    }
+}
+
+@UnstableApi
+@Composable
+fun UniversalSongCard(song: Song, manager: MusicManager, isDark: Boolean, onPlay: () -> Unit, onMenuClick: () -> Unit) {
+    val isPlayingThis = manager.currentSong?.id == song.id
+    val accent = manager.accentColor
+    val cardBg = if (isPlayingThis) accent.copy(alpha = 0.12f) else if (isDark) Color(0xFF131B2E) else Color.White
+    val textColor = if (isPlayingThis) accent else if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A)
+
+    var albumArtBitmap by remember(song.id) { mutableStateOf(manager.getCachedAlbumArt(song.id)) }
+    LaunchedEffect(song.id) {
+        if (albumArtBitmap == null) albumArtBitmap = manager.loadAlbumArtAsync(song)
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(18.dp))
+            .background(cardBg)
+            .border(1.dp, if (isPlayingThis) accent else if (isDark) Color(0x22FFFFFF) else Color(0xFFECEFF3), RoundedCornerShape(18.dp))
+            .clickable { onPlay() }
+            .padding(12.dp)
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(72.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(Color(0xFF1E293B)),
+                contentAlignment = Alignment.Center
+            ) {
+                if (albumArtBitmap != null) {
+                    Image(bitmap = albumArtBitmap!!.asImageBitmap(), contentDescription = song.title, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                } else {
+                    Text("🎵", fontSize = 30.sp)
+                }
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(song.title, color = textColor, fontSize = 13.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(if (song.artist.isNotBlank()) song.artist else "Unknown", color = Color(0xFF64748B), fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
+        }
+        Box(modifier = Modifier.align(Alignment.TopEnd).clickable { onMenuClick() }) {
+            Text("⋮", color = textColor, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+        }
+    }
+}

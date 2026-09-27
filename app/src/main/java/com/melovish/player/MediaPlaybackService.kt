@@ -6,10 +6,8 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
-import android.graphics.Bitmap
 import android.os.Build
 import androidx.core.app.NotificationCompat
-import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
@@ -25,6 +23,19 @@ class MediaPlaybackService : MediaSessionService() {
         const val ACTION_PAUSE = "com.melovish.player.ACTION_PAUSE"
         const val ACTION_NEXT = "com.melovish.player.ACTION_NEXT"
         const val ACTION_PREV = "com.melovish.player.ACTION_PREV"
+
+        fun start(context: Context) {
+            try {
+                val intent = Intent(context, MediaPlaybackService::class.java)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    context.startForegroundService(intent)
+                } else {
+                    context.startService(intent)
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
     }
 
     private var musicManager: MusicManager? = null
@@ -54,7 +65,35 @@ class MediaPlaybackService : MediaSessionService() {
         }
 
         startForegroundNotification(manager)
-        return super.onStartCommand(intent, flags, startId)
+        return START_STICKY
+    }
+
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        val manager = musicManager ?: MusicManager.activeInstance
+        if (manager != null) {
+            if (manager.isAlwaysPlay) {
+                // Feature "Always play": retain background playback and foreground notification even when swiped from recents
+                val restartIntent = Intent(applicationContext, MediaPlaybackService::class.java)
+                val restartPendingIntent = PendingIntent.getService(
+                    applicationContext, 11, restartIntent,
+                    PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_ONE_SHOT
+                )
+                val alarmManager = getSystemService(Context.ALARM_SERVICE) as? android.app.AlarmManager
+                alarmManager?.set(
+                    android.app.AlarmManager.RTC_WAKEUP,
+                    System.currentTimeMillis() + 1000,
+                    restartPendingIntent
+                )
+                startForegroundNotification(manager)
+                return
+            } else {
+                // Normal Behavior: Stop music, dismantle notification and cease playback
+                manager.player.pause()
+                stopForeground(STOP_FOREGROUND_REMOVE)
+                stopSelf()
+            }
+        }
+        super.onTaskRemoved(rootIntent)
     }
 
     fun startForegroundNotification(manager: MusicManager) {
@@ -88,7 +127,6 @@ class MediaPlaybackService : MediaSessionService() {
         val playPauseIcon = if (manager.isPlaying) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play
         val playPauseTitle = if (manager.isPlaying) "Pause" else "Play"
 
-        // Media3 MediaStyle for Native Android Quick Settings & Lockscreen Carousel
         val mediaStyle = MediaStyleNotificationHelper.MediaStyle(session)
             .setShowActionsInCompactView(0, 1, 2)
 

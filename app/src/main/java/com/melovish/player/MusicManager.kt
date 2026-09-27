@@ -5,6 +5,7 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.ContentUris
+import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
@@ -15,6 +16,7 @@ import android.media.AudioDeviceCallback
 import android.media.AudioDeviceInfo
 import android.media.AudioManager
 import android.media.MediaMetadataRetriever
+import android.media.MediaScannerConnection
 import android.media.RingtoneManager
 import android.media.audiofx.BassBoost
 import android.media.audiofx.Equalizer
@@ -67,8 +69,43 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream
+import java.io.RandomAccessFile
 import java.util.Locale
 import kotlin.math.pow
+
+fun formatFileSize(bytes: Long): String {
+    if (bytes <= 0) return "0 MB"
+    val mb = bytes.toDouble() / (1024.0 * 1024.0)
+    return if (mb >= 1024.0) {
+        val gb = mb / 1024.0
+        String.format(Locale.US, "%.2f GB", gb)
+    } else {
+        String.format(Locale.US, "%.1f MB", mb)
+    }
+}
+
+fun formatTime(ms: Long): String {
+    val totalSeconds = (ms / 1000).coerceAtLeast(0)
+    val minutes = totalSeconds / 60
+    val seconds = totalSeconds % 60
+    return String.format(Locale.US, "%02d:%02d", minutes, seconds)
+}
+
+enum class SongSortOrder {
+    A_TO_Z, Z_TO_A, NEWEST, OLDEST, ARTIST, DURATION, FILE_SIZE
+}
+
+enum class FolderSortOrder {
+    A_TO_Z, Z_TO_A, LATEST, OLDEST, MOST_PLAYED, LARGEST_SIZE, MOST_SONGS
+}
+
+enum class PagerTransitionEffect {
+    SLIDE, CASCADE, CROSSFADE, ROTATE, TUMBLE, PAGE
+}
+
+enum class GridViewMode {
+    LIST, DETAILED_LIST, GRID_2, GRID_3, GRID_4, HERO_GRID
+}
 
 @UnstableApi
 class MusicManager(private val context: Context) {
@@ -84,7 +121,7 @@ class MusicManager(private val context: Context) {
     }
 
     val managerScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate + exceptionHandler)
-    val prefs: SharedPreferences = context.getSharedPreferences("melovish_prefs_v12", Context.MODE_PRIVATE)
+    val prefs: SharedPreferences = context.getSharedPreferences("melovish_prefs_v13", Context.MODE_PRIVATE)
     private val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
     private val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
@@ -103,13 +140,16 @@ class MusicManager(private val context: Context) {
         }
     }
 
+    // Always play state: defaults to false
+    var isAlwaysPlay by mutableStateOf(prefs.getBoolean("always_play_enabled", false))
+
     val player: ExoPlayer = ExoPlayer.Builder(context, renderersFactory)
         .setAudioAttributes(
             AudioAttributes.Builder()
                 .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
                 .setUsage(C.USAGE_MEDIA)
                 .build(),
-            /* handleAudioFocus = */ true
+            /* handleAudioFocus = */ !isAlwaysPlay
         )
         .setWakeMode(C.WAKE_MODE_LOCAL)
         .setHandleAudioBecomingNoisy(true)
@@ -143,6 +183,9 @@ class MusicManager(private val context: Context) {
     private var fadeJob: Job? = null
     private var isFadingOutForCrossfade = false
 
+    // Cold-start Instant Cache State
+    var isScanningStorage by mutableStateOf(false)
+
     // Collections
     val allSongs = mutableStateListOf<Song>()
     val rawStorageSongs = mutableStateListOf<Song>()
@@ -153,6 +196,15 @@ class MusicManager(private val context: Context) {
     val hiddenAudioIds = mutableStateListOf<Long>()
     val folderColors = mutableStateMapOf<String, Long>()
     val parsedArtistsList = mutableStateListOf<ArtistItem>()
+
+    // View Mode / Grid Size Options
+    var homeViewMode by mutableStateOf(
+        try {
+            GridViewMode.valueOf(prefs.getString("home_view_mode", GridViewMode.LIST.name) ?: GridViewMode.LIST.name)
+        } catch (_: Exception) {
+            GridViewMode.LIST
+        }
+    )
 
     // Preferences & Theme
     var themeMode by mutableStateOf(prefs.getString("theme_mode", "System") ?: "System")
@@ -259,10 +311,12 @@ class MusicManager(private val context: Context) {
     private val audioDeviceCallback = object : AudioDeviceCallback() {
         override fun onAudioDevicesAdded(addedDevices: Array<out AudioDeviceInfo>?) {
             syncDeviceVolume()
+            applyHardwareAudioRouting(selectedAudioOutput)
         }
 
         override fun onAudioDevicesRemoved(removedDevices: Array<out AudioDeviceInfo>?) {
             syncDeviceVolume()
+            applyHardwareAudioRouting(selectedAudioOutput)
         }
     }
 
@@ -274,11 +328,13 @@ class MusicManager(private val context: Context) {
         setupBroadcastReceiver()
         loadPreferences()
         loadColorPresets()
+        loadInstantCache()
         setupPlayerListener()
         startPositionTracker()
         syncDeviceVolume()
         applyChannelMixing()
         registerAudioDeviceCallback()
+        applyHardwareAudioRouting(selectedAudioOutput)
     }
 
     private fun initDefaultEqualizerState() {
@@ -390,6 +446,7 @@ class MusicManager(private val context: Context) {
                         bindHardwareAudioEffects(sessionId)
                     }
                     updateNotification()
+                    applyHardwareAudioRouting(selectedAudioOutput)
                 } else if (state == Player.STATE_ENDED) {
                     if (isGaplessEnabled) {
                         playNext()
@@ -411,6 +468,7 @@ class MusicManager(private val context: Context) {
                     recordSongPlayed(song)
                     updateNotification()
                     applyVolumeNormalization()
+                    applyHardwareAudioRouting(selectedAudioOutput)
 
                     isFadingOutForCrossfade = false
                     if (isCrossfadeEnabled) {
@@ -745,29 +803,79 @@ class MusicManager(private val context: Context) {
         } catch (_: Exception) {}
     }
 
+    // Hardware Audio Routing (Phone Speaker, External Speaker, Buds)
     fun setAudioOutputRouting(output: String) {
         selectedAudioOutput = output
         managerScope.launch(Dispatchers.IO) {
             prefs.edit().putString("audio_output", output).apply()
         }
-        try {
-            when (output) {
-                "Phone" -> audioManager.isSpeakerphoneOn = false
-                "Speaker" -> audioManager.isSpeakerphoneOn = true
-                "Buds" -> {
-                    audioManager.isSpeakerphoneOn = false
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                        val devices = audioManager.availableCommunicationDevices
-                        val btDevice = devices.find {
-                            it.type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP ||
-                            it.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO ||
-                            it.type == AudioDeviceInfo.TYPE_HEARING_AID
-                        }
-                        if (btDevice != null) audioManager.setCommunicationDevice(btDevice)
+        applyHardwareAudioRouting(output)
+    }
+
+    fun applyHardwareAudioRouting(output: String) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            try {
+                val devices = audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
+                val targetDevice: AudioDeviceInfo? = when (output) {
+                    "Phone" -> {
+                        // Strict routing to phone's built-in speaker
+                        devices.find { it.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER }
                     }
+                    "Speaker" -> {
+                        // External speaker: prioritize bluetooth speaker, line out, or USB
+                        devices.find {
+                            it.type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP ||
+                            it.type == AudioDeviceInfo.TYPE_LINE_OUT ||
+                            it.type == AudioDeviceInfo.TYPE_LINE_ANALOG ||
+                            it.type == AudioDeviceInfo.TYPE_USB_DEVICE
+                        } ?: devices.find { it.type == AudioDeviceInfo.TYPE_WIRED_HEADPHONES }
+                    }
+                    "Buds" -> {
+                        // Wearables: bluetooth earphones, BLE, or 3.5mm headphones
+                        devices.find {
+                            it.type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP ||
+                            it.type == AudioDeviceInfo.TYPE_BLE_HEADSET ||
+                            it.type == AudioDeviceInfo.TYPE_WIRED_HEADSET ||
+                            it.type == AudioDeviceInfo.TYPE_WIRED_HEADPHONES
+                        }
+                    }
+                    else -> null
                 }
+
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    if (targetDevice != null) {
+                        audioManager.setCommunicationDevice(targetDevice)
+                    } else {
+                        audioManager.clearCommunicationDevice()
+                    }
+                } else {
+                    @Suppress("DEPRECATION")
+                    audioManager.isSpeakerphoneOn = (output == "Phone")
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
             }
-        } catch (_: Exception) {}
+        }
+    }
+
+    fun toggleAlwaysPlay(enabled: Boolean) {
+        isAlwaysPlay = enabled
+        managerScope.launch(Dispatchers.IO) {
+            prefs.edit().putBoolean("always_play_enabled", enabled).apply()
+        }
+    }
+
+    fun setHomeViewMode(mode: GridViewMode) {
+        homeViewMode = mode
+        managerScope.launch(Dispatchers.IO) {
+            prefs.edit().putString("home_view_mode", mode.name).apply()
+        }
+    }
+
+    fun cycleNextHomeViewMode() {
+        val modes = GridViewMode.values()
+        val nextIdx = (homeViewMode.ordinal + 1) % modes.size
+        setHomeViewMode(modes[nextIdx])
     }
 
     fun setPagerTransition(effect: PagerTransitionEffect) {
@@ -849,7 +957,85 @@ class MusicManager(private val context: Context) {
         } catch (_: Exception) {}
     }
 
+    // Instant Cache-First Local Hydration
+    private fun loadInstantCache() {
+        val cachedJson = prefs.getString("cached_songs_catalog", null) ?: return
+        try {
+            val arr = JSONArray(cachedJson)
+            val list = ArrayList<Song>()
+            for (i in 0 until arr.length()) {
+                val o = arr.getJSONObject(i)
+                list.add(
+                    Song(
+                        id = o.getLong("id"),
+                        title = o.getString("title"),
+                        artist = o.getString("artist"),
+                        album = o.getString("album"),
+                        albumId = o.getLong("albumId"),
+                        duration = o.getLong("duration"),
+                        size = o.getLong("size"),
+                        uri = Uri.parse(o.getString("uri")),
+                        path = o.getString("path"),
+                        folderName = o.getString("folderName"),
+                        releaseDate = o.optString("releaseDate", ""),
+                        playCount = o.optInt("playCount", 0),
+                        lastPlayed = o.optLong("lastPlayed", 0L),
+                        isFavorite = o.optBoolean("isFavorite", false),
+                        customCoverPath = o.optString("customCoverPath", null),
+                        audioFormat = o.optString("audioFormat", "MP3"),
+                        sampleRateHz = o.optInt("sampleRateHz", 44100),
+                        bitDepth = o.optInt("bitDepth", 16),
+                        replayGainTrackDb = -3.0f,
+                        replayGainAlbumDb = -3.0f
+                    )
+                )
+            }
+            if (list.isNotEmpty()) {
+                allSongs.clear()
+                allSongs.addAll(list)
+                rawStorageSongs.clear()
+                rawStorageSongs.addAll(list)
+                refreshHistory()
+            }
+        } catch (_: Exception) {}
+    }
+
+    private fun persistSongsCache(songs: List<Song>) {
+        managerScope.launch(Dispatchers.IO) {
+            try {
+                val arr = JSONArray()
+                songs.forEach { s ->
+                    val o = JSONObject().apply {
+                        put("id", s.id)
+                        put("title", s.title)
+                        put("artist", s.artist)
+                        put("album", s.album)
+                        put("albumId", s.albumId)
+                        put("duration", s.duration)
+                        put("size", s.size)
+                        put("uri", s.uri.toString())
+                        put("path", s.path)
+                        put("folderName", s.folderName)
+                        put("releaseDate", s.releaseDate)
+                        put("playCount", s.playCount)
+                        put("lastPlayed", s.lastPlayed)
+                        put("isFavorite", s.isFavorite)
+                        put("customCoverPath", s.customCoverPath ?: "")
+                        put("audioFormat", s.audioFormat)
+                        put("sampleRateHz", s.sampleRateHz)
+                        put("bitDepth", s.bitDepth)
+                    }
+                    arr.put(o)
+                }
+                prefs.edit().putString("cached_songs_catalog", arr.toString()).apply()
+            } catch (_: Exception) {}
+        }
+    }
+
     fun scanStorage() {
+        if (isScanningStorage) return
+        isScanningStorage = true
+
         managerScope.launch(Dispatchers.IO) {
             val songList = ArrayList<Song>()
             val collection = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -911,7 +1097,7 @@ class MusicManager(private val context: Context) {
                         val customTitle = prefs.getString("custom_title_$id", cleanTitle) ?: cleanTitle
                         val customArtist = prefs.getString("custom_artist_$id", artist) ?: artist
                         val customAlbum = prefs.getString("custom_album_$id", album) ?: album
-                        val customDate = prefs.getString("custom_date_$id", dateAdded.toString()) ?: ""
+                        val customDate = prefs.getString("custom_date_$id", dateAdded.toString()) ?: dateAdded.toString()
 
                         val ext = file.extension.uppercase(Locale.getDefault())
                         val format = when (ext) {
@@ -970,7 +1156,9 @@ class MusicManager(private val context: Context) {
                 refreshHistory()
                 parsedArtistsList.clear()
                 parsedArtistsList.addAll(parsed)
+                isScanningStorage = false
             }
+            persistSongsCache(visibleSongs)
         }
     }
 
@@ -1284,6 +1472,11 @@ class MusicManager(private val context: Context) {
         savePlaylists()
     }
 
+    fun removePlaylist(playlist: Playlist) {
+        customPlaylists.removeAll { it.id == playlist.id }
+        savePlaylists()
+    }
+
     fun addSongToPlaylist(songId: Long, playlist: Playlist) {
         val index = customPlaylists.indexOfFirst { it.id == playlist.id }
         if (index != -1 && songId !in playlist.songIds) {
@@ -1352,7 +1545,21 @@ class MusicManager(private val context: Context) {
         }
     }
 
-    fun updateSongMetadata(song: Song, newTitle: String, newArtist: String, newAlbum: String, newDate: String, customCoverUri: Uri?) {
+    fun reorderCustomPlaylists(newList: List<Playlist>) {
+        customPlaylists.clear()
+        customPlaylists.addAll(newList)
+        savePlaylists()
+    }
+
+    // Physical Storage File Renaming & ID3 Tag Modification
+    fun updateSongMetadata(
+        song: Song,
+        newTitle: String,
+        newArtist: String,
+        newAlbum: String,
+        newDate: String,
+        customCoverUri: Uri?
+    ) {
         managerScope.launch(Dispatchers.IO) {
             var coverPath = song.customCoverPath
 
@@ -1376,6 +1583,72 @@ class MusicManager(private val context: Context) {
                 } catch (_: Exception) {}
             }
 
+            var finalPath = song.path
+            try {
+                val origFile = File(song.path)
+                if (origFile.exists() && origFile.canWrite()) {
+                    val ext = origFile.extension
+                    val sanitizedTitle = newTitle.replace(Regex("[\\\\/:*?\"<>|]"), "_").trim()
+                    val newFileName = if (ext.isNotBlank()) "$sanitizedTitle.$ext" else sanitizedTitle
+                    val renamedFile = File(origFile.parentFile, newFileName)
+
+                    if (origFile.name != newFileName && origFile.renameTo(renamedFile)) {
+                        finalPath = renamedFile.absolutePath
+                    }
+
+                    // Write ID3v1 / metadata tags into physical file if MP3
+                    if (ext.equals("mp3", ignoreCase = true)) {
+                        try {
+                            RandomAccessFile(renamedFile, "rw").use { raf ->
+                                if (raf.length() > 128) {
+                                    raf.seek(raf.length() - 128)
+                                    val tagBytes = ByteArray(3)
+                                    raf.read(tagBytes)
+                                    val hasTag = String(tagBytes) == "TAG"
+                                    if (!hasTag) {
+                                        raf.seek(raf.length())
+                                        raf.write("TAG".toByteArray(Charsets.ISO_8859_1))
+                                    } else {
+                                        raf.seek(raf.length() - 125)
+                                    }
+                                    val titleBytes = ByteArray(30)
+                                    val tB = newTitle.toByteArray(Charsets.ISO_8859_1)
+                                    System.arraycopy(tB, 0, titleBytes, 0, tB.size.coerceAtMost(30))
+                                    raf.write(titleBytes)
+
+                                    val artistBytes = ByteArray(30)
+                                    val aB = newArtist.toByteArray(Charsets.ISO_8859_1)
+                                    System.arraycopy(aB, 0, artistBytes, 0, aB.size.coerceAtMost(30))
+                                    raf.write(artistBytes)
+
+                                    val albumBytes = ByteArray(30)
+                                    val alB = newAlbum.toByteArray(Charsets.ISO_8859_1)
+                                    System.arraycopy(alB, 0, albumBytes, 0, alB.size.coerceAtMost(30))
+                                    raf.write(albumBytes)
+                                }
+                            }
+                        } catch (_: Exception) {}
+                    }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+
+            // Sync with Android MediaStore
+            try {
+                val cv = ContentValues().apply {
+                    put(MediaStore.Audio.Media.TITLE, newTitle)
+                    put(MediaStore.Audio.Media.ARTIST, newArtist)
+                    put(MediaStore.Audio.Media.ALBUM, newAlbum)
+                    if (finalPath != song.path) {
+                        put(MediaStore.Audio.Media.DATA, finalPath)
+                        put(MediaStore.Audio.Media.DISPLAY_NAME, File(finalPath).name)
+                    }
+                }
+                context.contentResolver.update(song.uri, cv, null, null)
+                MediaScannerConnection.scanFile(context, arrayOf(finalPath), null, null)
+            } catch (_: Exception) {}
+
             prefs.edit()
                 .putString("custom_title_${song.id}", newTitle)
                 .putString("custom_artist_${song.id}", newArtist)
@@ -1388,6 +1661,7 @@ class MusicManager(private val context: Context) {
                 artist = newArtist,
                 album = newAlbum,
                 releaseDate = newDate,
+                path = finalPath,
                 customCoverPath = coverPath
             )
 
@@ -1396,8 +1670,11 @@ class MusicManager(private val context: Context) {
                 if (index != -1) allSongs[index] = updated
                 val rawIdx = rawStorageSongs.indexOfFirst { it.id == song.id }
                 if (rawIdx != -1) rawStorageSongs[rawIdx] = updated
+                val qIdx = playbackQueue.indexOfFirst { it.id == song.id }
+                if (qIdx != -1) playbackQueue[qIdx] = updated
                 if (currentSong?.id == song.id) currentSong = updated
                 updateNotification()
+                Toast.makeText(context, "Saved & updated file tags", Toast.LENGTH_SHORT).show()
             }
 
             val parsed = withContext(Dispatchers.Default) {
@@ -1702,10 +1979,6 @@ class MusicManager(private val context: Context) {
         return inSampleSize
     }
 
-    /**
-     * Updates notification directly using Media3's MediaStyle.
-     * Routes directly to Android's native Lockscreen and Notification Quick Settings carousel.
-     */
     fun updateNotification() {
         val song = currentSong ?: return
         val session = mediaSession ?: return

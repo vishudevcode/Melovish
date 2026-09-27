@@ -3,6 +3,7 @@ package com.melovish.player
 import android.content.Intent
 import android.graphics.Bitmap
 import android.net.Uri
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
@@ -63,6 +64,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
@@ -109,6 +111,7 @@ import androidx.media3.common.util.UnstableApi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
+import java.util.Calendar
 import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.atan2
@@ -601,7 +604,6 @@ fun SleepTimerClockIcon(
             val strokeW = 2.3f.dp.toPx()
 
             onDrawBehind {
-                // Top timer crown / stop-button
                 drawLine(
                     color = tint,
                     start = Offset(w * 0.40f, h * 0.06f),
@@ -616,16 +618,12 @@ fun SleepTimerClockIcon(
                     strokeWidth = strokeW,
                     cap = StrokeCap.Round
                 )
-
-                // Main Clock Circle Body
                 drawCircle(
                     color = tint,
                     radius = radius,
                     center = center,
                     style = Stroke(width = strokeW)
                 )
-
-                // Hour Hand (Pointing towards 10 o'clock)
                 drawLine(
                     color = tint,
                     start = center,
@@ -633,8 +631,6 @@ fun SleepTimerClockIcon(
                     strokeWidth = strokeW,
                     cap = StrokeCap.Round
                 )
-
-                // Minute Hand (Pointing towards 2 o'clock)
                 drawLine(
                     color = tint,
                     start = center,
@@ -642,8 +638,6 @@ fun SleepTimerClockIcon(
                     strokeWidth = strokeW,
                     cap = StrokeCap.Round
                 )
-
-                // Center Core Pivot Dot
                 drawCircle(
                     color = tint,
                     radius = 2.4f.dp.toPx(),
@@ -654,44 +648,35 @@ fun SleepTimerClockIcon(
     )
 }
 
-// Lyrics Dialog
+// Vector 3-Sliders Equalizer Icon for Full Player Bottom Dock
 @Composable
-fun LyricsDialog(song: Song, isDark: Boolean, onDismiss: () -> Unit) {
-    val textColor = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A)
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color.Transparent)
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null
-            ) { onDismiss() },
-        contentAlignment = Alignment.BottomCenter
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .fillMaxHeight(0.6f)
-                .clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
-                .background(if (isDark) Color(0xFF1E293B) else Color.White)
-                .clickable(enabled = false) {}
-                .padding(22.dp)
-        ) {
-            Column {
-                Text("Lyrics", color = textColor, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                Spacer(modifier = Modifier.height(14.dp))
-                Text("No synchronized lyrics found for \"${song.title}\".", color = Color(0xFF64748B), fontSize = 14.sp)
-                Spacer(modifier = Modifier.weight(1f))
-                Button(
-                    onClick = { onDismiss() },
-                    modifier = Modifier.fillMaxWidth().height(48.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = if (isDark) Color(0x22FFFFFF) else Color(0xFFF1F5F9)),
-                    shape = RoundedCornerShape(12.dp)
-                ) {
-                    Text("Close", color = textColor, fontWeight = FontWeight.Bold)
-                }
-            }
-        }
+fun EqualizerSlidersIcon(
+    tint: Color,
+    modifier: Modifier = Modifier
+) {
+    Canvas(modifier = modifier.size(24.dp)) {
+        val w = size.width
+        val h = size.height
+        val strokeW = 2.2f.dp.toPx()
+        val knobRadius = 3.2f.dp.toPx()
+
+        val y1 = h * 0.22f
+        val knobX1 = w * 0.30f
+        drawLine(tint, Offset(w * 0.08f, y1), Offset(knobX1 - knobRadius, y1), strokeW, StrokeCap.Round)
+        drawLine(tint, Offset(knobX1 + knobRadius, y1), Offset(w * 0.92f, y1), strokeW, StrokeCap.Round)
+        drawCircle(tint, knobRadius, Offset(knobX1, y1), style = Stroke(strokeW))
+
+        val y2 = h * 0.50f
+        val knobX2 = w * 0.70f
+        drawLine(tint, Offset(w * 0.08f, y2), Offset(knobX2 - knobRadius, y2), strokeW, StrokeCap.Round)
+        drawLine(tint, Offset(knobX2 + knobRadius, y2), Offset(w * 0.92f, y2), strokeW, StrokeCap.Round)
+        drawCircle(tint, knobRadius, Offset(knobX2, y2), style = Stroke(strokeW))
+
+        val y3 = h * 0.78f
+        val knobX3 = w * 0.45f
+        drawLine(tint, Offset(w * 0.08f, y3), Offset(knobX3 - knobRadius, y3), strokeW, StrokeCap.Round)
+        drawLine(tint, Offset(knobX3 + knobRadius, y3), Offset(w * 0.92f, y3), strokeW, StrokeCap.Round)
+        drawCircle(tint, knobRadius, Offset(knobX3, y3), style = Stroke(strokeW))
     }
 }
 
@@ -727,7 +712,7 @@ fun ReorderDragHandle(tint: Color, modifier: Modifier = Modifier) {
     }
 }
 
-// Full Player Sheet: 120 FPS Pager with Instant Single-Step Track Switching & Vertical Swipe-Up for Queue
+// Full Player Sheet with 1-Step Back Navigation & Immediate Equalizer Dock Button
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @UnstableApi
 @Composable
@@ -777,7 +762,6 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
         }
     }
 
-    // Dialogs & Sheets
     var showMenuModal by remember { mutableStateOf(false) }
     var showSpeedDialog by remember { mutableStateOf(false) }
     var showSleepDialog by remember { mutableStateOf(false) }
@@ -849,12 +833,25 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
     val animTextPrimary by animateColorAsState(targetPalette.textPrimary, tween(350, easing = FastOutSlowInEasing), label = "textPrimary")
     val animTextSecondary by animateColorAsState(targetPalette.textSecondary, tween(350, easing = FastOutSlowInEasing), label = "textSecondary")
 
+    // Strict 1-Step Back Handler within Full Player
+    BackHandler(enabled = showQueueSheet || showMenuModal || showSpeedDialog || showSleepDialog || showEqualizerSheet || showTagEditorDialog || showLyricsDialog || showAddToPlaylistDialog) {
+        when {
+            showQueueSheet -> showQueueSheet = false
+            showMenuModal -> showMenuModal = false
+            showSpeedDialog -> showSpeedDialog = false
+            showSleepDialog -> showSleepDialog = false
+            showEqualizerSheet -> showEqualizerSheet = false
+            showTagEditorDialog -> showTagEditorDialog = false
+            showLyricsDialog -> showLyricsDialog = false
+            showAddToPlaylistDialog -> showAddToPlaylistDialog = false
+        }
+    }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(Brush.verticalGradient(listOf(animBgTop, animBgBottom)))
             .statusBarsPadding()
-            // Gestures: Swipe down to minimize player; swipe up to open Queue
             .pointerInput(Unit) {
                 detectVerticalDragGestures { _, dragAmount ->
                     if (dragAmount > 38f) {
@@ -1125,7 +1122,7 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                         )
                     }
 
-                    // Bottom Dock
+                    // Bottom Dock: Direct Equalizer Access Icon Added
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -1136,7 +1133,11 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("❝≡", fontSize = 24.sp, fontWeight = FontWeight.Black, color = animTextPrimary, modifier = Modifier.clickable { showLyricsDialog = true })
+                        // Equalizer Sliders Icon
+                        EqualizerSlidersIcon(
+                            tint = animTextPrimary,
+                            modifier = Modifier.clickable { showEqualizerSheet = true }
+                        )
 
                         val isTimerActive = manager.sleepTimerRemainingSeconds > 0
                         val timerTint = if (isTimerActive) userAccent else animTextPrimary
@@ -1181,7 +1182,7 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
             }
         }
 
-        // Action Menu Dialog
+        // Action Menu Dialog: Playback Speed Moved below Add to Playlist & above Delete from Device
         if (showMenuModal) {
             Box(
                 modifier = Modifier
@@ -1222,10 +1223,13 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                             }
                             context.startActivity(Intent.createChooser(shareIntent, "Share Track"))
                         }
-                        MenuRow("⏱️", "Playback Speed", isDark) { showMenuModal = false; showSpeedDialog = true }
                         MenuRow("🎚️", "Equalizer", isDark) { showMenuModal = false; showEqualizerSheet = true }
                         MenuRow("🏷️", "Tag Editor", isDark) { showMenuModal = false; showTagEditorDialog = true }
                         MenuRow("➕", "Add to Playlist", isDark) { showMenuModal = false; showAddToPlaylistDialog = true }
+                        
+                        // Playback Speed Shifted Here
+                        MenuRow("⏱️", "Playback Speed", isDark) { showMenuModal = false; showSpeedDialog = true }
+
                         MenuRow("🗑️", "Delete from Device", isDark, isDanger = true) {
                             showMenuModal = false
                             manager.deleteSongFromDevice(activeSong)
@@ -1246,12 +1250,10 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
             }
         }
 
-        // Shared Unified Modal Sheets
         if (showEqualizerSheet) EqualizerSheet(manager = manager, onDismiss = { showEqualizerSheet = false })
         if (showSpeedDialog) MagneticSpeedDialog(manager = manager, onDismiss = { showSpeedDialog = false })
         if (showSleepDialog) SleepTimerDialog(manager = manager, onDismiss = { showSleepDialog = false })
 
-        // Full Page Queue Sheet with Continuous Touch-Hold Drag & Edge Auto-Scroll
         AnimatedVisibility(
             visible = showQueueSheet,
             enter = slideInVertically(initialOffsetY = { it }, animationSpec = spring(stiffness = 500f, dampingRatio = 0.85f)),
@@ -1381,7 +1383,6 @@ fun QueueSheet(
             .padding(top = 8.dp, bottom = 14.dp)
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
-            // Header Bar
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -1416,7 +1417,6 @@ fun QueueSheet(
                 }
             }
 
-            // Continuous Draggable List with Smooth Item Reordering
             LazyColumn(
                 state = listState,
                 modifier = Modifier.weight(1f),
@@ -1507,7 +1507,6 @@ fun QueueSheet(
 
                         Spacer(modifier = Modifier.width(12.dp))
 
-                        // Large Bolder Touch Handle with Continuous Fast Multi-Item Drag
                         Box(
                             modifier = Modifier
                                 .size(48.dp)
@@ -1565,7 +1564,6 @@ fun QueueSheet(
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // Bottom Full-Width Close Button
             Button(
                 onClick = onDismiss,
                 modifier = Modifier
@@ -1585,7 +1583,7 @@ fun QueueSheet(
     }
 }
 
-// Unified Equalizer Modal Sheet Shared by Settings Page & Music Player
+// Unified Equalizer Sheet with On/Off Toggle to the Left of Save Button
 @Composable
 fun EqualizerSheet(manager: MusicManager, onDismiss: () -> Unit) {
     val isDark = manager.isDarkMode
@@ -1612,7 +1610,7 @@ fun EqualizerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                 .padding(22.dp)
         ) {
             Column(modifier = Modifier.fillMaxSize()) {
-                // Header with Preset and Save Button
+                // Header with Equalizer On/Off Master Toggle on the Left of Save Button
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -1620,14 +1618,27 @@ fun EqualizerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                 ) {
                     Column {
                         Text("Equalizer", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = textColor)
-                        Text(manager.selectedEqPreset, fontSize = 12.sp, color = accent, fontWeight = FontWeight.Bold)
+                        Text(if (manager.isEqEnabled) manager.selectedEqPreset else "Off (Original Audio)", fontSize = 12.sp, color = accent, fontWeight = FontWeight.Bold)
                     }
-                    Button(
-                        onClick = onDismiss,
-                        shape = RoundedCornerShape(10.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = accent)
-                    ) {
-                        Text("Save", color = Color.White, fontWeight = FontWeight.Bold)
+
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        // Master On/Off Switch
+                        Switch(
+                            checked = manager.isEqEnabled,
+                            onCheckedChange = { manager.toggleEqualizer(it) },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = Color.White,
+                                checkedTrackColor = accent
+                            )
+                        )
+
+                        Button(
+                            onClick = onDismiss,
+                            shape = RoundedCornerShape(10.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = accent)
+                        ) {
+                            Text("Save", color = Color.White, fontWeight = FontWeight.Bold)
+                        }
                     }
                 }
 
@@ -1637,13 +1648,12 @@ fun EqualizerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                     modifier = Modifier.weight(1f),
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    // Sound Presets Row
                     item {
                         Text("Sound Presets", color = textColor, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                         Spacer(modifier = Modifier.height(8.dp))
                         LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             items(manager.eqPresetNames, key = { it }) { preset ->
-                                val isSel = manager.selectedEqPreset == preset
+                                val isSel = manager.selectedEqPreset == preset && manager.isEqEnabled
                                 Box(
                                     modifier = Modifier
                                         .clip(RoundedCornerShape(12.dp))
@@ -1662,7 +1672,6 @@ fun EqualizerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                         }
                     }
 
-                    // Multi-band Graphic EQ with Vertical Fader Lines
                     item {
                         Text("Frequency Response (-15dB to +15dB)", color = textColor, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                         Spacer(modifier = Modifier.height(10.dp))
@@ -1683,7 +1692,7 @@ fun EqualizerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                                 for (i in 0 until manager.eqBandsCount) {
                                     val freq = manager.eqCenterFreqs[i] ?: (60 * (i + 1) * (i + 1))
                                     val freqLabel = if (freq >= 1000) "${freq / 1000}k" else "$freq"
-                                    val level = manager.eqBandLevels[i] ?: 0
+                                    val level = if (manager.isEqEnabled) (manager.eqBandLevels[i] ?: 0) else 0
                                     val levelDb = level / 100
 
                                     VerticalBandFader(
@@ -1692,7 +1701,7 @@ fun EqualizerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                                         maxLevel = manager.eqMaxLevel,
                                         dbLabel = if (levelDb > 0) "+$levelDb" else "$levelDb",
                                         freqLabel = freqLabel,
-                                        accentColor = accent,
+                                        accentColor = if (manager.isEqEnabled) accent else Color.Gray,
                                         isDark = isDark,
                                         onLevelChange = { newLevel ->
                                             manager.setEqBandLevel(i, newLevel)
@@ -1703,7 +1712,6 @@ fun EqualizerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                         }
                     }
 
-                    // Bass Boost & Virtualizer
                     item {
                         Column(
                             modifier = Modifier
@@ -1712,27 +1720,28 @@ fun EqualizerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                                 .background(if (isDark) Color(0x14FFFFFF) else Color(0xFFF8FAFC))
                                 .padding(16.dp)
                         ) {
-                            Text("Bass Boost: ${manager.bassBoostPercent}%", color = textColor, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                            Text("Bass Boost: ${if (manager.isEqEnabled) manager.bassBoostPercent else 0}%", color = textColor, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                             Slider(
-                                value = manager.bassBoostPercent.toFloat(),
+                                value = if (manager.isEqEnabled) manager.bassBoostPercent.toFloat() else 0f,
                                 onValueChange = { manager.setBassBoost(it.toInt()) },
                                 valueRange = 0f..100f,
+                                enabled = manager.isEqEnabled,
                                 colors = SliderDefaults.colors(thumbColor = accent, activeTrackColor = accent)
                             )
 
                             Spacer(modifier = Modifier.height(10.dp))
 
-                            Text("3D Surround (Virtualizer): ${manager.virtualizerPercent}%", color = textColor, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                            Text("3D Surround (Virtualizer): ${if (manager.isEqEnabled) manager.virtualizerPercent else 0}%", color = textColor, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                             Slider(
-                                value = manager.virtualizerPercent.toFloat(),
+                                value = if (manager.isEqEnabled) manager.virtualizerPercent.toFloat() else 0f,
                                 onValueChange = { manager.setVirtualizer(it.toInt()) },
                                 valueRange = 0f..100f,
+                                enabled = manager.isEqEnabled,
                                 colors = SliderDefaults.colors(thumbColor = accent, activeTrackColor = accent)
                             )
                         }
                     }
 
-                    // Remove Vocals & Stop Bass Controls
                     item {
                         Column(
                             modifier = Modifier
@@ -1775,7 +1784,6 @@ fun EqualizerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                     }
                 }
 
-                // Bottom Close Button
                 Spacer(modifier = Modifier.height(12.dp))
                 Button(
                     onClick = onDismiss,
@@ -1907,7 +1915,7 @@ fun MenuRow(icon: String, text: String, isDark: Boolean, isDanger: Boolean = fal
     }
 }
 
-// Mini Player Dock with Smooth Swipe Up to Maximize
+// Mini Player Dock
 @UnstableApi
 @Composable
 fun MiniPlayerDock(manager: MusicManager, onClick: () -> Unit) {
@@ -2062,14 +2070,26 @@ fun SleepTimerDialog(manager: MusicManager, onDismiss: () -> Unit) {
     }
 }
 
-// Circular Rainbow Color Picker
+// Wheel Roller Date Picker Dialog (Day, Month, Year Drum Picker with Green Header)
 @Composable
-fun CircularColorPickerDialog(manager: MusicManager, onDismiss: () -> Unit) {
-    val isDark = manager.isDarkMode
-    var hue by remember { mutableFloatStateOf(0f) }
-    var sat by remember { mutableFloatStateOf(1f) }
-    var value by remember { mutableFloatStateOf(1f) }
-    val currentColor = remember(hue, sat, value) { Color(android.graphics.Color.HSVToColor(floatArrayOf(hue, sat, value))) }
+fun WheelDatePickerDialog(
+    initialDate: Calendar,
+    onDateConfirmed: (Calendar) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var selectedYear by remember { mutableIntStateOf(initialDate.get(Calendar.YEAR)) }
+    var selectedMonth by remember { mutableIntStateOf(initialDate.get(Calendar.MONTH)) }
+    var selectedDay by remember { mutableIntStateOf(initialDate.get(Calendar.DAY_OF_MONTH)) }
+
+    val months = remember {
+        listOf("January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December")
+    }
+
+    val displayCal = remember(selectedYear, selectedMonth, selectedDay) {
+        Calendar.getInstance().apply {
+            set(selectedYear, selectedMonth, selectedDay.coerceAtMost(getActualMaximum(Calendar.DAY_OF_MONTH)))
+        }
+    }
 
     Box(
         modifier = Modifier
@@ -2081,66 +2101,324 @@ fun CircularColorPickerDialog(manager: MusicManager, onDismiss: () -> Unit) {
             ) { onDismiss() },
         contentAlignment = Alignment.Center
     ) {
-        Box(modifier = Modifier.fillMaxWidth(0.92f).clip(RoundedCornerShape(28.dp)).background(if (isDark) Color(0xFF1E293B) else Color.White).clickable(enabled = false) {}.padding(20.dp)) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                    Text("Custom Accent Picker", color = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A), fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                    Text("✕", fontSize = 18.sp, color = Color(0xFF64748B), modifier = Modifier.clickable { onDismiss() })
-                }
-                Spacer(modifier = Modifier.height(16.dp))
-                Box(modifier = Modifier.size(230.dp), contentAlignment = Alignment.Center) {
-                    Canvas(
-                        modifier = Modifier.fillMaxSize().pointerInput(Unit) {
-                            detectDragGestures { change, _ ->
-                                val center = Offset(size.width / 2f, size.height / 2f)
-                                val touch = change.position
-                                val dist = sqrt((touch.x - center.x) * (touch.x - center.x) + (touch.y - center.y) * (touch.y - center.y))
-                                val radius = size.width / 2f
-                                if (dist >= radius * 0.65f) {
-                                    var angle = Math.toDegrees(atan2(touch.y - center.y, touch.x - center.x).toDouble()).toFloat()
-                                    if (angle < 0) angle += 360f
-                                    hue = angle
-                                } else {
-                                    val halfInner = (radius * 0.55f)
-                                    val normX = ((touch.x - (center.x - halfInner)) / (halfInner * 2f)).coerceIn(0f, 1f)
-                                    val normY = ((touch.y - (center.y - halfInner)) / (halfInner * 2f)).coerceIn(0f, 1f)
-                                    sat = normX
-                                    value = 1f - normY
-                                }
-                            }
-                        }
-                    ) {
-                        val center = Offset(size.width / 2f, size.height / 2f)
-                        val radius = size.width / 2f
-                        val ringThickness = radius * 0.28f
-                        val sweepColors = (0..360 step 30).map { Color(android.graphics.Color.HSVToColor(floatArrayOf(it.toFloat(), 1f, 1f))) }
-                        drawCircle(brush = Brush.sweepGradient(sweepColors, center), radius = radius - (ringThickness / 2f), style = Stroke(width = ringThickness))
-
-                        val thumbRad = Math.toRadians(hue.toDouble())
-                        val thumbDist = radius - (ringThickness / 2f)
-                        val thumbPos = Offset(center.x + (thumbDist * cos(thumbRad)).toFloat(), center.y + (thumbDist * sin(thumbRad)).toFloat())
-                        drawCircle(Color.White, radius = 12.dp.toPx(), center = thumbPos, style = Stroke(3.dp.toPx()))
-                        drawCircle(Color(android.graphics.Color.HSVToColor(floatArrayOf(hue, 1f, 1f))), radius = 9.dp.toPx(), center = thumbPos)
-
-                        val halfBox = (radius * 0.55f)
-                        val boxTopLeft = Offset(center.x - halfBox, center.y - halfBox)
-                        val boxSize = Size(halfBox * 2f, halfBox * 2f)
-                        drawRect(brush = Brush.horizontalGradient(listOf(Color.White, Color(android.graphics.Color.HSVToColor(floatArrayOf(hue, 1f, 1f))))), topLeft = boxTopLeft, size = boxSize)
-                        drawRect(brush = Brush.verticalGradient(listOf(Color.Transparent, Color.Black)), topLeft = boxTopLeft, size = boxSize)
-                        val targetPos = Offset(boxTopLeft.x + (sat * boxSize.width), boxTopLeft.y + ((1f - value) * boxSize.height))
-                        drawCircle(Color.White, radius = 8.dp.toPx(), center = targetPos, style = Stroke(2.5f.dp.toPx()))
+        Box(
+            modifier = Modifier
+                .fillMaxWidth(0.88f)
+                .clip(RoundedCornerShape(20.dp))
+                .background(Color.White)
+                .clickable(enabled = false) {}
+        ) {
+            Column {
+                // Header (Year + Day/Month)
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color(0xFF2E7D32))
+                        .padding(20.dp)
+                ) {
+                    Column {
+                        Text(
+                            text = "${displayCal.get(Calendar.YEAR)}",
+                            color = Color(0xCCFFFFFF),
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        val dayOfWeekStr = displayCal.getDisplayName(Calendar.DAY_OF_WEEK, Calendar.SHORT, Locale.US)
+                        val monthStr = displayCal.getDisplayName(Calendar.MONTH, Calendar.SHORT, Locale.US)
+                        Text(
+                            text = "$dayOfWeekStr, $monthStr ${displayCal.get(Calendar.DAY_OF_MONTH)}",
+                            color = Color.White,
+                            fontSize = 24.sp,
+                            fontWeight = FontWeight.Bold
+                        )
                     }
                 }
-                Spacer(modifier = Modifier.height(18.dp))
-                Button(onClick = { manager.updateAccent(currentColor); onDismiss() }, modifier = Modifier.fillMaxWidth().height(48.dp), shape = RoundedCornerShape(12.dp), colors = ButtonDefaults.buttonColors(containerColor = currentColor)) {
-                    Text("Apply Accent", color = Color.White, fontWeight = FontWeight.Bold)
+
+                // 3-Column Roller Drum Picker
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(180.dp)
+                        .padding(vertical = 12.dp, horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // Day Selector
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("Day", fontSize = 11.sp, color = Color.Gray, fontWeight = FontWeight.Bold)
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Box(
+                            modifier = Modifier
+                                .size(44.dp)
+                                .clip(CircleShape)
+                                .background(Color(0xFFE8F5E9))
+                                .clickable {
+                                    val maxD = displayCal.getActualMaximum(Calendar.DAY_OF_MONTH)
+                                    selectedDay = if (selectedDay >= maxD) 1 else selectedDay + 1
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text("$selectedDay", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color(0xFF2E7D32))
+                        }
+                    }
+
+                    // Month Selector
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("Month", fontSize = 11.sp, color = Color.Gray, fontWeight = FontWeight.Bold)
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(Color(0xFFE8F5E9))
+                                .clickable {
+                                    selectedMonth = (selectedMonth + 1) % 12
+                                }
+                                .padding(horizontal = 14.dp, vertical = 10.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(months[selectedMonth], fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Color(0xFF2E7D32))
+                        }
+                    }
+
+                    // Year Selector
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("Year", fontSize = 11.sp, color = Color.Gray, fontWeight = FontWeight.Bold)
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(Color(0xFFE8F5E9))
+                                .clickable {
+                                    selectedYear = if (selectedYear >= 2030) 1990 else selectedYear + 1
+                                }
+                                .padding(horizontal = 14.dp, vertical = 10.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text("$selectedYear", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Color(0xFF2E7D32))
+                        }
+                    }
+                }
+
+                // Action Buttons
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp, vertical = 12.dp),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    Button(
+                        onClick = onDismiss,
+                        colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent)
+                    ) {
+                        Text("CANCEL", color = Color(0xFF2E7D32), fontWeight = FontWeight.Bold)
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Button(
+                        onClick = {
+                            onDateConfirmed(displayCal)
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32))
+                    ) {
+                        Text("OK", color = Color.White, fontWeight = FontWeight.Bold)
+                    }
                 }
             }
         }
     }
 }
 
-// Tag Editor Dialog
+// Material Design Analog Clock Time Picker Dialog
+@Composable
+fun MaterialAnalogTimePickerDialog(
+    initialHour: Int,
+    initialMinute: Int,
+    onTimeConfirmed: (hour: Int, minute: Int) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var selectedHour by remember { mutableIntStateOf(if (initialHour % 12 == 0) 12 else initialHour % 12) }
+    var selectedMinute by remember { mutableIntStateOf(initialMinute) }
+    var isAm by remember { mutableStateOf(initialHour < 12) }
+    var isSelectingHour by remember { mutableStateOf(true) }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Transparent)
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null
+            ) { onDismiss() },
+        contentAlignment = Alignment.Center
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth(0.85f)
+                .clip(RoundedCornerShape(24.dp))
+                .background(Color.White)
+                .clickable(enabled = false) {}
+                .padding(20.dp)
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(
+                    text = "SELECT TIME",
+                    color = Color.Gray,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.align(Alignment.Start)
+                )
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // Digital Indicator with AM/PM toggle
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(if (isSelectingHour) Color(0xFFFFEBEE) else Color(0xFFF1F5F9))
+                            .clickable { isSelectingHour = true }
+                            .padding(horizontal = 16.dp, vertical = 8.dp)
+                    ) {
+                        Text(
+                            text = String.format(Locale.US, "%02d", selectedHour),
+                            fontSize = 32.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF1E293B)
+                        )
+                    }
+
+                    Text(" : ", fontSize = 32.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1E293B))
+
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(if (!isSelectingHour) Color(0xFFFFEBEE) else Color(0xFFF1F5F9))
+                            .clickable { isSelectingHour = false }
+                            .padding(horizontal = 16.dp, vertical = 8.dp)
+                    ) {
+                        Text(
+                            text = String.format(Locale.US, "%02d", selectedMinute),
+                            fontSize = 32.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF1E293B)
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.width(16.dp))
+
+                    Column(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(10.dp))
+                            .border(1.dp, Color(0xFFE2E8F0), RoundedCornerShape(10.dp))
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .background(if (isAm) Color(0xFFFFEBEE) else Color.Transparent)
+                                .clickable { isAm = true }
+                                .padding(horizontal = 12.dp, vertical = 6.dp)
+                        ) {
+                            Text("AM", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = if (isAm) Color(0xFFE53935) else Color.Gray)
+                        }
+                        Box(
+                            modifier = Modifier
+                                .background(if (!isAm) Color(0xFFFFEBEE) else Color.Transparent)
+                                .clickable { isAm = false }
+                                .padding(horizontal = 12.dp, vertical = 6.dp)
+                        ) {
+                            Text("PM", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = if (!isAm) Color(0xFFE53935) else Color.Gray)
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(18.dp))
+
+                // Analog Dial
+                Box(
+                    modifier = Modifier
+                        .size(200.dp)
+                        .clip(CircleShape)
+                        .background(Color(0xFFF8FAFC)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Canvas(modifier = Modifier.fillMaxSize()) {
+                        val center = Offset(size.width / 2f, size.height / 2f)
+                        val radius = size.width * 0.38f
+
+                        val angle = if (isSelectingHour) {
+                            (selectedHour % 12) * 30.0 - 90.0
+                        } else {
+                            selectedMinute * 6.0 - 90.0
+                        }
+                        val rad = Math.toRadians(angle)
+                        val handEnd = Offset(center.x + (radius * cos(rad)).toFloat(), center.y + (radius * sin(rad)).toFloat())
+
+                        drawLine(Color(0xFFEF5350), center, handEnd, strokeWidth = 3.dp.toPx(), cap = StrokeCap.Round)
+                        drawCircle(Color(0xFFEF5350), 12.dp.toPx(), handEnd)
+                        drawCircle(Color(0xFFEF5350), 4.dp.toPx(), center)
+                    }
+
+                    // 12 Outer Clickable Hour Positions
+                    for (i in 1..12) {
+                        val angle = (i * 30.0) - 90.0
+                        val rad = Math.toRadians(angle)
+                        val dist = 76.dp
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.Center)
+                                .graphicsLayer {
+                                    translationX = (dist.toPx() * cos(rad)).toFloat()
+                                    translationY = (dist.toPx() * sin(rad)).toFloat()
+                                }
+                                .clickable {
+                                    if (isSelectingHour) {
+                                        selectedHour = i
+                                        isSelectingHour = false
+                                    } else {
+                                        selectedMinute = (i * 5) % 60
+                                    }
+                                }
+                        ) {
+                            Text(
+                                text = if (isSelectingHour) "$i" else String.format(Locale.US, "%02d", (i * 5) % 60),
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF334155)
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(18.dp))
+
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    Button(onClick = onDismiss, colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent)) {
+                        Text("CANCEL", color = Color(0xFFE53935), fontWeight = FontWeight.Bold)
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Button(
+                        onClick = {
+                            val hour24 = if (isAm) {
+                                if (selectedHour == 12) 0 else selectedHour
+                            } else {
+                                if (selectedHour == 12) 12 else selectedHour + 12
+                            }
+                            onTimeConfirmed(hour24, selectedMinute)
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF5350))
+                    ) {
+                        Text("OK", color = Color.White, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
+    }
+}
+
+// Tag Editor Dialog with Wheel Date Roller and Material Time Picker
 @Composable
 fun TagEditorDialog(manager: MusicManager, song: Song, onDismiss: () -> Unit) {
     var editTitle by remember { mutableStateOf(song.title) }
@@ -2148,6 +2426,11 @@ fun TagEditorDialog(manager: MusicManager, song: Song, onDismiss: () -> Unit) {
     var editAlbum by remember { mutableStateOf(song.album) }
     var editDate by remember { mutableStateOf(song.releaseDate) }
     var selectedCoverUri by remember { mutableStateOf<Uri?>(null) }
+
+    var showDatePicker by remember { mutableStateOf(false) }
+    var showTimePicker by remember { mutableStateOf(false) }
+    var tempCalendar by remember { mutableStateOf(Calendar.getInstance()) }
+
     val photoPickerLauncher = rememberLauncherForActivityResult(contract = ActivityResultContracts.GetContent()) { uri -> if (uri != null) selectedCoverUri = uri }
     val isDark = manager.isDarkMode
     val accent = manager.accentColor
@@ -2162,24 +2445,139 @@ fun TagEditorDialog(manager: MusicManager, song: Song, onDismiss: () -> Unit) {
             ) { onDismiss() },
         contentAlignment = Alignment.Center
     ) {
-        Box(modifier = Modifier.fillMaxWidth(0.9f).clip(RoundedCornerShape(24.dp)).background(if (isDark) Color(0xFF1E293B) else Color.White).clickable(enabled = false) {}.padding(20.dp)) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth(0.92f)
+                .clip(RoundedCornerShape(24.dp))
+                .background(if (isDark) Color(0xFF1E293B) else Color.White)
+                .clickable(enabled = false) {}
+                .padding(20.dp)
+        ) {
             Column(modifier = Modifier.fillMaxWidth()) {
                 Text("Edit Audio Tags", color = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A), fontSize = 18.sp, fontWeight = FontWeight.Bold)
                 Spacer(modifier = Modifier.height(14.dp))
-                Button(onClick = { photoPickerLauncher.launch("image/*") }, colors = ButtonDefaults.buttonColors(containerColor = accent), shape = RoundedCornerShape(10.dp)) {
+
+                Button(
+                    onClick = { photoPickerLauncher.launch("image/*") },
+                    colors = ButtonDefaults.buttonColors(containerColor = accent),
+                    shape = RoundedCornerShape(10.dp)
+                ) {
                     Text(if (selectedCoverUri != null) "Artwork Picked ✓" else "Change Artwork", color = Color.White, fontSize = 12.sp)
                 }
-                Spacer(modifier = Modifier.height(12.dp))
+
+                Spacer(modifier = Modifier.height(10.dp))
                 OutlinedTextField(value = editTitle, onValueChange = { editTitle = it }, label = { Text("Song Name") }, modifier = Modifier.fillMaxWidth())
                 Spacer(modifier = Modifier.height(8.dp))
                 OutlinedTextField(value = editArtist, onValueChange = { editArtist = it }, label = { Text("Artist Name") }, modifier = Modifier.fillMaxWidth())
                 Spacer(modifier = Modifier.height(8.dp))
                 OutlinedTextField(value = editAlbum, onValueChange = { editAlbum = it }, label = { Text("Album Name") }, modifier = Modifier.fillMaxWidth())
-                Spacer(modifier = Modifier.height(8.dp))
-                OutlinedTextField(value = editDate, onValueChange = { editDate = it }, label = { Text("Date & Time / Year") }, modifier = Modifier.fillMaxWidth())
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // Formatted Clickable Container for Date & Time Selector
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(if (isDark) Color(0x1AFFFFFF) else Color(0xFFF1F5F9))
+                        .clickable { showDatePicker = true }
+                        .padding(14.dp)
+                ) {
+                    Text("Date & Time (Tap to Change)", color = Color(0xFF64748B), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = if (editDate.isNotBlank()) editDate else "Select Date & Time",
+                        color = if (isDark) Color.White else Color(0xFF0F172A),
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+
                 Spacer(modifier = Modifier.height(16.dp))
-                Button(onClick = { manager.updateSongMetadata(song, editTitle, editArtist, editAlbum, editDate, selectedCoverUri); onDismiss() }, modifier = Modifier.fillMaxWidth().height(48.dp), shape = RoundedCornerShape(12.dp), colors = ButtonDefaults.buttonColors(containerColor = accent)) {
+
+                Button(
+                    onClick = {
+                        manager.updateSongMetadata(song, editTitle, editArtist, editAlbum, editDate, selectedCoverUri)
+                        onDismiss()
+                    },
+                    modifier = Modifier.fillMaxWidth().height(48.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = accent)
+                ) {
                     Text("Save Changes", color = Color.White, fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+    }
+
+    if (showDatePicker) {
+        WheelDatePickerDialog(
+            initialDate = Calendar.getInstance(),
+            onDateConfirmed = { cal ->
+                tempCalendar = cal
+                showDatePicker = false
+                showTimePicker = true
+            },
+            onDismiss = { showDatePicker = false }
+        )
+    }
+
+    if (showTimePicker) {
+        MaterialAnalogTimePickerDialog(
+            initialHour = 12,
+            initialMinute = 0,
+            onTimeConfirmed = { hour, min ->
+                tempCalendar.set(Calendar.HOUR_OF_DAY, hour)
+                tempCalendar.set(Calendar.MINUTE, min)
+                val dayStr = tempCalendar.getDisplayName(Calendar.DAY_OF_WEEK, Calendar.SHORT, Locale.US)
+                val monthStr = tempCalendar.getDisplayName(Calendar.MONTH, Calendar.SHORT, Locale.US)
+                val dayNum = tempCalendar.get(Calendar.DAY_OF_MONTH)
+                val yr = tempCalendar.get(Calendar.YEAR)
+                val amPm = if (hour < 12) "AM" else "PM"
+                val h12 = if (hour % 12 == 0) 12 else hour % 12
+                editDate = String.format(Locale.US, "%s, %s %d, %d • %02d:%02d %s", dayStr, monthStr, dayNum, yr, h12, min, amPm)
+                showTimePicker = false
+            },
+            onDismiss = { showTimePicker = false }
+        )
+    }
+}
+
+// Lyrics Dialog
+@Composable
+fun LyricsDialog(song: Song, isDark: Boolean, onDismiss: () -> Unit) {
+    val textColor = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A)
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Transparent)
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null
+            ) { onDismiss() },
+        contentAlignment = Alignment.BottomCenter
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .fillMaxHeight(0.6f)
+                .clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
+                .background(if (isDark) Color(0xFF1E293B) else Color.White)
+                .clickable(enabled = false) {}
+                .padding(22.dp)
+        ) {
+            Column {
+                Text("Lyrics", color = textColor, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.height(14.dp))
+                Text("No synchronized lyrics found for \"${song.title}\".", color = Color(0xFF64748B), fontSize = 14.sp)
+                Spacer(modifier = Modifier.weight(1f))
+                Button(
+                    onClick = { onDismiss() },
+                    modifier = Modifier.fillMaxWidth().height(48.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = if (isDark) Color(0x22FFFFFF) else Color(0xFFF1F5F9)),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text("Close", color = textColor, fontWeight = FontWeight.Bold)
                 }
             }
         }
