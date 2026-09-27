@@ -90,9 +90,6 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Fill
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
-import androidx.compose.ui.input.nestedscroll.NestedScrollSource
-import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -100,7 +97,6 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
@@ -197,7 +193,7 @@ fun GlassmorphicFolderIcon(folderColor: Color, modifier: Modifier = Modifier) {
                 quadraticBezierTo(w * 0.48f, h * 0.14f, w * 0.52f, h * 0.22f)
                 lineTo(w * 0.56f, h * 0.28f)
                 lineTo(w * 0.82f, h * 0.28f)
-                quadraticBezierTo(w * 0.88f, h * 0.82f, w * 0.88f, h * 0.35f)
+                quadraticBezierTo(w * 0.88f, h * 0.28f, w * 0.88f, h * 0.35f)
                 lineTo(w * 0.88f, h * 0.82f)
                 quadraticBezierTo(w * 0.88f, h * 0.88f, w * 0.80f, h * 0.88f)
                 lineTo(w * 0.18f, h * 0.88f)
@@ -551,113 +547,6 @@ fun IsolatedScrubberLeaf(
     }
 }
 
-// Vector Heart Icon: Solid Glowing Red when Favorited
-@Composable
-fun HeartIconVector(isFavorite: Boolean, defaultTint: Color, modifier: Modifier = Modifier) {
-    val heartColor = if (isFavorite) Color(0xFFFF2A55) else defaultTint
-
-    Spacer(
-        modifier = modifier.size(24.dp).drawWithCache {
-            val w = size.width
-            val h = size.height
-            val path = Path().apply {
-                moveTo(w * 0.5f, h * 0.85f)
-                cubicTo(w * 0.15f, h * 0.60f, 0f, h * 0.38f, 0f, h * 0.22f)
-                cubicTo(0f, h * 0.08f, w * 0.18f, 0f, w * 0.36f, 0f)
-                cubicTo(w * 0.44f, 0f, w * 0.5f, h * 0.08f, w * 0.5f, h * 0.12f)
-                cubicTo(w * 0.5f, h * 0.08f, w * 0.56f, 0f, w * 0.64f, 0f)
-                cubicTo(w * 0.82f, 0f, w, h * 0.08f, w, h * 0.22f)
-                cubicTo(w, h * 0.38f, w * 0.85f, h * 0.60f, w * 0.5f, h * 0.85f)
-                close()
-            }
-            val strokeStyle = Stroke(width = 2.2f.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
-
-            onDrawBehind {
-                if (isFavorite) {
-                    drawPath(path, color = Color(0x66FF2A55), style = Stroke(width = 5.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round))
-                    drawPath(path, color = heartColor, style = Fill)
-                    drawPath(path, color = Color(0xFFFF4D79), style = Stroke(width = 1.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round))
-                } else {
-                    drawPath(path, color = defaultTint, style = strokeStyle)
-                }
-            }
-        }
-    )
-}
-
-// Lyrics Dialog
-@Composable
-fun LyricsDialog(song: Song, isDark: Boolean, onDismiss: () -> Unit) {
-    val textColor = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A)
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color.Transparent)
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null
-            ) { onDismiss() },
-        contentAlignment = Alignment.BottomCenter
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .fillMaxHeight(0.6f)
-                .clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
-                .background(if (isDark) Color(0xFF1E293B) else Color.White)
-                .clickable(enabled = false) {}
-                .padding(22.dp)
-        ) {
-            Column {
-                Text("Lyrics", color = textColor, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                Spacer(modifier = Modifier.height(14.dp))
-                Text("No synchronized lyrics found for \"${song.title}\".", color = Color(0xFF64748B), fontSize = 14.sp)
-                Spacer(modifier = Modifier.weight(1f))
-                Button(
-                    onClick = { onDismiss() },
-                    modifier = Modifier.fillMaxWidth().height(48.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = if (isDark) Color(0x22FFFFFF) else Color(0xFFF1F5F9)),
-                    shape = RoundedCornerShape(12.dp)
-                ) {
-                    Text("Close", color = textColor, fontWeight = FontWeight.Bold)
-                }
-            }
-        }
-    }
-}
-
-// Bolder, Wider Triple-Line Drag Handle Icon
-@Composable
-fun ReorderDragHandle(tint: Color, modifier: Modifier = Modifier) {
-    Canvas(modifier = modifier) {
-        val w = size.width
-        val h = size.height
-        val strokeW = 3.2f.dp.toPx()
-
-        drawLine(
-            color = tint,
-            start = Offset(w * 0.10f, h * 0.25f),
-            end = Offset(w * 0.90f, h * 0.25f),
-            strokeWidth = strokeW,
-            cap = StrokeCap.Round
-        )
-        drawLine(
-            color = tint,
-            start = Offset(w * 0.10f, h * 0.50f),
-            end = Offset(w * 0.90f, h * 0.50f),
-            strokeWidth = strokeW,
-            cap = StrokeCap.Round
-        )
-        drawLine(
-            color = tint,
-            start = Offset(w * 0.10f, h * 0.75f),
-            end = Offset(w * 0.90f, h * 0.75f),
-            strokeWidth = strokeW,
-            cap = StrokeCap.Round
-        )
-    }
-}
-
 // Full Player Sheet: 120 FPS Pager with Instant Single-Step Track Switching & Vertical Swipe-Up for Queue
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @UnstableApi
@@ -972,7 +861,7 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                         )
                         Spacer(modifier = Modifier.height(3.dp))
                         Text(
-                            text = "${formatFileSize(pageSong.size)} • ${if (pageSong.artist.isNotBlank()) pageSong.artist else "Unknown Artist"}",
+                            text = "${formatFileSize(pageSong.size)} • ${if (pageSong.artist.isNotBlank()) song.artist else "Unknown Artist"}",
                             color = animTextSecondary,
                             fontSize = 13.sp,
                             fontWeight = FontWeight.Medium,
@@ -1193,7 +1082,7 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
     }
 }
 
-// Queue Sheet: Continuous Multi-Item Drag & Drop, Edge Auto-Scroll, & Full Screen Swipe-Down to Dismiss
+// Queue Sheet: Continuous Multi-Item Drag & Drop, Edge Auto-Scroll & Swipe-Down to Dismiss
 @OptIn(ExperimentalFoundationApi::class)
 @UnstableApi
 @Composable
@@ -1214,42 +1103,10 @@ fun QueueSheet(
     val itemHeightPx = with(density) { 72.dp.toPx() }
     val edgeScrollThresholdPx = with(density) { 96.dp.toPx() }
 
-    var draggingSongId by remember { mutableStateOf<Long?>(null) }
     var draggingIndex by remember { mutableStateOf<Int?>(null) }
     var draggingOffsetPx by remember { mutableFloatStateOf(0f) }
 
-    // Intercept downward drag gestures across the entire screen (including over songs) when at the top of the queue
-    val nestedScrollConnection = remember {
-        object : NestedScrollConnection {
-            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
-                if (available.y > 0 && listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset == 0 && draggingSongId == null) {
-                    if (available.y > 20f) {
-                        onDismiss()
-                        return available
-                    }
-                }
-                return Offset.Zero
-            }
-
-            override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
-                // If scrolling down reached the very top of the list and user keeps dragging down anywhere on cards
-                if (available.y > 15f && draggingSongId == null) {
-                    onDismiss()
-                    return available
-                }
-                return Offset.Zero
-            }
-
-            override suspend fun onPreFling(available: Velocity): Velocity {
-                if (available.y > 350f && listState.firstVisibleItemIndex == 0 && draggingSongId == null) {
-                    onDismiss()
-                    return available
-                }
-                return Velocity.Zero
-            }
-        }
-    }
-
+    // Edge Auto-Scroll Engine: Scrolls continuously while holding near top/bottom edges
     LaunchedEffect(draggingIndex) {
         if (draggingIndex != null) {
             while (draggingIndex != null) {
@@ -1263,21 +1120,21 @@ fun QueueSheet(
 
                     if (currentVisualTop < edgeScrollThresholdPx && currentIdx > 0) {
                         try {
-                            listState.scrollBy(-20f)
+                            listState.scrollBy(-18f)
                         } catch (_: Exception) {}
                         manager.moveQueueItem(currentIdx, currentIdx - 1)
                         draggingIndex = currentIdx - 1
                         draggingOffsetPx += itemHeightPx
                     } else if (currentVisualTop + itemHeightPx > viewportHeight - edgeScrollThresholdPx && currentIdx < manager.playbackQueue.size - 1) {
                         try {
-                            listState.scrollBy(20f)
+                            listState.scrollBy(18f)
                         } catch (_: Exception) {}
                         manager.moveQueueItem(currentIdx, currentIdx + 1)
                         draggingIndex = currentIdx + 1
                         draggingOffsetPx -= itemHeightPx
                     }
                 }
-                delay(25)
+                delay(30)
             }
         }
     }
@@ -1287,10 +1144,10 @@ fun QueueSheet(
             .fillMaxSize()
             .background(Brush.verticalGradient(listOf(bgTop, bgBottom)))
             .statusBarsPadding()
-            .nestedScroll(nestedScrollConnection)
+            // Swipe Down to Dismiss Queue Section
             .pointerInput(Unit) {
                 detectVerticalDragGestures { _, dragAmount ->
-                    if (dragAmount > 26f && draggingSongId == null) {
+                    if (dragAmount > 38f && draggingIndex == null) {
                         onDismiss()
                     }
                 }
@@ -1346,7 +1203,7 @@ fun QueueSheet(
                     contentType = { _, _ -> "queue_item_row" }
                 ) { index, song ->
                     val isCur = song.id == manager.currentSong?.id
-                    val isDraggingThis = draggingSongId == song.id
+                    val isDraggingThis = draggingIndex == index
 
                     val itemElevation = if (isDraggingThis) 24.dp else 0.dp
                     val itemScale = if (isDraggingThis) 1.04f else 1.0f
@@ -1356,7 +1213,7 @@ fun QueueSheet(
                             .fillMaxWidth()
                             .animateItemPlacement(
                                 animationSpec = spring(
-                                    stiffness = 550f,
+                                    stiffness = 500f,
                                     dampingRatio = 0.85f
                                 )
                             )
@@ -1380,7 +1237,7 @@ fun QueueSheet(
                                 shape = RoundedCornerShape(18.dp)
                             )
                             .clickable {
-                                if (draggingSongId == null) {
+                                if (draggingIndex == null) {
                                     manager.playSong(song, manager.playbackQueue, manager.currentSectionName)
                                 }
                             }
@@ -1425,46 +1282,40 @@ fun QueueSheet(
 
                         Spacer(modifier = Modifier.width(12.dp))
 
-                        // Large Bolder Touch Handle with Continuous Fast Multi-Item Drag
+                        // Large Bolder Touch Handle with Continuous Drag Across Any Distance
                         Box(
                             modifier = Modifier
                                 .size(48.dp)
                                 .clip(RoundedCornerShape(12.dp))
-                                .pointerInput(song.id) {
+                                .pointerInput(Unit) {
                                     detectDragGesturesAfterLongPress(
                                         onDragStart = {
-                                            draggingSongId = song.id
-                                            val currentActualIndex = manager.playbackQueue.indexOfFirst { it.id == song.id }
-                                            draggingIndex = if (currentActualIndex != -1) currentActualIndex else index
+                                            draggingIndex = index
                                             draggingOffsetPx = 0f
                                         },
                                         onDrag = { change, dragAmount ->
                                             change.consume()
                                             draggingOffsetPx += dragAmount.y
 
-                                            val currentActualIndex = manager.playbackQueue.indexOfFirst { it.id == song.id }
-                                            if (currentActualIndex == -1) return@detectDragGesturesAfterLongPress
+                                            val currentIndex = draggingIndex ?: return@detectDragGesturesAfterLongPress
+                                            val threshold = itemHeightPx * 0.70f
 
-                                            val threshold = itemHeightPx * 0.65f
-
-                                            while (draggingOffsetPx > threshold && currentActualIndex < manager.playbackQueue.size - 1) {
-                                                manager.moveQueueItem(currentActualIndex, currentActualIndex + 1)
-                                                draggingIndex = currentActualIndex + 1
+                                            while (draggingOffsetPx > threshold && currentIndex < manager.playbackQueue.size - 1) {
+                                                manager.moveQueueItem(currentIndex, currentIndex + 1)
+                                                draggingIndex = currentIndex + 1
                                                 draggingOffsetPx -= itemHeightPx
                                             }
-                                            while (draggingOffsetPx < -threshold && currentActualIndex > 0) {
-                                                manager.moveQueueItem(currentActualIndex, currentActualIndex - 1)
-                                                draggingIndex = currentActualIndex - 1
+                                            while (draggingOffsetPx < -threshold && currentIndex > 0) {
+                                                manager.moveQueueItem(currentIndex, currentIndex - 1)
+                                                draggingIndex = currentIndex - 1
                                                 draggingOffsetPx += itemHeightPx
                                             }
                                         },
                                         onDragEnd = {
-                                            draggingSongId = null
                                             draggingIndex = null
                                             draggingOffsetPx = 0f
                                         },
                                         onDragCancel = {
-                                            draggingSongId = null
                                             draggingIndex = null
                                             draggingOffsetPx = 0f
                                         }
@@ -1500,6 +1351,38 @@ fun QueueSheet(
                 )
             }
         }
+    }
+}
+
+// Bolder, Wider Triple-Line Drag Handle Icon
+@Composable
+fun ReorderDragHandle(tint: Color, modifier: Modifier = Modifier) {
+    Canvas(modifier = modifier) {
+        val w = size.width
+        val h = size.height
+        val strokeW = 3.2f.dp.toPx()
+
+        drawLine(
+            color = tint,
+            start = Offset(w * 0.10f, h * 0.25f),
+            end = Offset(w * 0.90f, h * 0.25f),
+            strokeWidth = strokeW,
+            cap = StrokeCap.Round
+        )
+        drawLine(
+            color = tint,
+            start = Offset(w * 0.10f, h * 0.50f),
+            end = Offset(w * 0.90f, h * 0.50f),
+            strokeWidth = strokeW,
+            cap = StrokeCap.Round
+        )
+        drawLine(
+            color = tint,
+            start = Offset(w * 0.10f, h * 0.75f),
+            end = Offset(w * 0.90f, h * 0.75f),
+            strokeWidth = strokeW,
+            cap = StrokeCap.Round
+        )
     }
 }
 
@@ -2181,6 +2064,40 @@ fun MagneticSpeedDialog(manager: MusicManager, onDismiss: () -> Unit) {
             }
         }
     }
+}
+
+// Vector Heart Icon: Solid Glowing Red when Favorited
+@Composable
+fun HeartIconVector(isFavorite: Boolean, defaultTint: Color, modifier: Modifier = Modifier) {
+    val heartColor = if (isFavorite) Color(0xFFFF2A55) else defaultTint
+
+    Spacer(
+        modifier = modifier.size(24.dp).drawWithCache {
+            val w = size.width
+            val h = size.height
+            val path = Path().apply {
+                moveTo(w * 0.5f, h * 0.85f)
+                cubicTo(w * 0.15f, h * 0.60f, 0f, h * 0.38f, 0f, h * 0.22f)
+                cubicTo(0f, h * 0.08f, w * 0.18f, 0f, w * 0.36f, 0f)
+                cubicTo(w * 0.44f, 0f, w * 0.5f, h * 0.08f, w * 0.5f, h * 0.12f)
+                cubicTo(w * 0.5f, h * 0.08f, w * 0.56f, 0f, w * 0.64f, 0f)
+                cubicTo(w * 0.82f, 0f, w, h * 0.08f, w, h * 0.22f)
+                cubicTo(w, h * 0.38f, w * 0.85f, h * 0.60f, w * 0.5f, h * 0.85f)
+                close()
+            }
+            val strokeStyle = Stroke(width = 2.2f.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
+
+            onDrawBehind {
+                if (isFavorite) {
+                    drawPath(path, color = Color(0x66FF2A55), style = Stroke(width = 5.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round))
+                    drawPath(path, color = heartColor, style = Fill)
+                    drawPath(path, color = Color(0xFFFF4D79), style = Stroke(width = 1.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round))
+                } else {
+                    drawPath(path, color = defaultTint, style = strokeStyle)
+                }
+            }
+        }
+    )
 }
 
 // Repeat Control Icon
