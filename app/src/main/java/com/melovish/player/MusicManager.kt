@@ -73,36 +73,6 @@ import java.io.RandomAccessFile
 import java.util.Locale
 import kotlin.math.pow
 
-fun formatFileSize(bytes: Long): String {
-    if (bytes <= 0) return "0 MB"
-    val mb = bytes.toDouble() / (1024.0 * 1024.0)
-    return if (mb >= 1024.0) {
-        val gb = mb / 1024.0
-        String.format(Locale.US, "%.2f GB", gb)
-    } else {
-        String.format(Locale.US, "%.1f MB", mb)
-    }
-}
-
-fun formatTime(ms: Long): String {
-    val totalSeconds = (ms / 1000).coerceAtLeast(0)
-    val minutes = totalSeconds / 60
-    val seconds = totalSeconds % 60
-    return String.format(Locale.US, "%02d:%02d", minutes, seconds)
-}
-
-enum class SongSortOrder {
-    A_TO_Z, Z_TO_A, NEWEST, OLDEST, ARTIST, DURATION, FILE_SIZE
-}
-
-enum class FolderSortOrder {
-    A_TO_Z, Z_TO_A, LATEST, OLDEST, MOST_PLAYED, LARGEST_SIZE, MOST_SONGS
-}
-
-enum class PagerTransitionEffect {
-    SLIDE, CASCADE, CROSSFADE, ROTATE, TUMBLE, PAGE
-}
-
 enum class GridViewMode {
     LIST, DETAILED_LIST, GRID_2, GRID_3, GRID_4, HERO_GRID
 }
@@ -125,7 +95,6 @@ class MusicManager(private val context: Context) {
     private val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
     private val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
-    // Hardware Audio Processor for Mono Audio & Center-Vocal Cancellation
     private val channelMixingAudioProcessor = ChannelMixingAudioProcessor()
 
     private val renderersFactory = object : DefaultRenderersFactory(context) {
@@ -140,7 +109,6 @@ class MusicManager(private val context: Context) {
         }
     }
 
-    // Always play state: defaults to false
     var isAlwaysPlay by mutableStateOf(prefs.getBoolean("always_play_enabled", false))
 
     val player: ExoPlayer = ExoPlayer.Builder(context, renderersFactory)
@@ -149,7 +117,7 @@ class MusicManager(private val context: Context) {
                 .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
                 .setUsage(C.USAGE_MEDIA)
                 .build(),
-            /* handleAudioFocus = */ !isAlwaysPlay
+            !isAlwaysPlay
         )
         .setWakeMode(C.WAKE_MODE_LOCAL)
         .setHandleAudioBecomingNoisy(true)
@@ -160,14 +128,12 @@ class MusicManager(private val context: Context) {
     var mediaSession: MediaSession? = null
         private set
 
-    // Hardware Audio Effects
     private var boundAudioSessionId: Int = C.AUDIO_SESSION_ID_UNSET
     private var equalizer: Equalizer? = null
     private var bassBoost: BassBoost? = null
     private var virtualizer: Virtualizer? = null
     private var loudnessEnhancer: LoudnessEnhancer? = null
 
-    // Playback States
     var currentSong by mutableStateOf<Song?>(null)
     var isPlaying by mutableStateOf(false)
     var currentPosition by mutableLongStateOf(0L)
@@ -183,10 +149,8 @@ class MusicManager(private val context: Context) {
     private var fadeJob: Job? = null
     private var isFadingOutForCrossfade = false
 
-    // Cold-start Instant Cache State
     var isScanningStorage by mutableStateOf(false)
 
-    // Collections
     val allSongs = mutableStateListOf<Song>()
     val rawStorageSongs = mutableStateListOf<Song>()
     val playbackQueue = mutableStateListOf<Song>()
@@ -197,7 +161,6 @@ class MusicManager(private val context: Context) {
     val folderColors = mutableStateMapOf<String, Long>()
     val parsedArtistsList = mutableStateListOf<ArtistItem>()
 
-    // View Mode / Grid Size Options
     var homeViewMode by mutableStateOf(
         try {
             GridViewMode.valueOf(prefs.getString("home_view_mode", GridViewMode.LIST.name) ?: GridViewMode.LIST.name)
@@ -206,13 +169,11 @@ class MusicManager(private val context: Context) {
         }
     )
 
-    // Preferences & Theme
     var themeMode by mutableStateOf(prefs.getString("theme_mode", "System") ?: "System")
     var isDarkMode by mutableStateOf(false)
     var accentColor by mutableStateOf(Color(prefs.getInt("accent_color", 0xFF00B4D8.toInt())))
     val userSavedColorPresets = mutableStateListOf<Color>()
 
-    // Selected Transition Effect for Full Screen Gesture Pager
     var pagerTransitionEffect by mutableStateOf(
         try {
             PagerTransitionEffect.valueOf(
@@ -224,7 +185,6 @@ class MusicManager(private val context: Context) {
         }
     )
 
-    // Sorting
     var currentSortOrder by mutableStateOf(
         try {
             SongSortOrder.valueOf(prefs.getString("saved_song_sort", SongSortOrder.A_TO_Z.name) ?: SongSortOrder.A_TO_Z.name)
@@ -256,7 +216,6 @@ class MusicManager(private val context: Context) {
     )
     var playlistInnerIsCardView by mutableStateOf(prefs.getBoolean("playlist_inner_card_view", false))
 
-    // Player Settings Features
     var isColorfulPlayer by mutableStateOf(prefs.getBoolean("colorful_player", true))
     var isResumeFirstOnly by mutableStateOf(prefs.getBoolean("resume_first", false))
     var isFadeOnStart by mutableStateOf(prefs.getBoolean("fade_start", false))
@@ -264,14 +223,12 @@ class MusicManager(private val context: Context) {
     var isCrossfadeEnabled by mutableStateOf(prefs.getBoolean("crossfade_enabled", false))
     var crossfadeDuration by mutableFloatStateOf(prefs.getFloat("crossfade_duration", 2.0f))
 
-    // Audio Features
     var isLosslessEnabled by mutableStateOf(prefs.getBoolean("lossless", true))
     var isVolumeNormalized by mutableStateOf(prefs.getBoolean("vol_norm", false))
     var volumeBoostLevel by mutableFloatStateOf(prefs.getFloat("vol_boost", 100f))
     var isMonoAudio by mutableStateOf(prefs.getBoolean("mono", false))
     var selectedAudioOutput by mutableStateOf(prefs.getString("audio_output", "Phone") ?: "Phone")
 
-    // Equalizer & Audio FX
     var isEqEnabled by mutableStateOf(prefs.getBoolean("eq_enabled", true))
     var eqBandsCount by mutableIntStateOf(5)
     val eqBandLevels = mutableStateMapOf<Int, Int>()
@@ -803,7 +760,6 @@ class MusicManager(private val context: Context) {
         } catch (_: Exception) {}
     }
 
-    // Hardware Audio Routing (Phone Speaker, External Speaker, Buds)
     fun setAudioOutputRouting(output: String) {
         selectedAudioOutput = output
         managerScope.launch(Dispatchers.IO) {
@@ -818,20 +774,17 @@ class MusicManager(private val context: Context) {
                 val devices = audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
                 val targetDevice: AudioDeviceInfo? = when (output) {
                     "Phone" -> {
-                        // Strict routing to phone's built-in speaker
                         devices.find { it.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER }
                     }
                     "Speaker" -> {
-                        // External speaker: prioritize bluetooth speaker, line out, or USB
                         devices.find {
                             it.type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP ||
-                            it.type == AudioDeviceInfo.TYPE_LINE_OUT ||
                             it.type == AudioDeviceInfo.TYPE_LINE_ANALOG ||
+                            it.type == AudioDeviceInfo.TYPE_LINE_DIGITAL ||
                             it.type == AudioDeviceInfo.TYPE_USB_DEVICE
                         } ?: devices.find { it.type == AudioDeviceInfo.TYPE_WIRED_HEADPHONES }
                     }
                     "Buds" -> {
-                        // Wearables: bluetooth earphones, BLE, or 3.5mm headphones
                         devices.find {
                             it.type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP ||
                             it.type == AudioDeviceInfo.TYPE_BLE_HEADSET ||
@@ -957,7 +910,6 @@ class MusicManager(private val context: Context) {
         } catch (_: Exception) {}
     }
 
-    // Instant Cache-First Local Hydration
     private fun loadInstantCache() {
         val cachedJson = prefs.getString("cached_songs_catalog", null) ?: return
         try {
@@ -1551,7 +1503,6 @@ class MusicManager(private val context: Context) {
         savePlaylists()
     }
 
-    // Physical Storage File Renaming & ID3 Tag Modification
     fun updateSongMetadata(
         song: Song,
         newTitle: String,
@@ -1596,7 +1547,6 @@ class MusicManager(private val context: Context) {
                         finalPath = renamedFile.absolutePath
                     }
 
-                    // Write ID3v1 / metadata tags into physical file if MP3
                     if (ext.equals("mp3", ignoreCase = true)) {
                         try {
                             RandomAccessFile(renamedFile, "rw").use { raf ->
@@ -1634,7 +1584,6 @@ class MusicManager(private val context: Context) {
                 e.printStackTrace()
             }
 
-            // Sync with Android MediaStore
             try {
                 val cv = ContentValues().apply {
                     put(MediaStore.Audio.Media.TITLE, newTitle)

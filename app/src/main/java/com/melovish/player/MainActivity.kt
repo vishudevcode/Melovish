@@ -25,12 +25,14 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -86,13 +88,16 @@ import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.input.pointer.PointerInputChange
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
@@ -114,8 +119,10 @@ import kotlinx.collections.immutable.toImmutableList
 import kotlinx.coroutines.launch
 import java.io.File
 import java.util.Locale
+import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.sin
+import kotlin.math.sqrt
 
 @UnstableApi
 class MusicViewModel(application: Application) : AndroidViewModel(application) {
@@ -237,7 +244,6 @@ fun MelovishRootApp(manager: MusicManager) {
     val searchListState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
 
-    // Strict 1-Step Back Navigation Handler
     BackHandler(enabled = isSettingsEqOpen || isPlayerExpanded || activeScreen == "settings" || activeScreen == "profile" || selectedArtist != null || selectedAlbum != null || selectedPlaylist != null || selectedFolder != null || activeScreen != "home") {
         when {
             isSettingsEqOpen -> isSettingsEqOpen = false
@@ -263,7 +269,6 @@ fun MelovishRootApp(manager: MusicManager) {
                     onSettingsClick = { activeScreen = "settings" }
                 )
 
-                // Foreground Settings Priority Ladder
                 Box(modifier = Modifier.weight(1f)) {
                     when {
                         activeScreen == "settings" -> SettingsScreen(
@@ -444,7 +449,6 @@ fun MelovishRootApp(manager: MusicManager) {
     }
 }
 
-// Shimmer Effect Modifier for Instant Backbone Loading Skeleton
 @Composable
 fun shimmerBrush(isDark: Boolean): Brush {
     val transition = rememberInfiniteTransition(label = "shimmer")
@@ -500,7 +504,6 @@ fun ShimmerSkeletonRow(isDark: Boolean) {
     }
 }
 
-// 1:1 Perfect Square Audio Card with Bottom Gradient Overlay
 @UnstableApi
 @Composable
 fun SquareAlbumOverlayCard(
@@ -543,7 +546,6 @@ fun SquareAlbumOverlayCard(
             }
         }
 
-        // Bottom Gradient Overlay for Title & Artist
         Box(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
@@ -585,7 +587,6 @@ fun SquareAlbumOverlayCard(
     }
 }
 
-// View Mode Selector Vector Icon
 @Composable
 fun GridViewModeVectorIcon(mode: GridViewMode, tint: Color, modifier: Modifier = Modifier) {
     Canvas(modifier = modifier) {
@@ -599,24 +600,26 @@ fun GridViewModeVectorIcon(mode: GridViewMode, tint: Color, modifier: Modifier =
                 drawLine(tint, Offset(0f, h * 0.80f), Offset(w, h * 0.80f), s)
             }
             GridViewMode.GRID_2 -> {
-                drawRoundRect(tint, Offset(0f, 0f), androidx.compose.ui.geometry.Size(w * 0.44f, h * 0.44f), androidx.compose.ui.geometry.CornerRadius(4f, 4f))
-                drawRoundRect(tint, Offset(w * 0.56f, 0f), androidx.compose.ui.geometry.Size(w * 0.44f, h * 0.44f), androidx.compose.ui.geometry.CornerRadius(4f, 4f))
-                drawRoundRect(tint, Offset(0f, h * 0.56f), androidx.compose.ui.geometry.Size(w * 0.44f, h * 0.44f), androidx.compose.ui.geometry.CornerRadius(4f, 4f))
-                drawRoundRect(tint, Offset(w * 0.56f, h * 0.56f), androidx.compose.ui.geometry.Size(w * 0.44f, h * 0.44f), androidx.compose.ui.geometry.CornerRadius(4f, 4f))
+                drawRoundRect(tint, Offset(0f, 0f), Size(w * 0.44f, h * 0.44f), CornerRadius(4f, 4f))
+                drawRoundRect(tint, Offset(w * 0.56f, 0f), Size(w * 0.44f, h * 0.44f), CornerRadius(4f, 4f))
+                drawRoundRect(tint, Offset(0f, h * 0.56f), Size(w * 0.44f, h * 0.44f), CornerRadius(4f, 4f))
+                drawRoundRect(tint, Offset(w * 0.56f, h * 0.56f), Size(w * 0.44f, h * 0.44f), CornerRadius(4f, 4f))
             }
             GridViewMode.GRID_3 -> {
                 val step = w / 3.4f
+                val radius = 2.5f.dp.toPx()
                 for (r in 0..2) {
                     for (c in 0..2) {
-                        drawCircle(tint, 2.5f.dp.toPx(), Offset(c * step + step * 0.5f, r * step + step * 0.5f))
+                        drawCircle(tint, radius, Offset(c * step + step * 0.5f, r * step + step * 0.5f))
                     }
                 }
             }
             GridViewMode.GRID_4, GridViewMode.HERO_GRID -> {
                 val step = w / 4.4f
+                val radius = 1.8f.dp.toPx()
                 for (r in 0..3) {
                     for (c in 0..3) {
-                        drawCircle(tint, 1.8f.dp.toPx(), Offset(c * step + step * 0.5f, r * step + step * 0.5f))
+                        drawCircle(tint, radius, Offset(c * step + step * 0.5f, r * step + step * 0.5f))
                     }
                 }
             }
@@ -624,7 +627,6 @@ fun GridViewModeVectorIcon(mode: GridViewMode, tint: Color, modifier: Modifier =
     }
 }
 
-// "Grid Size" Modal Dialog
 @Composable
 fun GridSizeDialog(
     currentMode: GridViewMode,
@@ -703,7 +705,6 @@ fun GridSizeDialog(
     }
 }
 
-// Favourite Playlists Manage Dialog (Add, Remove & Instant Reorder)
 @Composable
 fun ManagePlaylistsDialog(
     manager: MusicManager,
@@ -813,7 +814,6 @@ fun ManagePlaylistsDialog(
     }
 }
 
-// Favourite Playlists Dedicated Arrange Dialog (Fast Drag & Drop Snapping with Save Button)
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun ArrangePlaylistsDialog(
@@ -968,7 +968,6 @@ fun ArrangePlaylistsDialog(
     }
 }
 
-// Favourite Playlist Long-Press Actions Dialog (Colour Changing + Delete)
 @Composable
 fun FavouritePlaylistLongPressDialog(
     playlist: Playlist,
@@ -1021,7 +1020,6 @@ fun FavouritePlaylistLongPressDialog(
                 }
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // Presets & Rainbow Circle
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         preset9Colors.take(5).forEach { color ->
@@ -1071,7 +1069,6 @@ fun FavouritePlaylistLongPressDialog(
 
                 Spacer(modifier = Modifier.height(18.dp))
 
-                // Delete Playlist from Favourite Section
                 Button(
                     onClick = {
                         manager.removePlaylist(playlist)
@@ -1136,7 +1133,6 @@ fun HomeScreen(
             contentPadding = PaddingValues(bottom = 80.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            // Recently Played Carousel / Instant Shimmer Backbone
             item(key = "home_recents_section", contentType = "recents_carousel") {
                 Text(text = "Recently Played", color = textColor, fontSize = 18.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp))
                 Spacer(modifier = Modifier.height(10.dp))
@@ -1175,7 +1171,6 @@ fun HomeScreen(
                 }
             }
 
-            // Favourite Playlists Header with Arrange & Manage Dual Action Buttons
             item(key = "home_playlists_section", contentType = "playlists_carousel") {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -1259,7 +1254,6 @@ fun HomeScreen(
                 }
             }
 
-            // All Songs Header with Sort and Grid Size View Mode Switcher
             item(key = "home_all_songs_header", contentType = "all_songs_header") {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                     Text("All Songs", color = textColor, fontSize = 18.sp, fontWeight = FontWeight.Bold)
@@ -1269,7 +1263,6 @@ fun HomeScreen(
                         }
                         Spacer(modifier = Modifier.width(6.dp))
 
-                        // Grid Size View Mode Button (Tap cycles, Long Press opens Dialog)
                         Box(
                             modifier = Modifier
                                 .size(36.dp)
@@ -1303,7 +1296,6 @@ fun HomeScreen(
                 }
             }
 
-            // Songs List or Grid Rendering depending on Grid Size View Mode
             if (manager.isScanningStorage && manager.allSongs.isEmpty()) {
                 items(6) {
                     ShimmerSkeletonRow(isDark = isDark)
@@ -1444,7 +1436,6 @@ fun HomeScreen(
     }
 }
 
-// Global Reusable Circular Colour Picker strictly for Folders & Playlists
 @Composable
 fun FolderColourPickerDialog(
     title: String = "Colour Picker",
@@ -1485,17 +1476,19 @@ fun FolderColourPickerDialog(
                         modifier = Modifier
                             .fillMaxSize()
                             .pointerInput(Unit) {
-                                androidx.compose.foundation.gestures.detectDragGestures { change, _ ->
-                                    val center = Offset(size.width / 2f, size.height / 2f)
+                                detectDragGestures { change: PointerInputChange, _ ->
+                                    val center = Offset(size.width.toFloat() / 2f, size.height.toFloat() / 2f)
                                     val touch = change.position
-                                    val dist = kotlin.math.sqrt((touch.x - center.x) * (touch.x - center.x) + (touch.y - center.y) * (touch.y - center.y))
-                                    val radius = size.width / 2f
-                                    if (dist >= radius * 0.65f) {
-                                        var angle = Math.toDegrees(kotlin.math.atan2(touch.y - center.y, touch.x - center.x).toDouble()).toFloat()
-                                        if (angle < 0) angle += 360f
+                                    val dx = (touch.x - center.x).toDouble()
+                                    val dy = (touch.y - center.y).toDouble()
+                                    val dist = sqrt(dx * dx + dy * dy)
+                                    val radius = (size.width.toFloat() / 2f).toDouble()
+                                    if (dist >= radius * 0.65) {
+                                        var angle = Math.toDegrees(atan2(dy, dx)).toFloat()
+                                        if (angle < 0f) angle += 360f
                                         hue = angle
                                     } else {
-                                        val halfInner = (radius * 0.55f)
+                                        val halfInner = (radius * 0.55).toFloat()
                                         val normX = ((touch.x - (center.x - halfInner)) / (halfInner * 2f)).coerceIn(0f, 1f)
                                         val normY = ((touch.y - (center.y - halfInner)) / (halfInner * 2f)).coerceIn(0f, 1f)
                                         sat = normX
@@ -1508,21 +1501,21 @@ fun FolderColourPickerDialog(
                         val radius = size.width / 2f
                         val ringThickness = radius * 0.28f
                         val sweepColors = (0..360 step 30).map { Color(android.graphics.Color.HSVToColor(floatArrayOf(it.toFloat(), 1f, 1f))) }
-                        drawCircle(brush = Brush.sweepGradient(sweepColors, center), radius = radius - (ringThickness / 2f), style = androidx.compose.ui.graphics.drawscope.Stroke(width = ringThickness))
+                        drawCircle(brush = Brush.sweepGradient(sweepColors, center), radius = radius - (ringThickness / 2f), style = Stroke(width = ringThickness))
 
                         val thumbRad = Math.toRadians(hue.toDouble())
-                        val thumbDist = radius - (ringThickness / 2f)
-                        val thumbPos = Offset(center.x + (thumbDist * kotlin.math.cos(thumbRad)).toFloat(), center.y + (thumbDist * kotlin.math.sin(thumbRad)).toFloat())
-                        drawCircle(Color.White, radius = 12.dp.toPx(), center = thumbPos, style = androidx.compose.ui.graphics.drawscope.Stroke(3.dp.toPx()))
+                        val thumbDist = (radius - (ringThickness / 2f)).toDouble()
+                        val thumbPos = Offset((center.x.toDouble() + (thumbDist * cos(thumbRad))).toFloat(), (center.y.toDouble() + (thumbDist * sin(thumbRad))).toFloat())
+                        drawCircle(Color.White, radius = 12.dp.toPx(), center = thumbPos, style = Stroke(3.dp.toPx()))
                         drawCircle(Color(android.graphics.Color.HSVToColor(floatArrayOf(hue, 1f, 1f))), radius = 9.dp.toPx(), center = thumbPos)
 
                         val halfBox = (radius * 0.55f)
                         val boxTopLeft = Offset(center.x - halfBox, center.y - halfBox)
-                        val boxSize = androidx.compose.ui.geometry.Size(halfBox * 2f, halfBox * 2f)
+                        val boxSize = Size(halfBox * 2f, halfBox * 2f)
                         drawRect(brush = Brush.horizontalGradient(listOf(Color.White, Color(android.graphics.Color.HSVToColor(floatArrayOf(hue, 1f, 1f))))), topLeft = boxTopLeft, size = boxSize)
                         drawRect(brush = Brush.verticalGradient(listOf(Color.Transparent, Color.Black)), topLeft = boxTopLeft, size = boxSize)
                         val targetPos = Offset(boxTopLeft.x + (sat * boxSize.width), boxTopLeft.y + ((1f - value) * boxSize.height))
-                        drawCircle(Color.White, radius = 8.dp.toPx(), center = targetPos, style = androidx.compose.ui.graphics.drawscope.Stroke(2.5f.dp.toPx()))
+                        drawCircle(Color.White, radius = 8.dp.toPx(), center = targetPos, style = Stroke(2.5f.dp.toPx()))
                     }
                 }
                 Spacer(modifier = Modifier.height(18.dp))
@@ -2463,10 +2456,10 @@ fun LiveMechanicalGearIcon(isDark: Boolean, modifier: Modifier = Modifier) {
                             val a3 = a1 + (angleStep * 0.65f)
                             val a4 = (i + 1) * angleStep
 
-                            val p1 = Offset(center.x + (innerRingRadius * cos(a1)), center.y + (innerRingRadius * sin(a1)))
-                            val p2 = Offset(center.x + (outerRadius * cos(a2)), center.y + (outerRadius * sin(a2)))
-                            val p3 = Offset(center.x + (outerRadius * cos(a3)), center.y + (outerRadius * sin(a3)))
-                            val p4 = Offset(center.x + (innerRingRadius * cos(a4)), center.y + (innerRingRadius * sin(a4)))
+                            val p1 = Offset((center.x.toDouble() + (innerRingRadius * cos(a1.toDouble()))).toFloat(), (center.y.toDouble() + (innerRingRadius * sin(a1.toDouble()))).toFloat())
+                            val p2 = Offset((center.x.toDouble() + (outerRadius * cos(a2.toDouble()))).toFloat(), (center.y.toDouble() + (outerRadius * sin(a2.toDouble()))).toFloat())
+                            val p3 = Offset((center.x.toDouble() + (outerRadius * cos(a3.toDouble()))).toFloat(), (center.y.toDouble() + (outerRadius * sin(a3.toDouble()))).toFloat())
+                            val p4 = Offset((center.x.toDouble() + (innerRingRadius * cos(a4.toDouble()))).toFloat(), (center.y.toDouble() + (innerRingRadius * sin(a4.toDouble()))).toFloat())
 
                             if (i == 0) moveTo(p1.x, p1.y) else lineTo(p1.x, p1.y)
                             lineTo(p2.x, p2.y)
@@ -2487,7 +2480,7 @@ fun LiveMechanicalGearIcon(isDark: Boolean, modifier: Modifier = Modifier) {
                         drawCircle(color = gearColor, radius = hubRadius, center = center)
                         for (s in 0 until 3) {
                             val spAngle = (s * 2.0 * Math.PI / 3.0).toFloat()
-                            val spokeEnd = Offset(center.x + (cavityRadius * cos(spAngle)), center.y + (cavityRadius * sin(spAngle)))
+                            val spokeEnd = Offset((center.x.toDouble() + (cavityRadius * cos(spAngle.toDouble()))).toFloat(), (center.y.toDouble() + (cavityRadius * sin(spAngle.toDouble()))).toFloat())
                             drawLine(color = gearColor, start = center, end = spokeEnd, strokeWidth = spokeStrokeWidth)
                         }
                     }
