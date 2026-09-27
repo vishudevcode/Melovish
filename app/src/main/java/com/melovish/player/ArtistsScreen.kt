@@ -435,7 +435,7 @@ object ArtistParsingEngine {
     }
 }
 
-// 1:1 Dynamic Square Artist Card with Responsive Icon Scaling & Bottom Gradient Overlay
+// 1:1 Dynamic Square Artist Card with Elevated Floating Label
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun ArtistSquareCard(
@@ -488,7 +488,7 @@ fun ArtistSquareCard(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(bottom = if (gridColumns == 4) 20.dp else 26.dp),
+                .padding(bottom = if (gridColumns == 4) 24.dp else if (isHero) 32.dp else 28.dp),
             contentAlignment = Alignment.Center
         ) {
             if (!customImgPath.isNullOrBlank() && File(customImgPath).exists()) {
@@ -500,9 +500,9 @@ fun ArtistSquareCard(
                 )
             } else if (albumArtBitmap != null) {
                 val badgeFraction = when (gridColumns) {
-                    2 -> 0.62f
-                    3 -> 0.58f
-                    else -> 0.54f
+                    2 -> if (isHero) 0.58f else 0.54f
+                    3 -> 0.52f
+                    else -> 0.48f
                 }
                 Box(
                     modifier = Modifier
@@ -520,9 +520,9 @@ fun ArtistSquareCard(
                 }
             } else {
                 val badgeFraction = when (gridColumns) {
-                    2 -> 0.60f
-                    3 -> 0.58f
-                    else -> 0.54f
+                    2 -> if (isHero) 0.56f else 0.52f
+                    3 -> 0.50f
+                    else -> 0.48f
                 }
                 Box(
                     modifier = Modifier
@@ -536,30 +536,25 @@ fun ArtistSquareCard(
                     Text(
                         text = "🎙️",
                         fontSize = when (gridColumns) {
-                            2 -> 34.sp
-                            3 -> 24.sp
-                            else -> 18.sp
+                            2 -> if (isHero) 32.sp else 28.sp
+                            3 -> 22.sp
+                            else -> 17.sp
                         }
                     )
                 }
             }
         }
 
-        // Bottom Banner Overlay (Unclipped text presentation across all grid columns)
+        // Elevated Floating Label: Shifted safely above the bottom curved corners
         Box(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
-                .background(
-                    Brush.verticalGradient(
-                        listOf(
-                            Color.Transparent,
-                            if (isDark) Color(0xD9131B2E) else Color(0xF2FFFFFF),
-                            cardBg
-                        )
-                    )
-                )
-                .padding(horizontal = 4.dp, vertical = if (gridColumns == 4) 3.dp else 5.dp),
+                .padding(
+                    start = if (gridColumns == 4) 6.dp else 10.dp,
+                    end = if (gridColumns == 4) 6.dp else 10.dp,
+                    bottom = if (gridColumns == 4) 8.dp else if (isHero) 14.dp else 10.dp
+                ),
             contentAlignment = Alignment.Center
         ) {
             Column(
@@ -571,9 +566,9 @@ fun ArtistSquareCard(
                     text = artist.name,
                     color = textColor,
                     fontSize = when (gridColumns) {
-                        2 -> if (isHero) 14.sp else 13.sp
-                        3 -> 11.5.sp
-                        else -> 10.sp
+                        2 -> if (isHero) 14.5.sp else 13.5.sp
+                        3 -> 12.sp
+                        else -> 10.5.sp
                     },
                     fontWeight = FontWeight.Bold,
                     maxLines = 1,
@@ -581,6 +576,7 @@ fun ArtistSquareCard(
                     textAlign = TextAlign.Center
                 )
                 if (!isHero && gridColumns < 4) {
+                    Spacer(modifier = Modifier.height(2.dp))
                     Text(
                         text = "${artist.songs.size} tracks",
                         color = Color(0xFF64748B),
@@ -1261,8 +1257,6 @@ fun ArtistDetailScreen(
     var selectedSongForAction by remember { mutableStateOf<Song?>(null) }
     var showMoveTargetDialog by remember { mutableStateOf(false) }
     var showAddSongsDialog by remember { mutableStateOf(false) }
-    var isBatchSelectionMode by remember { mutableStateOf(false) }
-    val selectedBatchSongIds = remember { mutableStateListOf<Long>() }
 
     val currentSongs = remember(artistItem.name, manager.parsedArtistsList, ArtistDataManager.refreshTrigger) {
         manager.parsedArtistsList.find { it.name.equals(artistItem.name, ignoreCase = true) }?.songs ?: artistItem.songs
@@ -1281,7 +1275,6 @@ fun ArtistDetailScreen(
     }
 
     Column(modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
-        // Hero Header Row
         Row(
             modifier = Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 2.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -1843,7 +1836,6 @@ fun CreateArtistDialog(
     }
 }
 
-// Universal Helper: Adds any Artist directly to Home Screen "Favourite Playlists"
 fun addArtistToFavouritePlaylists(context: Context, manager: MusicManager, artist: ArtistItem) {
     val existingIndex = manager.customPlaylists.indexOfFirst { it.name.equals(artist.name, ignoreCase = true) }
     if (existingIndex != -1) {

@@ -107,7 +107,6 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
@@ -600,7 +599,7 @@ fun SquareAlbumOverlayCard(
     }
 }
 
-// 5th View Mode: Hero Album Card (Strict 1:1 Aspect Ratio, Song Title Only, Zero Metadata)
+// 5th View Mode: Hero Album Card (Strict 1:1 Aspect Ratio, Elevated Title Label)
 @UnstableApi
 @Composable
 fun HeroAlbumCard(
@@ -644,16 +643,17 @@ fun HeroAlbumCard(
             }
         }
 
+        // Elevated Frosted Bottom Gradient Banner with bottom padding safety
         Box(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
                 .background(
                     Brush.verticalGradient(
-                        listOf(Color.Transparent, Color(0xA6000000), Color(0xF2000000))
+                        listOf(Color.Transparent, Color(0xB3000000), Color(0xF2000000))
                     )
                 )
-                .padding(horizontal = 10.dp, vertical = 10.dp)
+                .padding(start = 12.dp, end = 10.dp, top = 8.dp, bottom = 12.dp)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -663,7 +663,7 @@ fun HeroAlbumCard(
                 Text(
                     text = song.title,
                     color = if (isPlayingThis) accent else Color.White,
-                    fontSize = 13.sp,
+                    fontSize = 13.5.sp,
                     fontWeight = FontWeight.ExtraBold,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -1664,7 +1664,7 @@ fun FolderColourPickerDialog(
     }
 }
 
-// 1:1 Dynamic Square Folder Card for Library Grid Modes with Bottom Banner Overlay
+// 1:1 Dynamic Square Folder Card for Library Grid Modes with Elevated Floating Label
 @Composable
 fun LibraryFolderSquareCard(
     folderName: String,
@@ -1693,17 +1693,17 @@ fun LibraryFolderSquareCard(
             ),
         contentAlignment = Alignment.Center
     ) {
-        // Dynamic Icon Sizing filling ~55-60% of card width for consistent proportions
+        // Upper-Center Icon Area
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(bottom = if (gridColumns == 4) 20.dp else 28.dp),
+                .padding(bottom = if (gridColumns == 4) 24.dp else if (isHero) 32.dp else 28.dp),
             contentAlignment = Alignment.Center
         ) {
             val iconFraction = when (gridColumns) {
-                2 -> 0.58f
-                3 -> 0.56f
-                else -> 0.54f
+                2 -> if (isHero) 0.54f else 0.52f
+                3 -> 0.50f
+                else -> 0.48f
             }
             Box(
                 modifier = Modifier
@@ -1718,21 +1718,16 @@ fun LibraryFolderSquareCard(
             }
         }
 
-        // Bottom Banner Overlay (Unclipped text presentation)
+        // Elevated Floating Label: Shifted safely above the bottom curved corners
         Box(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
-                .background(
-                    Brush.verticalGradient(
-                        listOf(
-                            Color.Transparent,
-                            (if (isDark) Color(0xCC131B2E) else Color(0xEEFFFFFF)),
-                            cardBg
-                        )
-                    )
-                )
-                .padding(horizontal = 4.dp, vertical = if (gridColumns == 4) 3.dp else 6.dp),
+                .padding(
+                    start = if (gridColumns == 4) 6.dp else 10.dp,
+                    end = if (gridColumns == 4) 6.dp else 10.dp,
+                    bottom = if (gridColumns == 4) 8.dp else if (isHero) 14.dp else 10.dp
+                ),
             contentAlignment = Alignment.Center
         ) {
             Column(
@@ -1744,9 +1739,9 @@ fun LibraryFolderSquareCard(
                     text = folderName,
                     color = textColor,
                     fontSize = when (gridColumns) {
-                        2 -> if (isHero) 14.sp else 13.sp
-                        3 -> 11.5.sp
-                        else -> 10.sp
+                        2 -> if (isHero) 14.5.sp else 13.5.sp
+                        3 -> 12.sp
+                        else -> 10.5.sp
                     },
                     fontWeight = FontWeight.Bold,
                     maxLines = 1,
@@ -1754,6 +1749,7 @@ fun LibraryFolderSquareCard(
                     textAlign = TextAlign.Center
                 )
                 if (!isHero && gridColumns < 4) {
+                    Spacer(modifier = Modifier.height(2.dp))
                     Text(
                         text = "$songCount songs • ${formatFileSize(totalSize)}",
                         color = Color(0xFF64748B),
@@ -3075,6 +3071,7 @@ fun UniversalSongCard(song: Song, manager: MusicManager, isDark: Boolean, onPlay
     Box(
         modifier = Modifier
             .fillMaxWidth()
+            .aspectRatio(1f)
             .clip(RoundedCornerShape(18.dp))
             .background(cardBg)
             .border(1.dp, if (isPlayingThis) accent else if (isDark) Color(0x22FFFFFF) else Color(0xFFECEFF3), RoundedCornerShape(18.dp))
