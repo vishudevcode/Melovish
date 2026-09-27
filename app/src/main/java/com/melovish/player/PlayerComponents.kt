@@ -116,6 +116,95 @@ import kotlin.math.cos
 import kotlin.math.sin
 import kotlin.math.sqrt
 
+// Moon-Clock Vector Icon matching exact reference artwork
+@Composable
+fun SleepTimerMoonClockIcon(
+    tint: Color,
+    modifier: Modifier = Modifier
+) {
+    Spacer(
+        modifier = modifier
+            .size(24.dp)
+            .drawWithCache {
+                val w = size.width
+                val h = size.height
+                val strokeW = 1.9f.dp.toPx()
+                val capRound = StrokeCap.Round
+                val joinRound = StrokeJoin.Round
+
+                // Crescent moon outline on the left
+                val moonPath = Path().apply {
+                    moveTo(w * 0.34f, h * 0.20f)
+                    cubicTo(w * 0.16f, h * 0.23f, w * 0.10f, h * 0.40f, w * 0.16f, h * 0.63f)
+                    cubicTo(w * 0.25f, h * 0.88f, w * 0.54f, h * 0.94f, w * 0.74f, h * 0.74f)
+                    cubicTo(w * 0.44f, h * 0.82f, w * 0.25f, h * 0.66f, w * 0.24f, h * 0.43f)
+                    cubicTo(w * 0.24f, h * 0.32f, w * 0.28f, h * 0.25f, w * 0.34f, h * 0.20f)
+                    close()
+                }
+
+                // Clock hand paths from center (w * 0.50f, h * 0.47f)
+                val cx = w * 0.50f
+                val cy = h * 0.47f
+                val hubRadius = w * 0.055f
+
+                // Dial tick markers around the right side
+                val ticks = listOf(
+                    Pair(Offset(cx, h * 0.18f), Offset(cx, h * 0.24f)), // 12 o'clock tick
+                    Pair(Offset(w * 0.64f, h * 0.21f), Offset(w * 0.60f, h * 0.26f)), // 1 o'clock tick
+                    Pair(Offset(w * 0.75f, h * 0.30f), Offset(w * 0.69f, h * 0.34f)), // 2 o'clock tick
+                    Pair(Offset(w * 0.80f, cy), Offset(w * 0.73f, cy)), // 3 o'clock tick
+                    Pair(Offset(w * 0.79f, h * 0.55f), Offset(w * 0.73f, h * 0.53f))  // 4 o'clock tick
+                )
+
+                onDrawBehind {
+                    // Draw Crescent Moon
+                    drawPath(
+                        path = moonPath,
+                        color = tint,
+                        style = Stroke(width = strokeW, cap = capRound, join = joinRound)
+                    )
+
+                    // Draw Center Hub Ring
+                    drawCircle(
+                        color = tint,
+                        radius = hubRadius,
+                        center = Offset(cx, cy),
+                        style = Stroke(width = strokeW)
+                    )
+
+                    // 12 o'clock Hand (pointing straight up)
+                    drawLine(
+                        color = tint,
+                        start = Offset(cx, cy - hubRadius),
+                        end = Offset(cx, h * 0.29f),
+                        strokeWidth = strokeW,
+                        cap = capRound
+                    )
+
+                    // ~2 o'clock Hand (pointing up and to the right)
+                    drawLine(
+                        color = tint,
+                        start = Offset(cx + hubRadius * 0.707f, cy - hubRadius * 0.707f),
+                        end = Offset(w * 0.59f, h * 0.39f),
+                        strokeWidth = strokeW,
+                        cap = capRound
+                    )
+
+                    // Outer dial ticks
+                    ticks.forEach { (start, end) ->
+                        drawLine(
+                            color = tint,
+                            start = start,
+                            end = end,
+                            strokeWidth = strokeW,
+                            cap = capRound
+                        )
+                    }
+                }
+            }
+    )
+}
+
 // Live Animated 4-Bar Equalizer
 @Composable
 fun LiveAudioWaveEqualizer(isAnimating: Boolean, accentColor: Color, modifier: Modifier = Modifier) {
@@ -197,7 +286,7 @@ fun GlassmorphicFolderIcon(folderColor: Color, modifier: Modifier = Modifier) {
                 quadraticBezierTo(w * 0.48f, h * 0.14f, w * 0.52f, h * 0.22f)
                 lineTo(w * 0.56f, h * 0.28f)
                 lineTo(w * 0.82f, h * 0.28f)
-                quadraticBezierTo(w * 0.88f, h * 0.28f, w * 0.88f, h * 0.35f)
+                quadraticBezierTo(w * 0.88f, h * 0.82f, w * 0.88f, h * 0.35f)
                 lineTo(w * 0.88f, h * 0.82f)
                 quadraticBezierTo(w * 0.88f, h * 0.88f, w * 0.80f, h * 0.88f)
                 lineTo(w * 0.18f, h * 0.88f)
@@ -585,137 +674,6 @@ fun HeartIconVector(isFavorite: Boolean, defaultTint: Color, modifier: Modifier 
     )
 }
 
-// Vector Sleep Timer Icon Matching Custom Clock + Zzz + Crescent Moon Badge
-@Composable
-fun SleepTimerIconVector(tint: Color, modifier: Modifier = Modifier) {
-    Spacer(
-        modifier = modifier.drawWithCache {
-            val w = size.width
-            val h = size.height
-            val strokeW = 1.75f.dp.toPx()
-            val strokeStyle = Stroke(width = strokeW, cap = StrokeCap.Round, join = StrokeJoin.Round)
-
-            val clockCenterX = w * 0.44f
-            val clockCenterY = h * 0.48f
-            val clockRadius = w * 0.32f
-            val outerRadius = w * 0.43f
-
-            onDrawBehind {
-                // 1. Concentric outer arc along the left & top
-                drawArc(
-                    color = tint,
-                    startAngle = 105f,
-                    sweepAngle = 225f,
-                    useCenter = false,
-                    topLeft = Offset(clockCenterX - outerRadius, clockCenterY - outerRadius),
-                    size = Size(outerRadius * 2f, outerRadius * 2f),
-                    style = strokeStyle
-                )
-
-                // 2. Main clock dial contour (leaving space for bottom right moon badge)
-                drawArc(
-                    color = tint,
-                    startAngle = 330f,
-                    sweepAngle = 270f,
-                    useCenter = false,
-                    topLeft = Offset(clockCenterX - clockRadius, clockCenterY - clockRadius),
-                    size = Size(clockRadius * 2f, clockRadius * 2f),
-                    style = strokeStyle
-                )
-
-                // 3. Hands: Pivot dot, 12 o'clock (vertical), and 9 o'clock (horizontal)
-                drawCircle(
-                    color = tint,
-                    radius = strokeW * 1.15f,
-                    center = Offset(clockCenterX, clockCenterY)
-                )
-                drawLine(
-                    color = tint,
-                    start = Offset(clockCenterX, clockCenterY),
-                    end = Offset(clockCenterX, clockCenterY - clockRadius * 0.58f),
-                    strokeWidth = strokeW * 1.15f,
-                    cap = StrokeCap.Round
-                )
-                drawLine(
-                    color = tint,
-                    start = Offset(clockCenterX, clockCenterY),
-                    end = Offset(clockCenterX - clockRadius * 0.44f, clockCenterY),
-                    strokeWidth = strokeW * 1.15f,
-                    cap = StrokeCap.Round
-                )
-
-                // 4. Dial ticks / dots
-                val dotRadius = strokeW * 0.45f
-                val tickDist = clockRadius * 0.72f
-                val angles = listOf(150.0, 210.0, 240.0, 300.0)
-                for (deg in angles) {
-                    val rad = Math.toRadians(deg)
-                    val dx = clockCenterX + (tickDist * cos(rad)).toFloat()
-                    val dy = clockCenterY + (tickDist * sin(rad)).toFloat()
-                    drawCircle(color = tint, radius = dotRadius, center = Offset(dx, dy))
-                }
-
-                // 5. Floating "Z"s at top right
-                // Big Z
-                val z1X = w * 0.71f
-                val z1Y = h * 0.11f
-                val z1Size = w * 0.16f
-                val pathZ1 = Path().apply {
-                    moveTo(z1X, z1Y)
-                    lineTo(z1X + z1Size, z1Y)
-                    lineTo(z1X, z1Y + z1Size)
-                    lineTo(z1X + z1Size, z1Y + z1Size)
-                }
-                drawPath(pathZ1, color = tint, style = strokeStyle)
-
-                // Small Z
-                val z2X = w * 0.58f
-                val z2Y = h * 0.23f
-                val z2Size = w * 0.11f
-                val pathZ2 = Path().apply {
-                    moveTo(z2X, z2Y)
-                    lineTo(z2X + z2Size, z2Y)
-                    lineTo(z2X, z2Y + z2Size)
-                    lineTo(z2X + z2Size, z2Y + z2Size)
-                }
-                drawPath(pathZ2, color = tint, style = strokeStyle)
-
-                // 6. Bottom Right Badge with Crescent Moon
-                val badgeCenterX = w * 0.72f
-                val badgeCenterY = h * 0.72f
-                val badgeRadius = w * 0.24f
-
-                drawCircle(
-                    color = tint,
-                    radius = badgeRadius,
-                    center = Offset(badgeCenterX, badgeCenterY),
-                    style = strokeStyle
-                )
-
-                // Crescent moon inside badge
-                val moonPath = Path().apply {
-                    val mX = badgeCenterX
-                    val mY = badgeCenterY
-                    val r = badgeRadius * 0.65f
-                    moveTo(mX - r * 0.2f, mY - r * 0.75f)
-                    cubicTo(
-                        mX + r * 0.8f, mY - r * 0.5f,
-                        mX + r * 0.8f, mY + r * 0.5f,
-                        mX - r * 0.2f, mY + r * 0.75f
-                    )
-                    cubicTo(
-                        mX + r * 0.25f, mY + r * 0.4f,
-                        mX + r * 0.25f, mY - r * 0.4f,
-                        mX - r * 0.2f, mY - r * 0.75f
-                    )
-                    close()
-                }
-                drawPath(moonPath, color = tint, style = Fill)
-            }
-        }
-    )
-}
-
 // Lyrics Dialog
 @Composable
 fun LyricsDialog(song: Song, isDark: Boolean, onDismiss: () -> Unit) {
@@ -754,38 +712,6 @@ fun LyricsDialog(song: Song, isDark: Boolean, onDismiss: () -> Unit) {
                 }
             }
         }
-    }
-}
-
-// Bolder, Wider Triple-Line Drag Handle Icon
-@Composable
-fun ReorderDragHandle(tint: Color, modifier: Modifier = Modifier) {
-    Canvas(modifier = modifier) {
-        val w = size.width
-        val h = size.height
-        val strokeW = 3.2f.dp.toPx()
-
-        drawLine(
-            color = tint,
-            start = Offset(w * 0.10f, h * 0.25f),
-            end = Offset(w * 0.90f, h * 0.25f),
-            strokeWidth = strokeW,
-            cap = StrokeCap.Round
-        )
-        drawLine(
-            color = tint,
-            start = Offset(w * 0.10f, h * 0.50f),
-            end = Offset(w * 0.90f, h * 0.50f),
-            strokeWidth = strokeW,
-            cap = StrokeCap.Round
-        )
-        drawLine(
-            color = tint,
-            start = Offset(w * 0.10f, h * 0.75f),
-            end = Offset(w * 0.90f, h * 0.75f),
-            strokeWidth = strokeW,
-            cap = StrokeCap.Round
-        )
     }
 }
 
@@ -1187,7 +1113,7 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                         )
                     }
 
-                    // Bottom Dock: Synchronized Icons with Custom Sleep Timer Vector
+                    // Bottom Dock with Uniformly Sized Moon-Clock Icon
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -1198,34 +1124,24 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(
-                            text = "❝≡",
-                            fontSize = 24.sp,
-                            fontWeight = FontWeight.Black,
-                            color = animTextPrimary,
-                            modifier = Modifier.clickable { showLyricsDialog = true }
-                        )
+                        Text("❝≡", fontSize = 24.sp, fontWeight = FontWeight.Black, color = animTextPrimary, modifier = Modifier.clickable { showLyricsDialog = true })
 
-                        // Custom Sleep Timer Vector Button
+                        // Sleep Timer: Shows the custom moon-clock icon or active countdown minutes
                         Box(
-                            modifier = Modifier.clickable { showSleepDialog = true },
+                            modifier = Modifier
+                                .size(32.dp)
+                                .clickable { showSleepDialog = true },
                             contentAlignment = Alignment.Center
                         ) {
                             if (manager.sleepTimerRemainingSeconds > 0) {
-                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                    SleepTimerIconVector(
-                                        tint = userAccent,
-                                        modifier = Modifier.size(22.dp)
-                                    )
-                                    Text(
-                                        text = "${manager.sleepTimerRemainingSeconds / 60}m",
-                                        color = userAccent,
-                                        fontSize = 9.sp,
-                                        fontWeight = FontWeight.ExtraBold
-                                    )
-                                }
+                                Text(
+                                    text = "${manager.sleepTimerRemainingSeconds / 60}m",
+                                    fontSize = 13.sp,
+                                    color = userAccent,
+                                    fontWeight = FontWeight.ExtraBold
+                                )
                             } else {
-                                SleepTimerIconVector(
+                                SleepTimerMoonClockIcon(
                                     tint = animTextPrimary,
                                     modifier = Modifier.size(24.dp)
                                 )
@@ -1244,21 +1160,9 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                             }
                         )
 
-                        Text(
-                            text = "≡♪",
-                            fontSize = 24.sp,
-                            fontWeight = FontWeight.Black,
-                            color = animTextPrimary,
-                            modifier = Modifier.clickable { showQueueSheet = true }
-                        )
+                        Text("≡♪", fontSize = 24.sp, fontWeight = FontWeight.Black, color = animTextPrimary, modifier = Modifier.clickable { showQueueSheet = true })
 
-                        Text(
-                            text = "•••",
-                            fontSize = 24.sp,
-                            fontWeight = FontWeight.Black,
-                            color = animTextPrimary,
-                            modifier = Modifier.clickable { showMenuModal = true }
-                        )
+                        Text("•••", fontSize = 24.sp, fontWeight = FontWeight.Black, color = animTextPrimary, modifier = Modifier.clickable { showMenuModal = true })
                     }
                 }
             }
@@ -1283,7 +1187,7 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                         .background(if (isDark) Color(0xFF1E293B) else Color.White)
                         .clickable(enabled = false) {}
                         .padding(22.dp)
-                ) {
+        ) {
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text(
                             text = "${activeSong.title} - ${if (activeSong.artist.isNotBlank()) activeSong.artist else "Unknown"}",
@@ -1334,7 +1238,7 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
         if (showSpeedDialog) MagneticSpeedDialog(manager = manager, onDismiss = { showSpeedDialog = false })
         if (showSleepDialog) SleepTimerDialog(manager = manager, onDismiss = { showSleepDialog = false })
 
-        // Full Page Queue Sheet with Continuous Touch-Hold Drag & Edge Auto-Scroll
+        // Full Page Queue Sheet
         AnimatedVisibility(
             visible = showQueueSheet,
             enter = slideInVertically(initialOffsetY = { it }, animationSpec = spring(stiffness = 500f, dampingRatio = 0.85f)),
