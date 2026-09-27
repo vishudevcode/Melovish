@@ -32,6 +32,7 @@ import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -51,6 +52,7 @@ import androidx.compose.ui.input.pointer.PointerInputChange
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.media3.common.util.UnstableApi
@@ -236,7 +238,7 @@ fun SettingsScreen(
             }
         }
 
-        // 3. Player Settings Section (With "Always play" integrated at the top)
+        // 3. Player Settings Section (With "Always play" integrated above Colourful Player)
         item(key = "player_settings_section", contentType = "player_settings_card") {
             Column(
                 modifier = Modifier
@@ -247,10 +249,9 @@ fun SettingsScreen(
                     .padding(18.dp)
             ) {
                 Text("Player Settings", color = textColor, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                Text("Configure playback and transition behaviors.", color = Color(0xFF64748B), fontSize = 12.sp)
+                Text("Configure playback behavior.", color = Color(0xFF64748B), fontSize = 12.sp)
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // Feature: Always play (Placed Above Colourful Player)[span_12](start_span)[span_12](end_span)
                 SettingSwitchRow(
                     icon = "🔄",
                     title = "Always play",
@@ -266,7 +267,7 @@ fun SettingsScreen(
                 SettingSwitchRow(
                     icon = "🎨",
                     title = "Colourful Player",
-                    subtitle = "Toggles dynamic Material You colors extracted from album art.",
+                    subtitle = "Player background adapts to album art.",
                     checked = manager.isColorfulPlayer,
                     textColor = textColor
                 ) {
@@ -279,7 +280,7 @@ fun SettingsScreen(
                 SettingSwitchRow(
                     icon = "⏯️",
                     title = "Resume only the first file",
-                    subtitle = "Playback will only resume for the first track in storage.",
+                    subtitle = "Playback will only resume for the first track.",
                     checked = manager.isResumeFirstOnly,
                     textColor = textColor
                 ) {
@@ -359,7 +360,6 @@ fun SettingsScreen(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // 6 Preset Pager Transitions
                 Text("Swipe Transition Effect", color = textColor, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                 Text("Select full-screen horizontal track change animation.", color = Color(0xFF64748B), fontSize = 11.sp)
                 Spacer(modifier = Modifier.height(10.dp))
@@ -400,7 +400,6 @@ fun SettingsScreen(
                 Text("Adjust audio playback settings.", color = Color(0xFF64748B), fontSize = 12.sp)
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // Lossless Audio Toggle
                 SettingSwitchRow(
                     icon = "📶",
                     title = "Lossless Audio",
@@ -414,7 +413,6 @@ fun SettingsScreen(
 
                 Spacer(modifier = Modifier.height(14.dp))
 
-                // Volume Normalization Toggle
                 SettingSwitchRow(
                     icon = "🔉",
                     title = "Volume Normalization",
@@ -427,7 +425,6 @@ fun SettingsScreen(
 
                 Spacer(modifier = Modifier.height(14.dp))
 
-                // Volume Boost Slider (Live adjustment from 100% to 200%)
                 Text("Volume Boost", color = textColor, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                 Text("Increase the maximum volume (${manager.volumeBoostLevel.toInt()}%).", color = Color(0xFF64748B), fontSize = 12.sp)
 
@@ -443,7 +440,6 @@ fun SettingsScreen(
 
                 Spacer(modifier = Modifier.height(14.dp))
 
-                // Mono Audio Toggle
                 SettingSwitchRow(
                     icon = "🎚️",
                     title = "Mono Audio",
@@ -456,7 +452,6 @@ fun SettingsScreen(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // Audio Output Hardware Routing Row[span_13](start_span)[span_13](end_span)[span_14](start_span)[span_14](end_span)[span_15](start_span)[span_15](end_span)[span_16](start_span)[span_16](end_span)
                 Text("Audio Output", color = textColor, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                 Spacer(modifier = Modifier.height(8.dp))
                 Row(
@@ -464,9 +459,9 @@ fun SettingsScreen(
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     listOf(
-                        Triple("Phone", "📱 Phone", "Built-in Speaker"),
-                        Triple("Speaker", "🔊 Speaker", "Ext / BT Speaker"),
-                        Triple("Buds", "🎧 Buds", "Earphones / BT")
+                        Triple("Phone", "📱  Phone", "Built-in Speaker"),
+                        Triple("Speaker", "🔊  Speaker", "Ext / BT Speaker"),
+                        Triple("Buds", "🎧  Buds", "Earphones / BT")
                     ).forEach { (outputKey, label, _) ->
                         val isSel = manager.selectedAudioOutput == outputKey
                         Box(
@@ -475,8 +470,8 @@ fun SettingsScreen(
                                 .height(46.dp)
                                 .clip(RoundedCornerShape(12.dp))
                                 .background(if (isSel) accent.copy(alpha = 0.12f) else if (isDark) Color(0x14FFFFFF) else Color(0xFFF1F5F9))
-                            .border(1.5.dp, if (isSel) accent else Color.Transparent, RoundedCornerShape(12.dp))
-                            .clickable { manager.setAudioOutputRouting(outputKey) },
+                                .border(1.5.dp, if (isSel) accent else Color.Transparent, RoundedCornerShape(12.dp))
+                                .clickable { manager.setAudioOutputRouting(outputKey) },
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
@@ -491,7 +486,6 @@ fun SettingsScreen(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // Equalizer Row with Adjust Button and Switch Toggle[span_17](start_span)[span_17](end_span)[span_18](start_span)[span_18](end_span)[span_19](start_span)[span_19](end_span)
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -521,7 +515,7 @@ fun SettingsScreen(
             }
         }
 
-        // 5. Content Manager Section (Hide Folders & Audio)
+        // 5. Content Manager Section (Matching Photo Exact Look)
         item(key = "content_manager_section", contentType = "content_manager_card") {
             Column(
                 modifier = Modifier
@@ -618,6 +612,7 @@ fun SettingSwitchRow(
     }
 }
 
+// Full Screen Manage Folders with Top "Hidden Folders (count) - Tap to Restore" and Bottom "Visible Folders (count) - Tap to Exclude"
 @UnstableApi
 @Composable
 fun ManageHiddenFoldersFullScreen(
@@ -627,31 +622,80 @@ fun ManageHiddenFoldersFullScreen(
 ) {
     val textColor = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A)
     val cardBg = if (isDark) Color(0xFF131B2E) else Color.White
-
-    val allFolders: ImmutableList<String> = remember(manager.rawStorageSongs.size) {
-        manager.rawStorageSongs.map { it.folderName }.distinct().sorted().toImmutableList()
+    val allFolders = remember(manager.rawStorageSongs.size) {
+        manager.rawStorageSongs.map { it.folderName }.distinct().sorted()
     }
+
+    val hiddenList = allFolders.filter { it in manager.hiddenFolders }
+    val visibleList = allFolders.filter { it !in manager.hiddenFolders }
 
     Column(modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
         Row(
-            modifier = Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 12.dp),
+            modifier = Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 6.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             GlassBackButton(isDark = isDark, onClick = onBack)
             Spacer(modifier = Modifier.width(14.dp))
             Column {
-                Text("Hide Folders", color = textColor, fontSize = 20.sp, fontWeight = FontWeight.ExtraBold)
-                Text("Manage excluded device folders", color = Color(0xFF64748B), fontSize = 12.sp)
+                Text("Manage Folders", color = textColor, fontSize = 20.sp, fontWeight = FontWeight.ExtraBold)
+                Text("Tap hidden folder to unhide, or visible to hide", color = Color(0xFF64748B), fontSize = 12.sp)
             }
         }
 
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(bottom = 80.dp),
+            contentPadding = PaddingValues(top = 8.dp, bottom = 80.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            items(items = allFolders, key = { it }) { folder ->
-                val isHidden = folder in manager.hiddenFolders
+            // Hidden Folders Section at the Top
+            if (hiddenList.isNotEmpty()) {
+                item {
+                    Text(
+                        text = "Hidden Folders (${hiddenList.size}) — Tap to Restore",
+                        color = Color(0xFFE53935),
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(top = 8.dp, bottom = 2.dp)
+                    )
+                }
+
+                items(items = hiddenList, key = { "hidden_$it" }) { folder ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(if (isDark) Color(0x1AE53935) else Color.White)
+                            .border(1.2.dp, Color(0x66E53935), RoundedCornerShape(16.dp))
+                            .clickable { manager.toggleHideFolder(folder) }
+                            .padding(horizontal = 16.dp, vertical = 14.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                            Text("📁", fontSize = 24.sp)
+                            Spacer(modifier = Modifier.width(14.dp))
+                            Column {
+                                Text(folder, color = textColor, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                                Text("Excluded • Tap to unhide", color = Color(0xFFE57373), fontSize = 11.sp)
+                            }
+                        }
+                        Text("👁️", fontSize = 16.sp)
+                    }
+                }
+            }
+
+            // Visible Folders Section Below
+            item {
+                Text(
+                    text = "Visible Folders (${visibleList.size}) — Tap to Exclude",
+                    color = textColor,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(top = 10.dp, bottom = 2.dp)
+                )
+            }
+
+            items(items = visibleList, key = { "visible_$it" }) { folder ->
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -659,23 +703,26 @@ fun ManageHiddenFoldersFullScreen(
                         .background(cardBg)
                         .border(1.dp, if (isDark) Color(0x22FFFFFF) else Color(0xFFECEFF3), RoundedCornerShape(16.dp))
                         .clickable { manager.toggleHideFolder(folder) }
-                        .padding(16.dp),
+                        .padding(horizontal = 16.dp, vertical = 14.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(folder, color = textColor, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-                    Text(
-                        text = if (isHidden) "Hidden ✕" else "Visible ✓",
-                        color = if (isHidden) Color(0xFFEF4444) else manager.accentColor,
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Bold
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                        Text("📁", fontSize = 24.sp)
+                        Spacer(modifier = Modifier.width(14.dp))
+                        Column {
+                            Text(folder, color = textColor, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                            Text("Active • Tap to hide", color = Color(0xFF64748B), fontSize = 11.sp)
+                        }
+                    }
+                    Text("✓", color = Color(0xFFE91E63), fontSize = 16.sp, fontWeight = FontWeight.Bold)
                 }
             }
         }
     }
 }
 
+// Full Screen Manage Audio Files with Top Search Bar, Hidden Audio at Top, and Visible Audio Below
 @UnstableApi
 @Composable
 fun ManageHiddenAudioFullScreen(
@@ -684,71 +731,127 @@ fun ManageHiddenAudioFullScreen(
     onBack: () -> Unit
 ) {
     val textColor = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A)
+    val cardBg = if (isDark) Color(0xFF131B2E) else Color.White
     var query by remember { mutableStateOf("") }
 
-    val filteredSongs: ImmutableList<Song> = remember(query, manager.rawStorageSongs.size) {
+    val rawSongs = manager.rawStorageSongs
+    val hiddenSongs = rawSongs.filter { it.id in manager.hiddenAudioIds }
+    val visibleSongs = rawSongs.filter { it.id !in manager.hiddenAudioIds }
+
+    val filteredHidden = remember(query, hiddenSongs) {
         val q = query.trim()
-        if (q.isEmpty()) {
-            manager.rawStorageSongs.toImmutableList()
-        } else {
-            manager.rawStorageSongs.filter {
-                it.title.contains(q, ignoreCase = true) || it.artist.contains(q, ignoreCase = true)
-            }.toImmutableList()
-        }
+        if (q.isEmpty()) hiddenSongs
+        else hiddenSongs.filter { it.title.contains(q, ignoreCase = true) || it.artist.contains(q, ignoreCase = true) }
+    }
+
+    val filteredVisible = remember(query, visibleSongs) {
+        val q = query.trim()
+        if (q.isEmpty()) visibleSongs
+        else visibleSongs.filter { it.title.contains(q, ignoreCase = true) || it.artist.contains(q, ignoreCase = true) }
     }
 
     Column(modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
         Row(
-            modifier = Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 12.dp),
+            modifier = Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 6.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             GlassBackButton(isDark = isDark, onClick = onBack)
             Spacer(modifier = Modifier.width(14.dp))
             Column {
-                Text("Hide Audio Files", color = textColor, fontSize = 20.sp, fontWeight = FontWeight.ExtraBold)
-                Text("Select individual tracks to hide or restore", color = Color(0xFF64748B), fontSize = 12.sp)
+                Text("Manage Audio Files", color = textColor, fontSize = 20.sp, fontWeight = FontWeight.ExtraBold)
+                Text("Search and tap files to hide or unhide", color = Color(0xFF64748B), fontSize = 12.sp)
             }
         }
 
         OutlinedTextField(
             value = query,
             onValueChange = { query = it },
-            placeholder = { Text("Search songs...") },
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(16.dp),
+            placeholder = { Text("Search songs to hide or unhide...", color = Color(0xFF94A3B8)) },
+            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+            shape = RoundedCornerShape(18.dp),
+            colors = TextFieldDefaults.colors(
+                focusedContainerColor = cardBg,
+                unfocusedContainerColor = cardBg,
+                focusedIndicatorColor = manager.accentColor,
+                unfocusedIndicatorColor = if (isDark) Color(0x22FFFFFF) else Color(0xFFE2E8F0)
+            ),
             singleLine = true
         )
 
-        Spacer(modifier = Modifier.height(14.dp))
-
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(bottom = 80.dp),
+            contentPadding = PaddingValues(top = 8.dp, bottom = 80.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            items(items = filteredSongs, key = { it.id }) { song ->
-                val isHidden = song.id in manager.hiddenAudioIds
+            // Hidden Audio Section at Top
+            if (filteredHidden.isNotEmpty()) {
+                item {
+                    Text(
+                        text = "Hidden Audio (${filteredHidden.size}) — Tap to Restore",
+                        color = Color(0xFFE53935),
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(top = 8.dp, bottom = 2.dp)
+                    )
+                }
+
+                items(items = filteredHidden, key = { "hidden_${it.id}" }) { song ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(if (isDark) Color(0x1AE53935) else Color.White)
+                            .border(1.2.dp, Color(0x66E53935), RoundedCornerShape(16.dp))
+                            .clickable { manager.toggleHideAudio(song.id) }
+                            .padding(horizontal = 16.dp, vertical = 14.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                            Text("🎵", fontSize = 22.sp)
+                            Spacer(modifier = Modifier.width(14.dp))
+                            Column {
+                                Text(song.title, color = textColor, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text("${formatFileSize(song.size)} • ${if (song.artist.isNotBlank()) song.artist else "Unknown"} • Hidden", color = Color(0xFFE57373), fontSize = 11.sp, maxLines = 1)
+                            }
+                        }
+                        Text("👁️", fontSize = 16.sp)
+                    }
+                }
+            }
+
+            // Visible Audio Section Below
+            item {
+                Text(
+                    text = "Visible Audio (${filteredVisible.size}) — Tap to Exclude",
+                    color = textColor,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(top = 10.dp, bottom = 2.dp)
+                )
+            }
+
+            items(items = filteredVisible, key = { "visible_${it.id}" }) { song ->
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(16.dp))
-                        .background(if (isDark) Color(0xFF131B2E) else Color.White)
+                        .background(cardBg)
                         .border(1.dp, if (isDark) Color(0x22FFFFFF) else Color(0xFFECEFF3), RoundedCornerShape(16.dp))
                         .clickable { manager.toggleHideAudio(song.id) }
-                        .padding(14.dp),
+                        .padding(horizontal = 16.dp, vertical = 14.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(song.title, color = textColor, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
-                        Text(if (song.artist.isNotBlank()) song.artist else "Unknown Artist", color = Color(0xFF64748B), fontSize = 11.sp, maxLines = 1)
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                        Text("🎵", fontSize = 22.sp)
+                        Spacer(modifier = Modifier.width(14.dp))
+                        Column {
+                            Text(song.title, color = textColor, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text("${formatFileSize(song.size)} • ${if (song.artist.isNotBlank()) song.artist else "Unknown"}", color = Color(0xFF64748B), fontSize = 11.sp, maxLines = 1)
+                        }
                     }
-                    Text(
-                        text = if (isHidden) "Hidden ✕" else "Visible ✓",
-                        color = if (isHidden) Color(0xFFEF4444) else manager.accentColor,
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Bold
-                    )
+                    Text("✓", color = Color(0xFFE91E63), fontSize = 16.sp, fontWeight = FontWeight.Bold)
                 }
             }
         }
