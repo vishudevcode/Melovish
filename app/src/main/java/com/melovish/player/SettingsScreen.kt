@@ -57,8 +57,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.media3.common.util.UnstableApi
 import coil.compose.AsyncImage
-import kotlinx.collections.immutable.ImmutableList
-import kotlinx.collections.immutable.toImmutableList
 import java.io.File
 import kotlin.math.atan2
 import kotlin.math.cos
@@ -620,7 +618,7 @@ fun SettingsScreen(
             }
         }
 
-        // 6. Haptics & Feedback Section (Placed right below Content Manager)
+        // 6. Haptics & Feedback Section
         item(key = "haptics_section", contentType = "haptics_card") {
             Column(
                 modifier = Modifier
@@ -690,7 +688,6 @@ fun SettingSwitchRow(
     }
 }
 
-// Full Screen Manage Folders with matching GlassmorphicFolderIcon and row heights
 @UnstableApi
 @Composable
 fun ManageHiddenFoldersFullScreen(
@@ -726,7 +723,7 @@ fun ManageHiddenFoldersFullScreen(
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             if (hiddenList.isNotEmpty()) {
-                item {
+                item(key = "header_hidden_folders") {
                     Text(
                         text = "Hidden Folders (${hiddenList.size}) — Tap to Restore",
                         color = Color(0xFFE53935),
@@ -765,7 +762,7 @@ fun ManageHiddenFoldersFullScreen(
                 }
             }
 
-            item {
+            item(key = "header_visible_folders") {
                 Text(
                     text = "Visible Folders (${visibleList.size}) — Tap to Exclude",
                     color = textColor,
@@ -806,7 +803,6 @@ fun ManageHiddenFoldersFullScreen(
     }
 }
 
-// Full Screen Manage Audio Files with matching card aesthetics
 @UnstableApi
 @Composable
 fun ManageHiddenAudioFullScreen(
@@ -868,7 +864,7 @@ fun ManageHiddenAudioFullScreen(
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             if (filteredHidden.isNotEmpty()) {
-                item {
+                item(key = "header_hidden_audio") {
                     Text(
                         text = "Hidden Audio (${filteredHidden.size}) — Tap to Restore",
                         color = Color(0xFFE53935),
@@ -898,7 +894,7 @@ fun ManageHiddenAudioFullScreen(
                             Spacer(modifier = Modifier.width(14.dp))
                             Column {
                                 Text(song.title, color = textColor, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                Text("${formatFileSize(song.size)} • ${if (song.artist.isNotBlank()) song.artist else "Unknown"} • Hidden", color = Color(0xFFE57373), fontSize = 12.sp, maxLines = 1)
+                                Text("${song.formattedSize} • ${song.displayArtist} • Hidden", color = Color(0xFFE57373), fontSize = 12.sp, maxLines = 1)
                             }
                         }
                         Text("👁️", fontSize = 18.sp)
@@ -906,7 +902,7 @@ fun ManageHiddenAudioFullScreen(
                 }
             }
 
-            item {
+            item(key = "header_visible_audio") {
                 Text(
                     text = "Visible Audio (${filteredVisible.size}) — Tap to Exclude",
                     color = textColor,
@@ -936,7 +932,7 @@ fun ManageHiddenAudioFullScreen(
                         Spacer(modifier = Modifier.width(14.dp))
                         Column {
                             Text(song.title, color = textColor, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            Text("${formatFileSize(song.size)} • ${if (song.artist.isNotBlank()) song.artist else "Unknown"}", color = Color(0xFF64748B), fontSize = 12.sp, maxLines = 1)
+                            Text("${song.formattedSize} • ${song.displayArtist}", color = Color(0xFF64748B), fontSize = 12.sp, maxLines = 1)
                         }
                     }
                     Text("✓", color = Color(0xFFE91E63), fontSize = 18.sp, fontWeight = FontWeight.Bold)
@@ -995,7 +991,7 @@ fun CircularColorPickerDialog(
                                     val dx = (touch.x - center.x).toDouble()
                                     val dy = (touch.y - center.y).toDouble()
                                     val dist = sqrt(dx * dx + dy * dy)
-                                    val radius = (size.width.toFloat() / 2f).toDouble()
+                                    val radius = (size.width / 2f).toDouble()
                                     if (dist >= radius * 0.65) {
                                         var angle = Math.toDegrees(atan2(dy, dx)).toFloat()
                                         if (angle < 0f) angle += 360f

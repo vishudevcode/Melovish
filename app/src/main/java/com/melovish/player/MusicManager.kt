@@ -1,6 +1,5 @@
 package com.melovish.player
 
-import android.app.Activity
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -25,16 +24,13 @@ import android.media.audiofx.LoudnessEnhancer
 import android.media.audiofx.Virtualizer
 import android.net.Uri
 import android.os.Build
-import android.os.CombinedVibration
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
 import android.provider.MediaStore
 import android.provider.Settings
 import android.util.LruCache
-import android.view.HapticFeedbackConstants
 import android.widget.Toast
-import androidx.activity.result.IntentSenderRequest
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
@@ -64,12 +60,16 @@ import androidx.media3.exoplayer.audio.DefaultAudioSink
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaStyleNotificationHelper
 import kotlinx.collections.immutable.toImmutableList
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.jaudiotagger.audio.AudioFileIO
@@ -84,10 +84,6 @@ import java.text.SimpleDateFormat
 import java.util.Locale
 import kotlin.math.ln
 import kotlin.math.pow
-
-enum class GridViewMode {
-    LIST, GRID_2, GRID_3, GRID_4, HERO_GRID
-}
 
 data class PendingTagWrite(
     val song: Song,
@@ -107,19 +103,12 @@ class MusicManager(private val context: Context) {
             private set
     }
 
-    private var attachedActivity: MainActivity? = null
     private var pendingStorageWrite: PendingTagWrite? = null
 
-    fun attachActivity(activity: MainActivity) {
-        attachedActivity = activity
-    }
-
-    fun detachActivity() {
-        attachedActivity = null
-    }
-
     private val exceptionHandler = CoroutineExceptionHandler { _, throwable ->
-        throwable.printStackTrace()
+        if (throwable !is CancellationException) {
+            throwable.printStackTrace()
+        }
     }
 
     val managerScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate + exceptionHandler)
@@ -127,7 +116,7 @@ class MusicManager(private val context: Context) {
     private val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
     private val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
-    // Haptics service
+    // Decoupled System Haptics (Zero Activity Context Leak)
     private val vibrator: Vibrator? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
         val vm = context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as? VibratorManager
         vm?.defaultVibrator
@@ -141,21 +130,6 @@ class MusicManager(private val context: Context) {
     fun triggerHapticFeedback(isStrong: Boolean = false) {
         if (!isHapticsEnabled) return
         try {
-            val actView = attachedActivity?.window?.decorView
-            if (actView != null) {
-                val constant = if (isStrong) {
-                    HapticFeedbackConstants.LONG_PRESS
-                } else {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
-                        HapticFeedbackConstants.KEYBOARD_TAP
-                    } else {
-                        HapticFeedbackConstants.VIRTUAL_KEY
-                    }
-                }
-                actView.performHapticFeedback(constant)
-                return
-            }
-
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 val effect = VibrationEffect.createPredefined(
                     if (isStrong) VibrationEffect.EFFECT_CLICK else VibrationEffect.EFFECT_TICK
@@ -220,6 +194,10 @@ class MusicManager(private val context: Context) {
     private var virtualizer: Virtualizer? = null
     private var loudnessEnhancer: LoudnessEnhancer? = null
 
+    // High-performance StateFlow exposure for 120 FPS UI synchronization
+    private val _playbackUiState = MutableStateFlow(PlaybackUiState())
+    val playbackUiState: StateFlow<PlaybackUiState> = _playbackUiState.asStateFlow()
+
     var currentSong by mutableStateOf<Song?>(null)
     var isPlaying by mutableStateOf(false)
     var currentPosition by mutableLongStateOf(0L)
@@ -248,7 +226,6 @@ class MusicManager(private val context: Context) {
     val folderColors = mutableStateMapOf<String, Long>()
     val parsedArtistsList = mutableStateListOf<ArtistItem>()
 
-    // View Modes
     private fun parseGridViewMode(saved: String?): GridViewMode {
         return try {
             if (saved == null || saved == "DETAILED_LIST") GridViewMode.LIST
@@ -265,7 +242,6 @@ class MusicManager(private val context: Context) {
     var artistInnerViewMode by mutableStateOf(parseGridViewMode(prefs.getString("pref_view_artist_inner", GridViewMode.LIST.name)))
     var playlistInnerViewMode by mutableStateOf(parseGridViewMode(prefs.getString("pref_view_playlist_inner", GridViewMode.LIST.name)))
 
-    // Sort Orders
     var currentSortOrder by mutableStateOf(
         try {
             SongSortOrder.valueOf(prefs.getString("saved_song_sort", SongSortOrder.A_TO_Z.name) ?: SongSortOrder.A_TO_Z.name)
@@ -342,7 +318,6 @@ class MusicManager(private val context: Context) {
     var volumeBoostLevel by mutableFloatStateOf(prefs.getFloat("vol_boost", 100f))
     var isMonoAudio by mutableStateOf(prefs.getBoolean("mono", false))
 
-    // Audio Routing System
     var userSelectedAudioOutput by mutableStateOf(prefs.getString("audio_output_manual", "Auto") ?: "Auto")
     var effectiveAudioOutput by mutableStateOf("Phone")
 
@@ -377,6 +352,7 @@ class MusicManager(private val context: Context) {
     var profileEmail by mutableStateOf(prefs.getString("prof_email", "") ?: "")
     var profileImagePath by mutableStateOf(prefs.getString("prof_image_path", null))
 
+    // Hardware-accelerated memory cache to prevent Out-Of-Memory (OOM) errors
     private val maxCacheSize = (Runtime.getRuntime().maxMemory() / 1024 / 8).toInt().coerceAtLeast(1024 * 16)
     private val memoryCache = object : LruCache<Long, Bitmap>(maxCacheSize) {
         override fun sizeOf(key: Long, bitmap: Bitmap): Int = bitmap.byteCount / 1024
@@ -409,10 +385,24 @@ class MusicManager(private val context: Context) {
         registerAudioDeviceCallback()
         updateDeviceRoutingAndHighlight()
 
-        // Background asynchronous instant cache loading for zero startup delay
         managerScope.launch(Dispatchers.IO) {
             loadInstantCacheAsync()
         }
+    }
+
+    private fun syncUiState() {
+        _playbackUiState.value = PlaybackUiState(
+            currentSong = currentSong,
+            isPlaying = isPlaying,
+            currentPositionMs = currentPosition,
+            durationMs = duration,
+            playbackSpeed = playbackSpeed,
+            repeatMode = repeatModeState,
+            isShuffleOn = isShuffleOn,
+            effectiveOutput = effectiveAudioOutput,
+            isScanning = isScanningStorage,
+            isInitialLoading = isInitialLoading
+        )
     }
 
     private fun initDefaultEqualizerState() {
@@ -510,6 +500,7 @@ class MusicManager(private val context: Context) {
 
             override fun onIsPlayingChanged(playing: Boolean) {
                 isPlaying = playing
+                syncUiState()
                 updateNotification()
                 if (playing && isFadeOnStart && !isCrossfadeEnabled) {
                     triggerFadeIn(1000L)
@@ -523,6 +514,7 @@ class MusicManager(private val context: Context) {
                     if (sessionId != C.AUDIO_SESSION_ID_UNSET && sessionId != 0) {
                         bindHardwareAudioEffects(sessionId)
                     }
+                    syncUiState()
                     updateNotification()
                     updateDeviceRoutingAndHighlight()
                 } else if (state == Player.STATE_ENDED) {
@@ -547,6 +539,7 @@ class MusicManager(private val context: Context) {
                     updateNotification()
                     applyVolumeNormalization()
                     updateDeviceRoutingAndHighlight()
+                    syncUiState()
 
                     isFadingOutForCrossfade = false
                     if (isCrossfadeEnabled) {
@@ -897,6 +890,7 @@ class MusicManager(private val context: Context) {
     fun updateDeviceRoutingAndHighlight() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
             effectiveAudioOutput = "Phone"
+            syncUiState()
             return
         }
 
@@ -983,6 +977,7 @@ class MusicManager(private val context: Context) {
                     }
                 }
             }
+            syncUiState()
         } catch (e: Exception) {
             e.printStackTrace()
         }
@@ -995,7 +990,6 @@ class MusicManager(private val context: Context) {
         }
     }
 
-    // View Modes
     fun updateHomeViewMode(mode: GridViewMode) {
         homeViewMode = mode
         managerScope.launch(Dispatchers.IO) {
@@ -1074,7 +1068,6 @@ class MusicManager(private val context: Context) {
         updatePlaylistInnerViewMode(modes[nextIdx])
     }
 
-    // Sort Orders
     fun setPersistentSongSort(order: SongSortOrder) {
         currentSortOrder = order
         managerScope.launch(Dispatchers.IO) {
@@ -1161,14 +1154,13 @@ class MusicManager(private val context: Context) {
         }
     }
 
+    // Zero-I/O in-memory position tracker (eliminates flash write contention during playback)
     private fun startPositionTracker() {
         managerScope.launch {
             while (true) {
                 if (isPlaying) {
                     currentPosition = player.currentPosition.coerceAtLeast(0L)
-                    currentSong?.let { song ->
-                        saveSongPosition(song.id, currentPosition)
-                    }
+                    _playbackUiState.value = _playbackUiState.value.copy(currentPositionMs = currentPosition)
 
                     if (isCrossfadeEnabled && duration > 0L) {
                         val remainingMs = duration - currentPosition
@@ -1208,23 +1200,29 @@ class MusicManager(private val context: Context) {
     private suspend fun loadInstantCacheAsync() = withContext(Dispatchers.IO) {
         val cachedJson = prefs.getString("cached_songs_catalog", null)
         if (cachedJson == null) {
-            withContext(Dispatchers.Main.immediate) { isInitialLoading = false }
+            withContext(Dispatchers.Main.immediate) {
+                isInitialLoading = false
+                syncUiState()
+            }
             return@withContext
         }
         try {
             val arr = JSONArray(cachedJson)
-            val list = ArrayList<Song>()
+            val list = ArrayList<Song>(arr.length())
             for (i in 0 until arr.length()) {
                 val o = arr.getJSONObject(i)
+                val durationVal = o.getLong("duration")
+                val sizeVal = o.getLong("size")
+                val artistVal = o.getString("artist")
                 list.add(
                     Song(
                         id = o.getLong("id"),
                         title = o.getString("title"),
-                        artist = o.getString("artist"),
+                        artist = artistVal,
                         album = o.getString("album"),
                         albumId = o.getLong("albumId"),
-                        duration = o.getLong("duration"),
-                        size = o.getLong("size"),
+                        duration = durationVal,
+                        size = sizeVal,
                         uri = Uri.parse(o.getString("uri")),
                         path = o.getString("path"),
                         folderName = o.getString("folderName"),
@@ -1237,24 +1235,29 @@ class MusicManager(private val context: Context) {
                         sampleRateHz = o.optInt("sampleRateHz", 44100),
                         bitDepth = o.optInt("bitDepth", 16),
                         replayGainTrackDb = -3.0f,
-                        replayGainAlbumDb = -3.0f
+                        replayGainAlbumDb = -3.0f,
+                        formattedDuration = formatTime(durationVal),
+                        formattedSize = formatFileSize(sizeVal),
+                        displayArtist = if (artistVal.isNotBlank() && !artistVal.equals("<unknown>", ignoreCase = true)) artistVal else "Unknown Artist"
                     )
                 )
             }
-            if (list.isNotEmpty()) {
-                withContext(Dispatchers.Main.immediate) {
+            withContext(Dispatchers.Main.immediate) {
+                if (list.isNotEmpty()) {
                     allSongs.clear()
                     allSongs.addAll(list)
                     rawStorageSongs.clear()
                     rawStorageSongs.addAll(list)
                     refreshHistory()
-                    isInitialLoading = false
                 }
-            } else {
-                withContext(Dispatchers.Main.immediate) { isInitialLoading = false }
+                isInitialLoading = false
+                syncUiState()
             }
         } catch (_: Exception) {
-            withContext(Dispatchers.Main.immediate) { isInitialLoading = false }
+            withContext(Dispatchers.Main.immediate) {
+                isInitialLoading = false
+                syncUiState()
+            }
         }
     }
 
@@ -1293,6 +1296,7 @@ class MusicManager(private val context: Context) {
     fun scanStorage() {
         if (isScanningStorage) return
         isScanningStorage = true
+        syncUiState()
 
         managerScope.launch(Dispatchers.IO) {
             val songList = ArrayList<Song>()
@@ -1389,7 +1393,10 @@ class MusicManager(private val context: Context) {
                                 sampleRateHz = sampleRate,
                                 bitDepth = bitDepth,
                                 replayGainTrackDb = -3.0f,
-                                replayGainAlbumDb = -3.0f
+                                replayGainAlbumDb = -3.0f,
+                                formattedDuration = formatTime(durationMs),
+                                formattedSize = formatFileSize(fileSizeBytes),
+                                displayArtist = if (customArtist.isNotBlank()) customArtist else "Unknown Artist"
                             )
                         )
                     }
@@ -1416,6 +1423,7 @@ class MusicManager(private val context: Context) {
                 parsedArtistsList.addAll(parsed)
                 isScanningStorage = false
                 isInitialLoading = false
+                syncUiState()
             }
             persistSongsCache(visibleSongs)
         }
@@ -1468,6 +1476,7 @@ class MusicManager(private val context: Context) {
             recordSongPlayed(song)
             applyVolumeNormalization()
             updateNotification()
+            syncUiState()
             return
         }
 
@@ -1501,6 +1510,7 @@ class MusicManager(private val context: Context) {
                 recordSongPlayed(song)
                 applyVolumeNormalization()
                 updateNotification()
+                syncUiState()
             }
         }
     }
@@ -1557,6 +1567,7 @@ class MusicManager(private val context: Context) {
             if (isFadeOnStart) triggerFadeIn(1000L)
             player.play()
         }
+        syncUiState()
         updateNotification()
     }
 
@@ -1566,6 +1577,7 @@ class MusicManager(private val context: Context) {
         } else if (repeatModeState == Player.REPEAT_MODE_ALL && playbackQueue.isNotEmpty()) {
             player.seekTo(0, 0L)
         }
+        syncUiState()
         updateNotification()
     }
 
@@ -1575,6 +1587,7 @@ class MusicManager(private val context: Context) {
         } else {
             player.seekToPreviousMediaItem()
         }
+        syncUiState()
         updateNotification()
     }
 
@@ -1582,6 +1595,7 @@ class MusicManager(private val context: Context) {
         currentPosition = positionMs.coerceIn(0L, duration)
         player.seekTo(currentPosition)
         currentSong?.let { saveSongPosition(it.id, currentPosition) }
+        syncUiState()
     }
 
     fun toggleRepeat() {
@@ -1591,11 +1605,13 @@ class MusicManager(private val context: Context) {
             else -> Player.REPEAT_MODE_ALL
         }
         player.repeatMode = repeatModeState
+        syncUiState()
     }
 
     fun toggleShuffle() {
         isShuffleOn = !isShuffleOn
         player.shuffleModeEnabled = isShuffleOn
+        syncUiState()
     }
 
     fun toggleFavorite(song: Song) {
@@ -1630,6 +1646,7 @@ class MusicManager(private val context: Context) {
             customPlaylists[favIndex] = existing.copy(songIds = mutableIds.toImmutableList())
         }
         savePlaylists()
+        syncUiState()
     }
 
     fun setMagneticSpeed(targetSpeed: Float): Float {
@@ -1645,6 +1662,7 @@ class MusicManager(private val context: Context) {
         }
         playbackSpeed = finalSpeed
         player.playbackParameters = PlaybackParameters(finalSpeed)
+        syncUiState()
         return finalSpeed
     }
 
@@ -1661,6 +1679,7 @@ class MusicManager(private val context: Context) {
                 sleepTimerRemainingSeconds--
             }
             player.pause()
+            syncUiState()
         }
     }
 
@@ -1681,11 +1700,14 @@ class MusicManager(private val context: Context) {
                 sleepTimerRemainingSeconds--
             }
             player.pause()
+            syncUiState()
         }
     }
 
     fun saveSongPosition(songId: Long, positionMs: Long) {
-        prefs.edit().putLong("last_pos_$songId", positionMs).putLong("last_active_song_id", songId).apply()
+        managerScope.launch(Dispatchers.IO) {
+            prefs.edit().putLong("last_pos_$songId", positionMs).putLong("last_active_song_id", songId).apply()
+        }
     }
 
     fun getSavedPosition(songId: Long): Long {
@@ -1822,40 +1844,16 @@ class MusicManager(private val context: Context) {
         savePlaylists()
     }
 
-    // =========================================================================
-    // NATIVE SYSTEM STORAGE WRITE CONFIRMATION & EXECUTION ENGINE
-    // =========================================================================
-
-    fun requestFileWritePermissionAndSave(
+    fun preparePendingStorageWrite(
         song: Song,
         newTitle: String,
         newArtist: String,
         newAlbum: String,
         newDate: String,
         customCoverUri: Uri?
-    ) {
+    ): Uri {
         pendingStorageWrite = PendingTagWrite(song, newTitle, newArtist, newAlbum, newDate, customCoverUri)
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            try {
-                val writePendingIntent = MediaStore.createWriteRequest(
-                    context.contentResolver,
-                    listOf(song.uri)
-                )
-                val intentSenderRequest = IntentSenderRequest.Builder(writePendingIntent.intentSender).build()
-                val act = attachedActivity
-                if (act != null) {
-                    act.writeRequestLauncher.launch(intentSenderRequest)
-                } else {
-                    executePendingStorageWrite()
-                }
-            } catch (e: Exception) {
-                e.printStackTrace()
-                executePendingStorageWrite()
-            }
-        } else {
-            executePendingStorageWrite()
-        }
+        return song.uri
     }
 
     fun executePendingStorageWrite() {
@@ -1877,7 +1875,7 @@ class MusicManager(private val context: Context) {
 
                     val opts = BitmapFactory.Options().apply {
                         inSampleSize = 2
-                        inPreferredConfig = Bitmap.Config.RGB_565
+                        inPreferredConfig = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) Bitmap.Config.HARDWARE else Bitmap.Config.RGB_565
                     }
                     val bmp = BitmapFactory.decodeFile(targetFile.absolutePath, opts)
                     if (bmp != null) memoryCache.put(task.song.id, bmp)
@@ -1987,7 +1985,8 @@ class MusicManager(private val context: Context) {
                 album = task.newAlbum,
                 releaseDate = task.newDate,
                 path = finalPath,
-                customCoverPath = coverPath
+                customCoverPath = coverPath,
+                displayArtist = if (task.newArtist.isNotBlank()) task.newArtist else "Unknown Artist"
             )
 
             withContext(Dispatchers.Main.immediate) {
@@ -1999,9 +1998,10 @@ class MusicManager(private val context: Context) {
                 if (qIdx != -1) playbackQueue[qIdx] = updated
                 if (currentSong?.id == task.song.id) currentSong = updated
                 updateNotification()
+                syncUiState()
                 Toast.makeText(
                     context,
-                    if (fileUpdatedOnDisk) "Tags & physical file updated on storage!" else "Metadata updated in app",
+                    if (fileUpdatedOnDisk) "Tags & file updated on storage!" else "Metadata updated",
                     Toast.LENGTH_SHORT
                 ).show()
             }
@@ -2018,17 +2018,6 @@ class MusicManager(private val context: Context) {
 
     fun clearPendingStorageWrite() {
         pendingStorageWrite = null
-    }
-
-    fun updateSongMetadata(
-        song: Song,
-        newTitle: String,
-        newArtist: String,
-        newAlbum: String,
-        newDate: String,
-        customCoverUri: Uri?
-    ) {
-        requestFileWritePermissionAndSave(song, newTitle, newArtist, newAlbum, newDate, customCoverUri)
     }
 
     private fun recordSongPlayed(song: Song) {
@@ -2213,7 +2202,7 @@ class MusicManager(private val context: Context) {
                     BitmapFactory.decodeFile(file.absolutePath, this)
                     inSampleSize = calculateInSampleSize(this, 256, 256)
                     inJustDecodeBounds = false
-                    inPreferredConfig = Bitmap.Config.RGB_565
+                    inPreferredConfig = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) Bitmap.Config.HARDWARE else Bitmap.Config.RGB_565
                 }
                 resultBitmap = BitmapFactory.decodeFile(file.absolutePath, opts)
             }
@@ -2226,7 +2215,7 @@ class MusicManager(private val context: Context) {
                 context.contentResolver.openInputStream(uri)?.use { stream ->
                     val opts = BitmapFactory.Options().apply {
                         inSampleSize = 2
-                        inPreferredConfig = Bitmap.Config.RGB_565
+                        inPreferredConfig = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) Bitmap.Config.HARDWARE else Bitmap.Config.RGB_565
                     }
                     resultBitmap = BitmapFactory.decodeStream(stream, null, opts)
                 }
@@ -2244,7 +2233,7 @@ class MusicManager(private val context: Context) {
                         BitmapFactory.decodeByteArray(artBytes, 0, artBytes.size, this)
                         inSampleSize = calculateInSampleSize(this, 256, 256)
                         inJustDecodeBounds = false
-                        inPreferredConfig = Bitmap.Config.RGB_565
+                        inPreferredConfig = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) Bitmap.Config.HARDWARE else Bitmap.Config.RGB_565
                     }
                     resultBitmap = BitmapFactory.decodeByteArray(artBytes, 0, artBytes.size, opts)
                 }
@@ -2315,7 +2304,7 @@ class MusicManager(private val context: Context) {
         val builder = NotificationCompat.Builder(context, MediaPlaybackService.NOTIF_CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_media_play)
             .setContentTitle(song.title)
-            .setContentText(if (song.artist.isNotBlank()) song.artist else "Unknown Artist")
+            .setContentText(song.displayArtist)
             .setSubText(song.album)
             .setContentIntent(contentPendingIntent)
             .setStyle(mediaStyle)

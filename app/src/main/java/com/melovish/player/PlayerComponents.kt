@@ -64,7 +64,6 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -110,7 +109,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import java.util.Locale
 import kotlin.math.abs
-import kotlin.math.roundToInt
 
 // Live Animated 4-Bar Equalizer
 @Composable
@@ -364,16 +362,6 @@ fun DefaultProfileAvatar(modifier: Modifier = Modifier, backgroundColor: Color =
         }
     )
 }
-
-@Immutable
-data class MaterialYouPalette(
-    val bgTop: Color,
-    val bgBottom: Color,
-    val primaryAccent: Color,
-    val surface: Color,
-    val textPrimary: Color,
-    val textSecondary: Color
-)
 
 suspend fun extractMaterialYouPaletteAsync(bitmap: Bitmap?, isDarkMode: Boolean, fallbackAccent: Color): MaterialYouPalette = withContext(Dispatchers.Default) {
     if (bitmap == null) {
@@ -696,7 +684,7 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
     val userAccent = manager.accentColor
     val monoColor = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A)
 
-    val currentQueue = remember(manager.playbackQueue.size, manager.playbackQueue.toList()) {
+    val currentQueue = remember(manager.playbackQueue.size) {
         if (manager.playbackQueue.isNotEmpty()) manager.playbackQueue.toList()
         else if (manager.currentSong != null) listOf(manager.currentSong!!)
         else emptyList()
@@ -839,7 +827,7 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
             pageSpacing = 16.dp,
             flingBehavior = PagerDefaults.flingBehavior(
                 state = pagerState,
-                snapAnimationSpec = spring(stiffness = 550f, dampingRatio = 0.82f)
+                snapAnimationSpec = spring(stiffness = 450f, dampingRatio = 0.82f)
             ),
             modifier = Modifier.fillMaxSize()
         ) { pageIndex ->
@@ -1008,7 +996,7 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                         )
                         Spacer(modifier = Modifier.height(3.dp))
                         Text(
-                            text = "${formatFileSize(pageSong.size)} • ${if (pageSong.artist.isNotBlank()) pageSong.artist else "Unknown Artist"}",
+                            text = "${pageSong.formattedSize} • ${pageSong.displayArtist}",
                             color = animTextSecondary,
                             fontSize = 13.sp,
                             fontWeight = FontWeight.Medium,
@@ -1199,7 +1187,7 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                 ) {
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text(
-                            text = "${activeSong.title} - ${if (activeSong.artist.isNotBlank()) activeSong.artist else "Unknown"}",
+                            text = "${activeSong.title} - ${activeSong.displayArtist}",
                             fontSize = 17.sp,
                             fontWeight = FontWeight.Bold,
                             color = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A),
@@ -1208,7 +1196,7 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                         )
                         Spacer(modifier = Modifier.height(6.dp))
 
-                        MenuRow("👤", "Artist: ${if (activeSong.artist.isNotBlank()) activeSong.artist else "Unknown"}", isDark) { showMenuModal = false }
+                        MenuRow("👤", "Artist: ${activeSong.displayArtist}", isDark) { showMenuModal = false }
                         MenuRow("📜", "Lyrics", isDark) { showMenuModal = false; showLyricsDialog = true }
                         MenuRow("🔗", "Share", isDark) {
                             showMenuModal = false
@@ -1249,8 +1237,8 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
 
         AnimatedVisibility(
             visible = showQueueSheet,
-            enter = slideInVertically(initialOffsetY = { it }, animationSpec = spring(stiffness = 500f, dampingRatio = 0.85f)),
-            exit = slideOutVertically(targetOffsetY = { it }, animationSpec = spring(stiffness = 500f, dampingRatio = 0.85f)),
+            enter = slideInVertically(initialOffsetY = { it }, animationSpec = spring(stiffness = 450f, dampingRatio = 0.82f)),
+            exit = slideOutVertically(targetOffsetY = { it }, animationSpec = spring(stiffness = 450f, dampingRatio = 0.82f)),
             modifier = Modifier.fillMaxSize().zIndex(20f)
         ) {
             QueueSheet(
@@ -1435,8 +1423,8 @@ fun QueueSheet(
                             .fillMaxWidth()
                             .animateItemPlacement(
                                 animationSpec = spring(
-                                    stiffness = 550f,
-                                    dampingRatio = 0.85f
+                                    stiffness = 450f,
+                                    dampingRatio = 0.82f
                                 )
                             )
                             .zIndex(if (isDraggingThis) 10f else 1f)
@@ -1495,7 +1483,7 @@ fun QueueSheet(
                             )
                             Spacer(modifier = Modifier.height(2.dp))
                             Text(
-                                text = "${formatFileSize(song.size)} • ${if (song.artist.isNotBlank()) song.artist else "Unknown Artist"}",
+                                text = "${song.formattedSize} • ${song.displayArtist}",
                                 color = subTextColor,
                                 fontSize = 12.sp,
                                 maxLines = 1,
@@ -1980,7 +1968,7 @@ fun MiniPlayerDock(manager: MusicManager, onClick: () -> Unit) {
             Spacer(modifier = Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(song.title, color = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A), fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text("${formatFileSize(song.size)} • ${if (song.artist.isNotBlank()) song.artist else "Melovish"}", color = accent, fontSize = 11.sp, maxLines = 1)
+                Text("${song.formattedSize} • ${if (song.artist.isNotBlank()) song.artist else "Melovish"}", color = accent, fontSize = 11.sp, maxLines = 1)
             }
             Box(modifier = Modifier.size(38.dp).clip(CircleShape).background(accent).clickable {
                 manager.triggerHapticFeedback(true)
@@ -2323,7 +2311,6 @@ fun MagneticSpeedDialog(manager: MusicManager, onDismiss: () -> Unit) {
                 )
                 Spacer(modifier = Modifier.height(20.dp))
 
-                // Track with Prominent Indicator Dots
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -2356,7 +2343,6 @@ fun MagneticSpeedDialog(manager: MusicManager, onDismiss: () -> Unit) {
                     Slider(
                         value = speed,
                         onValueChange = { raw ->
-                            // Check if close to any prominent step
                             var snappedVal = raw
                             for (st in prominentSteps) {
                                 if (abs(raw - st) <= 0.05f) {
@@ -2547,4 +2533,113 @@ fun ShuffleControlIcon(isShuffleOn: Boolean, tint: Color, modifier: Modifier = M
             }
         }
     )
+}
+
+// Production Tag Editor Dialog
+@Composable
+fun TagEditorDialog(
+    manager: MusicManager,
+    song: Song,
+    onDismiss: () -> Unit,
+    onRequestWritePermission: (Uri) -> Unit = {}
+) {
+    val isDark = manager.isDarkMode
+    val textColor = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A)
+    val accent = manager.accentColor
+
+    var titleText by remember(song.id) { mutableStateOf(song.title) }
+    var artistText by remember(song.id) { mutableStateOf(song.artist) }
+    var albumText by remember(song.id) { mutableStateOf(song.album) }
+    var dateText by remember(song.id) { mutableStateOf(song.releaseDate) }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Transparent)
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null
+            ) { onDismiss() },
+        contentAlignment = Alignment.BottomCenter
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
+                .background(if (isDark) Color(0xFF1E293B) else Color.White)
+                .clickable(enabled = false) {}
+                .padding(22.dp)
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(
+                    text = "Edit Song Tags",
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = textColor
+                )
+
+                OutlinedTextField(
+                    value = titleText,
+                    onValueChange = { titleText = it },
+                    label = { Text("Title") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                OutlinedTextField(
+                    value = artistText,
+                    onValueChange = { artistText = it },
+                    label = { Text("Artist") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                OutlinedTextField(
+                    value = albumText,
+                    onValueChange = { albumText = it },
+                    label = { Text("Album") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Button(
+                        onClick = onDismiss,
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(48.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = if (isDark) Color(0x22FFFFFF) else Color(0xFFF1F5F9)),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Text("Cancel", color = textColor, fontWeight = FontWeight.Bold)
+                    }
+
+                    Button(
+                        onClick = {
+                            val uri = manager.preparePendingStorageWrite(
+                                song = song,
+                                newTitle = titleText.trim(),
+                                newArtist = artistText.trim(),
+                                newAlbum = albumText.trim(),
+                                newDate = dateText.trim(),
+                                customCoverUri = null
+                            )
+                            onRequestWritePermission(uri)
+                            onDismiss()
+                        },
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(48.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = accent),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Text("Save", color = Color.White, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
+    }
 }

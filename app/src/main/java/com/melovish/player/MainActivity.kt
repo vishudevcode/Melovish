@@ -76,6 +76,8 @@ import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
@@ -98,7 +100,6 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.PointerInputChange
@@ -159,8 +160,6 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        
-        viewModel.manager.attachActivity(this)
 
         try {
             val serviceIntent = Intent(this, MediaPlaybackService::class.java)
@@ -170,7 +169,26 @@ class MainActivity : ComponentActivity() {
         requestRequiredPermissions()
 
         setContent {
-            MelovishRootApp(viewModel.manager)
+            MelovishRootApp(
+                manager = viewModel.manager,
+                onRequestWritePermission = { uri ->
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                        try {
+                            val writePendingIntent = MediaStore.createWriteRequest(
+                                contentResolver,
+                                listOf(uri)
+                            )
+                            val request = IntentSenderRequest.Builder(writePendingIntent.intentSender).build()
+                            writeRequestLauncher.launch(request)
+                        } catch (e: Exception) {
+                            e.printStackTrace()
+                            viewModel.manager.executePendingStorageWrite()
+                        }
+                    } else {
+                        viewModel.manager.executePendingStorageWrite()
+                    }
+                }
+            )
         }
     }
 
@@ -197,11 +215,6 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    override fun onDestroy() {
-        super.onDestroy()
-        viewModel.manager.detachActivity()
-    }
-
     override fun onTrimMemory(level: Int) {
         super.onTrimMemory(level)
         if (level >= ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW) {
@@ -213,7 +226,10 @@ class MainActivity : ComponentActivity() {
 
 @UnstableApi
 @Composable
-fun MelovishRootApp(manager: MusicManager) {
+fun MelovishRootApp(
+    manager: MusicManager,
+    onRequestWritePermission: (Uri) -> Unit = {}
+) {
     val context = LocalContext.current
     val systemDark = isSystemInDarkTheme()
 
@@ -466,7 +482,12 @@ fun MelovishRootApp(manager: MusicManager) {
             }
 
             if (activeTagEditSong != null) {
-                TagEditorDialog(manager = manager, song = activeTagEditSong!!, onDismiss = { activeTagEditSong = null })
+                TagEditorDialog(
+                    manager = manager,
+                    song = activeTagEditSong!!,
+                    onDismiss = { activeTagEditSong = null },
+                    onRequestWritePermission = onRequestWritePermission
+                )
             }
 
             if (activeAddToPlaylistSong != null) {
@@ -548,7 +569,6 @@ fun ShimmerSkeletonGridItem(aspectRatio: Float = 1f, isDark: Boolean, isHero: Bo
     )
 }
 
-// 1:1 Standard Square Card with Full Information
 @UnstableApi
 @Composable
 fun SquareAlbumOverlayCard(
@@ -617,7 +637,7 @@ fun SquareAlbumOverlayCard(
                         overflow = TextOverflow.Ellipsis
                     )
                     Text(
-                        text = if (song.artist.isNotBlank()) song.artist else "Unknown",
+                        text = song.displayArtist,
                         color = Color(0xFFCBD5E1),
                         fontSize = 10.sp,
                         maxLines = 1,
@@ -632,7 +652,6 @@ fun SquareAlbumOverlayCard(
     }
 }
 
-// 5th View Mode: Hero Album Card (Strict 1:1 Aspect Ratio, Elevated Title Label)
 @UnstableApi
 @Composable
 fun HeroAlbumCard(
@@ -709,7 +728,6 @@ fun HeroAlbumCard(
     }
 }
 
-// 5-Mode Vector Switcher Icon
 @Composable
 fun GridViewModeVectorIcon(mode: GridViewMode, tint: Color, modifier: Modifier = Modifier) {
     Canvas(modifier = modifier) {
@@ -754,7 +772,6 @@ fun GridViewModeVectorIcon(mode: GridViewMode, tint: Color, modifier: Modifier =
     }
 }
 
-// 5-Mode Grid Size Dialog
 @Composable
 fun GridSizeDialog(
     currentMode: GridViewMode,
@@ -1242,16 +1259,22 @@ fun HomeScreen(
     var showRainbowWheelForPl by remember { mutableStateOf(false) }
     var showGridSizeDialog by remember { mutableStateOf(false) }
 
-    val sortedSongs: ImmutableList<Song> = remember(manager.allSongs.toList(), manager.currentSortOrder) {
+    val sortedSongs: ImmutableList<Song> = remember(manager.allSongs.size, manager.currentSortOrder) {
         manager.getSortedSongs().toImmutableList()
     }
-    val recents: ImmutableList<Song> = remember(manager.historySongs.size, manager.historySongs.toList()) {
+    val recents: ImmutableList<Song> = remember(manager.historySongs.size) {
         manager.historySongs.take(30).toImmutableList()
     }
 
     val configuration = LocalConfiguration.current
     val cardWidth = ((configuration.screenWidthDp - 32 - (3 * 8)) / 4).coerceAtLeast(76).dp
-    val showSkeleton = (manager.isScanningStorage || manager.isInitialLoading) && manager.allSongs.isEmpty()
+
+    val playbackState by manager.playbackUiState.collectAsState()
+    val showSkeleton by remember {
+        derivedStateOf {
+            (playbackState.isScanning || playbackState.isInitialLoading) && manager.allSongs.isEmpty()
+        }
+    }
 
     Box(modifier = Modifier.fillMaxSize()) {
         LazyColumn(
@@ -1436,7 +1459,6 @@ fun HomeScreen(
             }
 
             if (showSkeleton) {
-                // Adaptive skeleton based on the user's saved view mode
                 when (manager.homeViewMode) {
                     GridViewMode.LIST -> {
                         items(8) {
@@ -2453,7 +2475,7 @@ fun PlaylistAddSearchDialog(playlist: Playlist, manager: MusicManager, onDismiss
                                 ) {
                                     Column(modifier = Modifier.weight(1f)) {
                                         Text(s.title, color = textColor, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
-                                        Text("${formatFileSize(s.size)} • ${s.artist}", color = Color(0xFF64748B), fontSize = 11.sp)
+                                        Text("${s.formattedSize} • ${s.displayArtist}", color = Color(0xFF64748B), fontSize = 11.sp)
                                     }
                                     Text(if (isAdded) "✓ Added" else "+ Add", color = if (isAdded) manager.accentColor else Color(0xFF64748B), fontSize = 12.sp, fontWeight = FontWeight.Bold)
                                 }
@@ -2534,7 +2556,6 @@ fun FilteredSongsScreen(title: String, songs: ImmutableList<Song>, manager: Musi
     }
 }
 
-// Inside Folder Screen
 @UnstableApi
 @Composable
 fun FolderSongsScreen(folderName: String, manager: MusicManager, isDark: Boolean, onBack: () -> Unit, onSongMenuClick: (Song) -> Unit) {
@@ -2764,7 +2785,7 @@ fun SongItemActionModal(
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(
-                    text = "${song.title} - ${if (song.artist.isNotBlank()) song.artist else "Unknown"}",
+                    text = "${song.title} - ${song.displayArtist}",
                     fontSize = 17.sp,
                     fontWeight = FontWeight.Bold,
                     color = textColor,
@@ -2827,10 +2848,10 @@ fun SongInfoDialog(song: Song, isDark: Boolean, onDismiss: () -> Unit) {
                 Text("Details", color = textColor, fontSize = 18.sp, fontWeight = FontWeight.Bold)
                 Spacer(modifier = Modifier.height(12.dp))
                 Text("Title: ${song.title}", color = textColor, fontSize = 14.sp)
-                Text("Artist: ${if (song.artist.isNotBlank()) song.artist else "Unknown"}", color = Color(0xFF64748B), fontSize = 13.sp)
+                Text("Artist: ${song.displayArtist}", color = Color(0xFF64748B), fontSize = 13.sp)
                 Text("Album: ${song.album}", color = Color(0xFF64748B), fontSize = 13.sp)
-                Text("Size: ${formatFileSize(song.size)}", color = Color(0xFF64748B), fontSize = 13.sp)
-                Text("Duration: ${formatTime(song.duration)}", color = Color(0xFF64748B), fontSize = 13.sp)
+                Text("Size: ${song.formattedSize}", color = Color(0xFF64748B), fontSize = 13.sp)
+                Text("Duration: ${song.formattedDuration}", color = Color(0xFF64748B), fontSize = 13.sp)
                 Text("Path: ${song.path}", color = Color(0xFF64748B), fontSize = 11.sp, maxLines = 2)
                 Spacer(modifier = Modifier.height(18.dp))
                 Button(
@@ -3140,13 +3161,13 @@ fun UniversalSongRow(song: Song, manager: MusicManager, isDark: Boolean, onPlay:
         Spacer(modifier = Modifier.width(12.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(text = song.title, color = textColor, fontSize = 14.sp, fontWeight = if (isPlayingThis) FontWeight.ExtraBold else FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(text = "${formatFileSize(song.size)} • ${if (song.artist.isNotBlank()) song.artist else "Unknown"}", color = Color(0xFF64748B), fontSize = 11.sp, maxLines = 1)
+            Text(text = "${song.formattedSize} • ${song.displayArtist}", color = Color(0xFF64748B), fontSize = 11.sp, maxLines = 1)
         }
 
         if (isPlayingThis) {
             LiveAudioWaveEqualizer(isAnimating = manager.isPlaying, accentColor = accent)
         } else {
-            Text(formatTime(song.duration), color = Color(0xFF94A3B8), fontSize = 12.sp)
+            Text(song.formattedDuration, color = Color(0xFF94A3B8), fontSize = 12.sp)
         }
 
         Spacer(modifier = Modifier.width(6.dp))
@@ -3201,7 +3222,7 @@ fun UniversalSongCard(song: Song, manager: MusicManager, isDark: Boolean, onPlay
             Spacer(modifier = Modifier.height(8.dp))
             Text(song.title, color = textColor, fontSize = 13.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
             Spacer(modifier = Modifier.height(2.dp))
-            Text(if (song.artist.isNotBlank()) song.artist else "Unknown", color = Color(0xFF64748B), fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
+            Text(song.displayArtist, color = Color(0xFF64748B), fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
         }
         Box(modifier = Modifier.align(Alignment.TopEnd).clickable { onMenuClick() }) {
             Text("⋮", color = textColor, fontSize = 18.sp, fontWeight = FontWeight.Bold)
