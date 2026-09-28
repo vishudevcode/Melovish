@@ -357,6 +357,10 @@ fun DefaultProfileAvatar(modifier: Modifier = Modifier, backgroundColor: Color =
     )
 }
 
+/**
+ * Dynamic Material You Palette Extractor.
+ * Extracts dominant colors from album art to dynamically color the player and queue.
+ */
 suspend fun extractMaterialYouPaletteAsync(bitmap: Bitmap?, isDarkMode: Boolean, fallbackAccent: Color): MaterialYouPalette = withContext(Dispatchers.Default) {
     if (bitmap == null) {
         return@withContext if (isDarkMode) {
@@ -366,7 +370,7 @@ suspend fun extractMaterialYouPaletteAsync(bitmap: Bitmap?, isDarkMode: Boolean,
         }
     }
     try {
-        val scaled = Bitmap.createScaledBitmap(bitmap, 16, 16, false)
+        val scaled = Bitmap.createScaledBitmap(bitmap, 24, 24, false)
         var totalR = 0L; var totalG = 0L; var totalB = 0L; var count = 0
         var maxSat = -1f; var vibrantColor = android.graphics.Color.WHITE
         val hsv = FloatArray(3)
@@ -379,21 +383,21 @@ suspend fun extractMaterialYouPaletteAsync(bitmap: Bitmap?, isDarkMode: Boolean,
                 totalB += android.graphics.Color.blue(p)
                 count++
                 android.graphics.Color.colorToHSV(p, hsv)
-                if (hsv[1] > maxSat && hsv[2] > 0.22f && hsv[2] < 0.95f) {
+                if (hsv[1] > maxSat && hsv[2] > 0.20f && hsv[2] < 0.95f) {
                     maxSat = hsv[1]
                     vibrantColor = p
                 }
             }
         }
-        val dom = if (maxSat > 0.28f) vibrantColor else android.graphics.Color.rgb((totalR / count).toInt(), (totalG / count).toInt(), (totalB / count).toInt())
+        val dom = if (maxSat > 0.25f) vibrantColor else android.graphics.Color.rgb((totalR / count).toInt(), (totalG / count).toInt(), (totalB / count).toInt())
         android.graphics.Color.colorToHSV(dom, hsv)
         val hue = hsv[0]
         val sat = hsv[1].coerceIn(0.35f, 0.85f)
 
         if (isDarkMode) {
-            val top = Color(android.graphics.Color.HSVToColor(floatArrayOf(hue, sat * 0.65f, 0.20f)))
-            val bot = Color(android.graphics.Color.HSVToColor(floatArrayOf((hue + 18f) % 360f, sat * 0.8f, 0.08f)))
-            val acc = Color(android.graphics.Color.HSVToColor(floatArrayOf(hue, sat * 0.9f, 0.90f)))
+            val top = Color(android.graphics.Color.HSVToColor(floatArrayOf(hue, sat * 0.60f, 0.22f)))
+            val bot = Color(android.graphics.Color.HSVToColor(floatArrayOf((hue + 18f) % 360f, sat * 0.75f, 0.08f)))
+            val acc = Color(android.graphics.Color.HSVToColor(floatArrayOf(hue, sat * 0.90f, 0.90f)))
             val surf = Color(android.graphics.Color.HSVToColor(floatArrayOf(hue, sat * 0.35f, 0.28f))).copy(alpha = 0.55f)
             MaterialYouPalette(top, bot, acc, surf, Color(0xFFF8FAFC), Color(0xFFCBD5E1))
         } else {
@@ -743,7 +747,7 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
     val activeSong = manager.currentSong ?: currentQueue[pagerState.currentPage]
     var albumArtBitmap by remember(activeSong.id) { mutableStateOf(manager.getCachedAlbumArt(activeSong.id)) }
     LaunchedEffect(activeSong.id) {
-        if (albumArtBitmap == null) albumArtBitmap = manager.loadAlbumArtAsync(activeSong)
+        albumArtBitmap = manager.loadAlbumArtAsync(activeSong)
     }
 
     val defaultDarkPalette = MaterialYouPalette(
@@ -768,6 +772,7 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
         mutableStateOf(if (isDark) defaultDarkPalette else defaultLightPalette)
     }
 
+    // Reactive Material You Palette: Re-extracts dynamically when bitmap or colorful player state changes
     LaunchedEffect(activeSong.id, albumArtBitmap, isDark, userAccent, manager.isColorfulPlayer) {
         targetPalette = if (manager.isColorfulPlayer) {
             extractMaterialYouPaletteAsync(albumArtBitmap, isDark, userAccent)
@@ -823,7 +828,7 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
 
             var pageBmp by remember(pageSong.id) { mutableStateOf(manager.getCachedAlbumArt(pageSong.id)) }
             LaunchedEffect(pageSong.id) {
-                if (pageBmp == null) pageBmp = manager.loadAlbumArtAsync(pageSong)
+                pageBmp = manager.loadAlbumArtAsync(pageSong)
             }
 
             Column(
@@ -1921,7 +1926,7 @@ fun MiniPlayerDock(manager: MusicManager, onClick: () -> Unit) {
 
     var albumArtBitmap by remember(song.id) { mutableStateOf(manager.getCachedAlbumArt(song.id)) }
     LaunchedEffect(song.id) {
-        if (albumArtBitmap == null) albumArtBitmap = manager.loadAlbumArtAsync(song)
+        albumArtBitmap = manager.loadAlbumArtAsync(song)
     }
 
     Box(

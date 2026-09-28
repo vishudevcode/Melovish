@@ -1,6 +1,5 @@
 package com.melovish.player
 
-import android.app.Activity
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -198,6 +197,7 @@ class MusicManager(private val context: Context) {
 
     var isAlwaysPlay by mutableStateOf(prefs.getBoolean("always_play_enabled", false))
 
+    // Media stream configuration that strictly preserves hardware media volume
     val player: ExoPlayer = ExoPlayer.Builder(context, renderersFactory)
         .setAudioAttributes(
             AudioAttributes.Builder()
@@ -912,6 +912,11 @@ class MusicManager(private val context: Context) {
         updateDeviceRoutingAndHighlight()
     }
 
+    /**
+     * Production Audio Routing:
+     * Maintains C.USAGE_MEDIA / C.AUDIO_CONTENT_TYPE_MUSIC on the standard Media volume stream (STREAM_MUSIC).
+     * Eliminates stream switching to notifications or alarms.
+     */
     fun updateDeviceRoutingAndHighlight() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
             effectiveAudioOutput = "Phone"
@@ -920,14 +925,6 @@ class MusicManager(private val context: Context) {
         }
 
         try {
-            audioManager.mode = AudioManager.MODE_NORMAL
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                audioManager.clearCommunicationDevice()
-            } else {
-                @Suppress("DEPRECATION")
-                audioManager.isSpeakerphoneOn = false
-            }
-
             val outputs = audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
 
             val budsDevice = outputs.find {
@@ -950,35 +947,14 @@ class MusicManager(private val context: Context) {
             when (userSelectedAudioOutput) {
                 "Phone" -> {
                     effectiveAudioOutput = "Phone"
-                    player.setAudioAttributes(
-                        AudioAttributes.Builder()
-                            .setContentType(C.AUDIO_CONTENT_TYPE_SONIFICATION)
-                            .setUsage(C.USAGE_ALARM)
-                            .build(),
-                        false
-                    )
                     player.setPreferredAudioDevice(builtInSpeaker)
                 }
                 "Speaker" -> {
                     effectiveAudioOutput = "Speaker"
-                    player.setAudioAttributes(
-                        AudioAttributes.Builder()
-                            .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
-                            .setUsage(C.USAGE_MEDIA)
-                            .build(),
-                        !isAlwaysPlay
-                    )
                     player.setPreferredAudioDevice(speakerDevice)
                 }
                 "Buds" -> {
                     effectiveAudioOutput = "Buds"
-                    player.setAudioAttributes(
-                        AudioAttributes.Builder()
-                            .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
-                            .setUsage(C.USAGE_MEDIA)
-                            .build(),
-                        !isAlwaysPlay
-                    )
                     player.setPreferredAudioDevice(budsDevice)
                     if (budsDevice == null && player.isPlaying) {
                         player.pause()
@@ -986,15 +962,7 @@ class MusicManager(private val context: Context) {
                     }
                 }
                 else -> {
-                    player.setAudioAttributes(
-                        AudioAttributes.Builder()
-                            .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
-                            .setUsage(C.USAGE_MEDIA)
-                            .build(),
-                        !isAlwaysPlay
-                    )
                     player.setPreferredAudioDevice(null)
-
                     effectiveAudioOutput = when {
                         budsDevice != null -> "Buds"
                         speakerDevice != null -> "Speaker"
@@ -1868,7 +1836,6 @@ class MusicManager(private val context: Context) {
         savePlaylists()
     }
 
-    // Direct interface for TagEditorComponents.kt and system writes
     fun requestFileWritePermissionAndSave(
         song: Song,
         newTitle: String,

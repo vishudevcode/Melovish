@@ -57,6 +57,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.media3.common.util.UnstableApi
 import coil.compose.AsyncImage
+import kotlinx.collections.immutable.toImmutableList
 import java.io.File
 import kotlin.math.atan2
 import kotlin.math.cos
@@ -409,7 +410,7 @@ fun SettingsScreen(
             }
         }
 
-        // 4. Audio Section Directly On Page
+        // 4. Audio Section (Mono Audio placed above Volume Boost, Volume Boost above Audio Output)
         item(key = "audio_section_direct", contentType = "audio_card") {
             Column(
                 modifier = Modifier
@@ -450,8 +451,23 @@ fun SettingsScreen(
 
                 Spacer(modifier = Modifier.height(14.dp))
 
+                // Shifted Up: Mono Audio directly above Volume Boost
+                SettingSwitchRow(
+                    icon = "🎚️",
+                    title = "Mono Audio",
+                    subtitle = "Combine left and right channels.",
+                    checked = manager.isMonoAudio,
+                    textColor = textColor
+                ) {
+                    manager.triggerHapticFeedback(false)
+                    manager.toggleMonoAudio(it)
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // Shifted Down: Volume Boost directly above Audio Output
                 Text("Volume Boost", color = textColor, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                Text("Increase the maximum volume without muffled clipping (${manager.volumeBoostLevel.toInt()}%).", color = Color(0xFF64748B), fontSize = 12.sp)
+                Text("Increase maximum volume without muffled clipping (${manager.volumeBoostLevel.toInt()}%).", color = Color(0xFF64748B), fontSize = 12.sp)
 
                 Slider(
                     value = manager.volumeBoostLevel,
@@ -466,19 +482,6 @@ fun SettingsScreen(
                     modifier = Modifier.fillMaxWidth(),
                     colors = SliderDefaults.colors(thumbColor = accent, activeTrackColor = accent)
                 )
-
-                Spacer(modifier = Modifier.height(14.dp))
-
-                SettingSwitchRow(
-                    icon = "🎚️",
-                    title = "Mono Audio",
-                    subtitle = "Combine left and right channels.",
-                    checked = manager.isMonoAudio,
-                    textColor = textColor
-                ) {
-                    manager.triggerHapticFeedback(false)
-                    manager.toggleMonoAudio(it)
-                }
 
                 Spacer(modifier = Modifier.height(16.dp))
 
@@ -697,12 +700,20 @@ fun ManageHiddenFoldersFullScreen(
 ) {
     val textColor = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A)
     val cardBg = if (isDark) Color(0xFF131B2E) else Color.White
+    
+    // Stable memoization to avoid allocations on rapid fling scroll
     val allFolders = remember(manager.rawStorageSongs.size) {
         manager.rawStorageSongs.map { it.folderName }.distinct().sorted()
     }
 
-    val hiddenList = allFolders.filter { it in manager.hiddenFolders }
-    val visibleList = allFolders.filter { it !in manager.hiddenFolders }
+    val hiddenList = remember(allFolders, manager.hiddenFolders.size) {
+        val set = manager.hiddenFolders.toSet()
+        allFolders.filter { it in set }
+    }
+    val visibleList = remember(allFolders, manager.hiddenFolders.size) {
+        val set = manager.hiddenFolders.toSet()
+        allFolders.filter { it !in set }
+    }
 
     Column(modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
         Row(
@@ -815,8 +826,14 @@ fun ManageHiddenAudioFullScreen(
     var query by remember { mutableStateOf("") }
 
     val rawSongs = manager.rawStorageSongs
-    val hiddenSongs = rawSongs.filter { it.id in manager.hiddenAudioIds }
-    val visibleSongs = rawSongs.filter { it.id !in manager.hiddenAudioIds }
+    val hiddenSongs = remember(rawSongs.size, manager.hiddenAudioIds.size) {
+        val set = manager.hiddenAudioIds.toSet()
+        rawSongs.filter { it.id in set }
+    }
+    val visibleSongs = remember(rawSongs.size, manager.hiddenAudioIds.size) {
+        val set = manager.hiddenAudioIds.toSet()
+        rawSongs.filter { it.id !in set }
+    }
 
     val filteredHidden = remember(query, hiddenSongs) {
         val q = query.trim()
@@ -991,7 +1008,7 @@ fun CircularColorPickerDialog(
                                     val dx = (touch.x - center.x).toDouble()
                                     val dy = (touch.y - center.y).toDouble()
                                     val dist = sqrt(dx * dx + dy * dy)
-                                    val radius = (size.width / 2f).toDouble()
+                                    val radius = (size.width.toFloat() / 2f).toDouble()
                                     if (dist >= radius * 0.65) {
                                         var angle = Math.toDegrees(atan2(dy, dx)).toFloat()
                                         if (angle < 0f) angle += 360f
