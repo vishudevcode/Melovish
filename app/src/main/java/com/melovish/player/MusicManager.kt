@@ -1806,20 +1806,9 @@ class MusicManager(private val context: Context) {
                     put("folderName", pl.folderName ?: "")
                     put("icon", pl.icon)
                     put("iconColorHex", pl.iconColorHex)
-                    val idsArr = obj.getJSONArray("songIds")
-                    val songIds = ArrayList<Long>()
-                    for (j in 0 until idsArr.length()) songIds.add(idsArr.getLong(j))
-                    customPlaylists.add(
-                        Playlist(
-                            id = id,
-                            name = name,
-                            songIds = songIds.toImmutableList(),
-                            isFolderPinned = isFolder,
-                            folderName = folderName,
-                            icon = icon,
-                            iconColorHex = iconColorHex
-                        )
-                    )
+                    val idsArr = JSONArray()
+                    pl.songIds.forEach { idsArr.put(it) }
+                    put("songIds", idsArr)
                 }
                 arr.put(obj)
             }
@@ -2371,7 +2360,9 @@ class MusicManager(private val context: Context) {
                     val iconColorHex = obj.optLong("iconColorHex", 0xFFF59E0B)
                     val idsArr = obj.getJSONArray("songIds")
                     val songIds = ArrayList<Long>()
-                    for (j in 0 until idsArr.length()) songIds.add(idsArr.getLong(j))
+                    for (j in 0 until idsArr.length()) {
+                        songIds.add(idsArr.getLong(j))
+                    }
                     customPlaylists.add(
                         Playlist(
                             id = id,
