@@ -102,7 +102,7 @@ import kotlin.math.roundToInt
 import kotlin.math.sin
 
 // =========================================================================
-// 1. IN-APP 1:1 SQUARE ALBUM ART CROPPER DIALOG (Shifted Up & Elevated Bar)
+// 1. IN-APP 1:1 SQUARE ALBUM ART CROPPER DIALOG (Shifted Upwards)
 // =========================================================================
 
 @Composable
@@ -195,7 +195,7 @@ fun SquareAlbumArtCropperDialog(
                 }
             }
 
-            // Cropper Canvas Area: Shifted halfway up to eliminate upper dead space
+            // Cropper Canvas Area: Balanced crop framing
             BoxWithConstraints(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -207,7 +207,6 @@ fun SquareAlbumArtCropperDialog(
 
                 val boxSizePx = min(measuredViewportWidth, measuredViewportHeight) * 0.86f
 
-                // Half the top distance shifted upward
                 val naturalTopGap = (measuredViewportHeight - boxSizePx) / 2f
                 val shiftUp = (naturalTopGap * 0.50f).coerceAtLeast(0f)
                 calculatedShiftUpPx = shiftUp
@@ -286,12 +285,12 @@ fun SquareAlbumArtCropperDialog(
                 }
             }
 
-            // Bottom Action Bar: Lifted up from the screen bottom with 40dp margin
+            // Bottom Action Bar: Shifted upward by a full button height (~56dp bottom spacer)
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(Color(0xFF0F172A))
-                    .padding(start = 20.dp, end = 20.dp, top = 14.dp, bottom = 40.dp)
+                    .padding(start = 20.dp, end = 20.dp, top = 14.dp, bottom = 64.dp)
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -304,7 +303,7 @@ fun SquareAlbumArtCropperDialog(
                         shape = RoundedCornerShape(14.dp),
                         modifier = Modifier
                             .weight(1f)
-                            .height(50.dp)
+                            .height(52.dp)
                     ) {
                         Text("Cancel", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
                     }
@@ -355,7 +354,7 @@ fun SquareAlbumArtCropperDialog(
                         shape = RoundedCornerShape(14.dp),
                         modifier = Modifier
                             .weight(1f)
-                            .height(50.dp)
+                            .height(52.dp)
                     ) {
                         Text("Crop & Apply", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
                     }
