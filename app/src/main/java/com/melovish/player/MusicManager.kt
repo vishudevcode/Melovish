@@ -4,7 +4,6 @@ import android.app.Activity
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
-import android.app.RecoverableSecurityException
 import android.content.BroadcastReceiver
 import android.content.ContentUris
 import android.content.ContentValues
@@ -17,7 +16,6 @@ import android.graphics.BitmapFactory
 import android.media.AudioDeviceCallback
 import android.media.AudioDeviceInfo
 import android.media.AudioManager
-import android.media.AudioTrack
 import android.media.MediaMetadataRetriever
 import android.media.MediaScannerConnection
 import android.media.RingtoneManager
@@ -125,46 +123,15 @@ class MusicManager(private val context: Context) {
 
     private val channelMixingAudioProcessor = ChannelMixingAudioProcessor()
 
-    @Volatile
-    private var activeAudioTrack: AudioTrack? = null
-
     private val renderersFactory = object : DefaultRenderersFactory(context) {
         override fun buildAudioSink(
             context: Context,
             enableFloatOutput: Boolean,
             enableAudioTrackPlaybackParams: Boolean
         ): AudioSink {
-            val defaultSink = DefaultAudioSink.Builder(context)
+            return DefaultAudioSink.Builder(context)
                 .setAudioProcessors(arrayOf(channelMixingAudioProcessor))
                 .build()
-
-            defaultSink.setAudioSinkListener(object : DefaultAudioSink.AudioSinkListener {
-                override fun onAudioSessionIdChanged(audioSessionId: Int) {
-                    if (audioSessionId != C.AUDIO_SESSION_ID_UNSET && audioSessionId != 0) {
-                        bindHardwareAudioEffects(audioSessionId)
-                    }
-                    findAndBindActiveAudioTrack()
-                }
-
-                override fun onAudioTrackInitialized(
-                    defaultAudioSink: DefaultAudioSink,
-                    audioTrack: AudioTrack
-                ) {
-                    activeAudioTrack = audioTrack
-                    applyHardwareAudioRouting(selectedAudioOutput)
-                }
-
-                override fun onAudioTrackReleased(
-                    defaultAudioSink: DefaultAudioSink,
-                    audioTrack: AudioTrack
-                ) {
-                    if (activeAudioTrack == audioTrack) {
-                        activeAudioTrack = null
-                    }
-                }
-            })
-
-            return defaultSink
         }
     }
 
@@ -265,9 +232,8 @@ class MusicManager(private val context: Context) {
     var artistsSortOrder by mutableStateOf(
         try {
             ArtistSortOrder.valueOf(prefs.getString("pref_sort_artists", ArtistSortOrder.NAME_A_TO_Z.name) ?: ArtistSortOrder.NAME_A_TO_Z.name)
-        } catch (_: Exception) {
-            ArtistSortOrder.NAME_A_TO_Z
-        }
+        } catch (_: Exception) {}
+        ArtistSortOrder.NAME_A_TO_Z
     )
 
     var artistInnerSortOrder by mutableStateOf(
@@ -378,12 +344,6 @@ class MusicManager(private val context: Context) {
         applyChannelMixing()
         registerAudioDeviceCallback()
         applyHardwareAudioRouting(selectedAudioOutput)
-    }
-
-    private fun findAndBindActiveAudioTrack() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            applyHardwareAudioRouting(selectedAudioOutput)
-        }
     }
 
     private fun initDefaultEqualizerState() {
@@ -864,19 +824,17 @@ class MusicManager(private val context: Context) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             try {
                 val devices = audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
-                val track = activeAudioTrack
 
                 when (output) {
                     "Phone" -> {
                         val speakerDevice = devices.find { it.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER }
-                        if (speakerDevice != null) {
-                            track?.setPreferredDevice(speakerDevice)
-                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                            if (speakerDevice != null) {
                                 audioManager.setCommunicationDevice(speakerDevice)
-                            } else {
-                                @Suppress("DEPRECATION")
-                                audioManager.isSpeakerphoneOn = true
                             }
+                        } else {
+                            @Suppress("DEPRECATION")
+                            audioManager.isSpeakerphoneOn = true
                         }
                     }
                     "Speaker" -> {
@@ -890,22 +848,15 @@ class MusicManager(private val context: Context) {
                             it.type == AudioDeviceInfo.TYPE_WIRED_HEADSET
                         }
 
-                        if (externalSpeaker != null) {
-                            track?.setPreferredDevice(externalSpeaker)
-                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                            if (externalSpeaker != null) {
                                 audioManager.setCommunicationDevice(externalSpeaker)
                             } else {
-                                @Suppress("DEPRECATION")
-                                audioManager.isSpeakerphoneOn = false
+                                audioManager.clearCommunicationDevice()
                             }
                         } else {
-                            track?.setPreferredDevice(null)
-                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                                audioManager.clearCommunicationDevice()
-                            } else {
-                                @Suppress("DEPRECATION")
-                                audioManager.isSpeakerphoneOn = false
-                            }
+                            @Suppress("DEPRECATION")
+                            audioManager.isSpeakerphoneOn = false
                         }
                     }
                     "Buds" -> {
@@ -917,26 +868,20 @@ class MusicManager(private val context: Context) {
                             (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && it.type == AudioDeviceInfo.TYPE_USB_HEADSET)
                         }
 
-                        if (headsetDevice != null) {
-                            track?.setPreferredDevice(headsetDevice)
-                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                            if (headsetDevice != null) {
                                 audioManager.setCommunicationDevice(headsetDevice)
                             } else {
-                                @Suppress("DEPRECATION")
-                                audioManager.isSpeakerphoneOn = false
+                                audioManager.clearCommunicationDevice()
                             }
                         } else {
-                            track?.setPreferredDevice(null)
-                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                                audioManager.clearCommunicationDevice()
-                            } else {
-                                @Suppress("DEPRECATION")
-                                audioManager.isSpeakerphoneOn = false
-                            }
-                            if (player.isPlaying) {
-                                player.pause()
-                                Toast.makeText(context, "Headphones/Buds disconnected. Playback paused.", Toast.LENGTH_SHORT).show()
-                            }
+                            @Suppress("DEPRECATION")
+                            audioManager.isSpeakerphoneOn = false
+                        }
+
+                        if (headsetDevice == null && player.isPlaying) {
+                            player.pause()
+                            Toast.makeText(context, "Headphones/Buds not detected.", Toast.LENGTH_SHORT).show()
                         }
                     }
                 }

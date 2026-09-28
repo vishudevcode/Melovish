@@ -238,7 +238,7 @@ fun SettingsScreen(
             }
         }
 
-        // 3. Player Settings Section
+        // 3. Player Settings Section (With updated exact "Always play audio in background" subtitle)
         item(key = "player_settings_section", contentType = "player_settings_card") {
             Column(
                 modifier = Modifier
@@ -255,7 +255,7 @@ fun SettingsScreen(
                 SettingSwitchRow(
                     icon = "🔄",
                     title = "Always play",
-                    subtitle = "Always play audio in background regardless of anything else being played",
+                    subtitle = "Always play audio in background",
                     checked = manager.isAlwaysPlay,
                     textColor = textColor
                 ) {
@@ -647,7 +647,6 @@ fun ManageHiddenFoldersFullScreen(
             contentPadding = PaddingValues(top = 8.dp, bottom = 80.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            // Hidden Folders Section at the Top
             if (hiddenList.isNotEmpty()) {
                 item {
                     Text(
@@ -685,7 +684,6 @@ fun ManageHiddenFoldersFullScreen(
                 }
             }
 
-            // Visible Folders Section Below
             item {
                 Text(
                     text = "Visible Folders (${visibleList.size}) — Tap to Exclude",
@@ -785,7 +783,6 @@ fun ManageHiddenAudioFullScreen(
             contentPadding = PaddingValues(top = 8.dp, bottom = 80.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            // Hidden Audio Section at Top
             if (filteredHidden.isNotEmpty()) {
                 item {
                     Text(
@@ -822,7 +819,6 @@ fun ManageHiddenAudioFullScreen(
                 }
             }
 
-            // Visible Audio Section Below
             item {
                 Text(
                     text = "Visible Audio (${filteredVisible.size}) — Tap to Exclude",
