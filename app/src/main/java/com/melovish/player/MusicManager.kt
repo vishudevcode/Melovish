@@ -280,7 +280,9 @@ class MusicManager(private val context: Context) {
     var isVolumeNormalized by mutableStateOf(prefs.getBoolean("vol_norm", false))
     var volumeBoostLevel by mutableFloatStateOf(prefs.getFloat("vol_boost", 100f))
     var isMonoAudio by mutableStateOf(prefs.getBoolean("mono", false))
-    var selectedAudioOutput by mutableStateOf(prefs.getString("audio_output", "Phone") ?: "Phone")
+
+    // Default is "Auto" so app naturally follows Android's default wired/Bluetooth priority
+    var selectedAudioOutput by mutableStateOf(prefs.getString("audio_output", "Auto") ?: "Auto")
 
     var isEqEnabled by mutableStateOf(prefs.getBoolean("eq_enabled", true))
     var eqBandsCount by mutableIntStateOf(5)
@@ -821,9 +823,15 @@ class MusicManager(private val context: Context) {
         applyHardwareAudioRouting(output)
     }
 
+    /**
+     * Isolated Audio Routing
+     * Uses player.setPreferredAudioDevice(...) to route Melovish's stream independently.
+     * Leaves system-wide routing untouched so third-party apps remain on connected headphones/speakers.
+     */
     fun applyHardwareAudioRouting(output: String) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             try {
+                // Ensure no global communication mode overrides exist
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                     audioManager.clearCommunicationDevice()
                 } else {
@@ -835,11 +843,17 @@ class MusicManager(private val context: Context) {
                 val devices = audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
 
                 when (output) {
+                    "Auto" -> {
+                        // Standard behavior: Follows Android OS default output (earphones if connected, speaker if not)
+                        player.setPreferredAudioDevice(null)
+                    }
                     "Phone" -> {
+                        // Strictly route ONLY Melovish to built-in speaker
                         val speakerDevice = devices.find { it.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER }
                         player.setPreferredAudioDevice(speakerDevice)
                     }
                     "Speaker" -> {
+                        // Route strictly to external speaker (Bluetooth / Aux / USB)
                         val externalSpeaker = devices.find {
                             it.type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP ||
                             it.type == AudioDeviceInfo.TYPE_LINE_ANALOG ||
@@ -853,6 +867,7 @@ class MusicManager(private val context: Context) {
                         player.setPreferredAudioDevice(externalSpeaker)
                     }
                     "Buds" -> {
+                        // Route strictly to earphones/headphones
                         val headsetDevice = devices.find {
                             it.type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP ||
                             it.type == AudioDeviceInfo.TYPE_BLE_HEADSET ||
