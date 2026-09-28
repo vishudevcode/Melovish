@@ -161,7 +161,6 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
-        // Attach Activity to MusicManager for MediaStore.createWriteRequest dialog popups
         viewModel.manager.attachActivity(this)
 
         try {
@@ -1715,7 +1714,6 @@ fun LibraryFolderSquareCard(
             ),
         contentAlignment = Alignment.Center
     ) {
-        // Upper-Center Icon Area
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -1740,7 +1738,6 @@ fun LibraryFolderSquareCard(
             }
         }
 
-        // Elevated Floating Label: Shifted safely above the bottom curved corners
         Box(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
@@ -1786,7 +1783,7 @@ fun LibraryFolderSquareCard(
     }
 }
 
-// Library Screen: Independent View Mode (5 modes) & Independent Sort Order with 1:1 Perfect Square Cards
+// Library Screen: Resolved Double Long-Press for Rainbow Color Picker
 @OptIn(ExperimentalFoundationApi::class)
 @UnstableApi
 @Composable
@@ -1812,7 +1809,6 @@ fun LibraryScreen(manager: MusicManager, listState: LazyListState, onFolderClick
         ) {
             Text("Folders & Storage", color = textColor, fontSize = 22.sp, fontWeight = FontWeight.Bold)
             Row(verticalAlignment = Alignment.CenterVertically) {
-                // Section-Specific 5-Mode View Switcher with independent memory
                 Box(
                     modifier = Modifier
                         .size(36.dp)
@@ -1873,8 +1869,8 @@ fun LibraryScreen(manager: MusicManager, listState: LazyListState, onFolderClick
                                 .clip(RoundedCornerShape(18.dp))
                                 .background(cardBg)
                                 .border(1.dp, if (isDark) Color(0x22FFFFFF) else Color(0xFFECEFF3), RoundedCornerShape(18.dp))
-                                .combinedClickable(onClick = { onFolderClick(folderName) }, onLongClick = { customizingFolder = folderName })
-                                .padding(16.dp),
+                            .combinedClickable(onClick = { onFolderClick(folderName) }, onLongClick = { customizingFolder = folderName })
+                            .padding(16.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             GlassmorphicFolderIcon(folderColor = fColor, modifier = Modifier.size(42.dp))
@@ -2029,15 +2025,23 @@ fun LibraryScreen(manager: MusicManager, listState: LazyListState, onFolderClick
         )
     }
 
-    if (customizingFolder != null) {
+    // Direct, single-click opening without intermediate clearing
+    if (customizingFolder != null && !showRainbowWheelForFolder) {
         val folder = customizingFolder!!
         FolderColorDialog(
             folderName = folder,
             currentColor = manager.getFolderColor(folder),
             isDark = isDark,
-            onColorSelected = { newColor -> manager.updateFolderColorOnly(folder, newColor.toArgb().toLong()) },
-            onOpenRainbowPicker = { showRainbowWheelForFolder = true },
-            onDismiss = { customizingFolder = null }
+            onColorSelected = { newColor ->
+                manager.updateFolderColorOnly(folder, newColor.toArgb().toLong())
+                customizingFolder = null
+            },
+            onOpenRainbowPicker = {
+                showRainbowWheelForFolder = true
+            },
+            onDismiss = {
+                customizingFolder = null
+            }
         )
     }
 
@@ -2048,8 +2052,12 @@ fun LibraryScreen(manager: MusicManager, listState: LazyListState, onFolderClick
             onColorSelected = { newColor ->
                 manager.updateFolderColorOnly(folder, newColor.toArgb().toLong())
                 showRainbowWheelForFolder = false
+                customizingFolder = null
             },
-            onDismiss = { showRainbowWheelForFolder = false }
+            onDismiss = {
+                showRainbowWheelForFolder = false
+                customizingFolder = null
+            }
         )
     }
 }
@@ -2151,7 +2159,6 @@ fun PlaylistDetailScreen(
             }
 
             Row(verticalAlignment = Alignment.CenterVertically) {
-                // Section-Specific 5-Mode Grid Size Switcher with independent memory
                 Box(
                     modifier = Modifier
                         .size(36.dp)
@@ -2491,7 +2498,6 @@ fun FolderSongsScreen(folderName: String, manager: MusicManager, isDark: Boolean
             }
 
             Row(verticalAlignment = Alignment.CenterVertically) {
-                // Section-Specific 5-Mode Grid Size Switcher with independent memory
                 Box(
                     modifier = Modifier
                         .size(36.dp)
