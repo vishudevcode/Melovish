@@ -57,6 +57,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
@@ -101,7 +102,7 @@ import kotlin.math.roundToInt
 import kotlin.math.sin
 
 // =========================================================================
-// 1. IN-APP 1:1 SQUARE ALBUM ART CROPPER DIALOG (Clean Button Placement)
+// 1. IN-APP 1:1 SQUARE ALBUM ART CROPPER DIALOG (Clean Bounds & Visible Buttons)
 // =========================================================================
 
 @Composable
@@ -148,6 +149,9 @@ fun SquareAlbumArtCropperDialog(
     var scale by remember { mutableFloatStateOf(1.0f) }
     var offset by remember { mutableStateOf(Offset.Zero) }
 
+    var measuredViewportWidth by remember { mutableFloatStateOf(1f) }
+    var measuredViewportHeight by remember { mutableFloatStateOf(1f) }
+
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false)
@@ -190,21 +194,22 @@ fun SquareAlbumArtCropperDialog(
                 }
             }
 
-            // Cropper Canvas Area
+            // Cropper Canvas Area with strict boundary clipping to prevent image bleeding
             BoxWithConstraints(
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f)
+                    .clipToBounds()
             ) {
-                val viewportWidthPx = constraints.maxWidth.toFloat()
-                val viewportHeightPx = constraints.maxHeight.toFloat()
+                measuredViewportWidth = constraints.maxWidth.toFloat()
+                measuredViewportHeight = constraints.maxHeight.toFloat()
 
-                val boxSizePx = min(viewportWidthPx, viewportHeightPx) * 0.86f
+                val boxSizePx = min(measuredViewportWidth, measuredViewportHeight) * 0.84f
                 val cropRect = Rect(
-                    left = (viewportWidthPx - boxSizePx) / 2f,
-                    top = (viewportHeightPx - boxSizePx) / 2f,
-                    right = (viewportWidthPx + boxSizePx) / 2f,
-                    bottom = (viewportHeightPx + boxSizePx) / 2f
+                    left = (measuredViewportWidth - boxSizePx) / 2f,
+                    top = (measuredViewportHeight - boxSizePx) / 2f,
+                    right = (measuredViewportWidth + boxSizePx) / 2f,
+                    bottom = (measuredViewportHeight + boxSizePx) / 2f
                 )
 
                 val initialScale = remember(bmp.width, bmp.height, boxSizePx) {
@@ -274,7 +279,7 @@ fun SquareAlbumArtCropperDialog(
                 }
             }
 
-            // Elevated Button Bar
+            // Perfectly Positioned Bottom Action Bar
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -302,9 +307,9 @@ fun SquareAlbumArtCropperDialog(
                             val bmpWidth = bmp.width.toFloat()
                             val bmpHeight = bmp.height.toFloat()
 
-                            val viewportW = (context.resources.displayMetrics.widthPixels).toFloat()
-                            val viewportH = (context.resources.displayMetrics.heightPixels * 0.70f)
-                            val boxSize = min(viewportW, viewportH) * 0.86f
+                            val viewportW = measuredViewportWidth
+                            val viewportH = measuredViewportHeight
+                            val boxSize = min(viewportW, viewportH) * 0.84f
 
                             val cropLeft = (viewportW - boxSize) / 2f
                             val cropTop = (viewportH - boxSize) / 2f
