@@ -2,12 +2,23 @@ package com.melovish.player
 
 import android.net.Uri
 import androidx.compose.runtime.Immutable
+import androidx.compose.ui.graphics.Color
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.persistentListOf
 
 enum class GridViewMode {
     LIST, GRID_2, GRID_3, GRID_4, HERO_GRID
 }
+
+@Immutable
+data class MaterialYouPalette(
+    val bgTop: Color,
+    val bgBottom: Color,
+    val primaryAccent: Color,
+    val surface: Color,
+    val textPrimary: Color,
+    val textSecondary: Color
+)
 
 @Immutable
 data class Song(

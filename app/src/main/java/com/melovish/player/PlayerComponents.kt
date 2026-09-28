@@ -110,7 +110,6 @@ import kotlinx.coroutines.withContext
 import java.util.Locale
 import kotlin.math.abs
 
-// Live Animated 4-Bar Equalizer
 @Composable
 fun LiveAudioWaveEqualizer(isAnimating: Boolean, accentColor: Color, modifier: Modifier = Modifier) {
     val infiniteTransition = rememberInfiniteTransition(label = "audioWave")
@@ -137,7 +136,6 @@ fun LiveAudioWaveEqualizer(isAnimating: Boolean, accentColor: Color, modifier: M
     }
 }
 
-// Vector Curved Back Arrow Icon
 @Composable
 fun CurvedBackArrowIcon(tint: Color, modifier: Modifier = Modifier) {
     Spacer(
@@ -160,7 +158,6 @@ fun CurvedBackArrowIcon(tint: Color, modifier: Modifier = Modifier) {
     )
 }
 
-// Circular Embossed Glass Back Button
 @Composable
 fun GlassBackButton(isDark: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
     Box(
@@ -177,7 +174,6 @@ fun GlassBackButton(isDark: Boolean, onClick: () -> Unit, modifier: Modifier = M
     }
 }
 
-// Glassmorphic Folder Icon
 @Composable
 fun GlassmorphicFolderIcon(folderColor: Color, modifier: Modifier = Modifier) {
     Spacer(
@@ -223,7 +219,6 @@ fun GlassmorphicFolderIcon(folderColor: Color, modifier: Modifier = Modifier) {
     )
 }
 
-// Folder Color Dialog
 @Composable
 fun FolderColorDialog(
     folderName: String,
@@ -335,7 +330,6 @@ fun FolderColorDialog(
     }
 }
 
-// Minimalist Vector Avatar
 @Composable
 fun DefaultProfileAvatar(modifier: Modifier = Modifier, backgroundColor: Color = Color(0xFF030712)) {
     Spacer(
@@ -421,7 +415,6 @@ suspend fun extractMaterialYouPaletteAsync(bitmap: Bitmap?, isDarkMode: Boolean,
     }
 }
 
-// 100% Mathematically Centered Progress Bar
 @Composable
 fun IsolatedScrubberLeaf(
     currentPositionMs: Long,
@@ -534,7 +527,6 @@ fun IsolatedScrubberLeaf(
     }
 }
 
-// Vector Heart Icon
 @Composable
 fun HeartIconVector(isFavorite: Boolean, defaultTint: Color, modifier: Modifier = Modifier) {
     val heartColor = if (isFavorite) Color(0xFFFF2A55) else defaultTint
@@ -568,7 +560,6 @@ fun HeartIconVector(isFavorite: Boolean, defaultTint: Color, modifier: Modifier 
     )
 }
 
-// Vector Bold Clock Icon with Top Timer Crown
 @Composable
 fun SleepTimerClockIcon(
     isActive: Boolean,
@@ -628,7 +619,6 @@ fun SleepTimerClockIcon(
     )
 }
 
-// Vector 3-Sliders Equalizer Icon
 @Composable
 fun EqualizerSlidersIcon(
     tint: Color,
@@ -660,7 +650,6 @@ fun EqualizerSlidersIcon(
     }
 }
 
-// Triple-Line Drag Handle Icon
 @Composable
 fun ReorderDragHandle(tint: Color, modifier: Modifier = Modifier) {
     Canvas(modifier = modifier) {
@@ -674,7 +663,6 @@ fun ReorderDragHandle(tint: Color, modifier: Modifier = Modifier) {
     }
 }
 
-// Full Player Sheet
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @UnstableApi
 @Composable
@@ -1262,7 +1250,6 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
     }
 }
 
-// Queue Sheet
 @OptIn(ExperimentalFoundationApi::class)
 @UnstableApi
 @Composable
@@ -1572,7 +1559,6 @@ fun QueueSheet(
     }
 }
 
-// Equalizer Sheet
 @Composable
 fun EqualizerSheet(manager: MusicManager, onDismiss: () -> Unit) {
     val isDark = manager.isDarkMode
@@ -1810,7 +1796,6 @@ fun EqualizerSheet(manager: MusicManager, onDismiss: () -> Unit) {
     }
 }
 
-// Vertical Line Mixer Slider for Frequency Bands
 @Composable
 fun VerticalBandFader(
     level: Int,
@@ -1927,7 +1912,6 @@ fun MenuRow(icon: String, text: String, isDark: Boolean, isDanger: Boolean = fal
     }
 }
 
-// Mini Player Dock
 @UnstableApi
 @Composable
 fun MiniPlayerDock(manager: MusicManager, onClick: () -> Unit) {
@@ -1980,7 +1964,6 @@ fun MiniPlayerDock(manager: MusicManager, onClick: () -> Unit) {
     }
 }
 
-// Sleep Timer Dialog with Per-Unit Haptic Feedback
 @UnstableApi
 @Composable
 fun SleepTimerDialog(manager: MusicManager, onDismiss: () -> Unit) {
@@ -2123,7 +2106,6 @@ fun SleepTimerDialog(manager: MusicManager, onDismiss: () -> Unit) {
     }
 }
 
-// Lyrics Dialog
 @Composable
 fun LyricsDialog(song: Song, isDark: Boolean, onDismiss: () -> Unit) {
     val textColor = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A)
@@ -2164,7 +2146,6 @@ fun LyricsDialog(song: Song, isDark: Boolean, onDismiss: () -> Unit) {
     }
 }
 
-// Add to Playlist Dialog with Inline + New Playlist Creator
 @Composable
 fun AddToPlaylistDialog(manager: MusicManager, song: Song, onDismiss: () -> Unit) {
     val isDark = manager.isDarkMode
@@ -2281,7 +2262,6 @@ fun AddToPlaylistDialog(manager: MusicManager, song: Song, onDismiss: () -> Unit
     }
 }
 
-// Magnetic Speed Dialog with Prominent Dots & Tactile Notches
 @Composable
 fun MagneticSpeedDialog(manager: MusicManager, onDismiss: () -> Unit) {
     var speed by remember { mutableFloatStateOf(manager.playbackSpeed) }
@@ -2396,7 +2376,6 @@ fun MagneticSpeedDialog(manager: MusicManager, onDismiss: () -> Unit) {
     }
 }
 
-// Repeat Control Icon
 @Composable
 fun RepeatControlIcon(repeatMode: Int, tint: Color, modifier: Modifier = Modifier) {
     val isActive = repeatMode != Player.REPEAT_MODE_OFF
@@ -2443,7 +2422,6 @@ fun RepeatControlIcon(repeatMode: Int, tint: Color, modifier: Modifier = Modifie
     }
 }
 
-// Previous Control Icon
 @Composable
 fun PreviousControlIcon(tint: Color, modifier: Modifier = Modifier) {
     Spacer(
@@ -2465,7 +2443,6 @@ fun PreviousControlIcon(tint: Color, modifier: Modifier = Modifier) {
     )
 }
 
-// Next Control Icon
 @Composable
 fun NextControlIcon(tint: Color, modifier: Modifier = Modifier) {
     Spacer(
@@ -2487,7 +2464,6 @@ fun NextControlIcon(tint: Color, modifier: Modifier = Modifier) {
     )
 }
 
-// Shuffle Control Icon
 @Composable
 fun ShuffleControlIcon(isShuffleOn: Boolean, tint: Color, modifier: Modifier = Modifier) {
     val alpha = if (isShuffleOn) 1f else 0.4f
@@ -2535,7 +2511,6 @@ fun ShuffleControlIcon(isShuffleOn: Boolean, tint: Color, modifier: Modifier = M
     )
 }
 
-// Production Tag Editor Dialog
 @Composable
 fun TagEditorDialog(
     manager: MusicManager,
