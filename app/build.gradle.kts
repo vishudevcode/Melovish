@@ -102,4 +102,7 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:$coroutinesVersion")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:$coroutinesVersion")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-guava:$coroutinesVersion")
+
+    // Physical Audio Tag Modification Engine (MP3 ID3v2.3/v2.4, FLAC Vorbis, M4A/AAC Atoms, WAV)
+    implementation("net.jthink:jaudiotagger:3.0.1")
 }

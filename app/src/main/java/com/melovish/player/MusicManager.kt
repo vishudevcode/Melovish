@@ -65,11 +65,14 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.jaudiotagger.audio.AudioFileIO
+import org.jaudiotagger.tag.FieldKey
+import org.jaudiotagger.tag.images.ArtworkFactory
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream
-import java.io.RandomAccessFile
+import java.text.SimpleDateFormat
 import java.util.Locale
 import kotlin.math.pow
 
@@ -1657,6 +1660,10 @@ class MusicManager(private val context: Context) {
         savePlaylists()
     }
 
+    /**
+     * Physical Audio File Tag & Metadata Editor
+     * Exclusively called by the Tag Editor to alter storage file bytes.
+     */
     fun updateSongMetadata(
         song: Song,
         newTitle: String,
@@ -1668,6 +1675,7 @@ class MusicManager(private val context: Context) {
         managerScope.launch(Dispatchers.IO) {
             var coverPath = song.customCoverPath
 
+            // 1. Save new custom cover image if selected
             if (customCoverUri != null) {
                 try {
                     val inputStream = context.contentResolver.openInputStream(customCoverUri)
@@ -1685,10 +1693,14 @@ class MusicManager(private val context: Context) {
                     val bmp = BitmapFactory.decodeFile(targetFile.absolutePath, opts)
                     if (bmp != null) memoryCache.put(song.id, bmp)
                     prefs.edit().putString("custom_cover_${song.id}", targetFile.absolutePath).apply()
-                } catch (_: Exception) {}
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
             }
 
             var finalPath = song.path
+
+            // 2. Physical File Renaming on Storage
             try {
                 val origFile = File(song.path)
                 if (origFile.exists() && origFile.canWrite()) {
@@ -1700,44 +1712,43 @@ class MusicManager(private val context: Context) {
                     if (origFile.name != newFileName && origFile.renameTo(renamedFile)) {
                         finalPath = renamedFile.absolutePath
                     }
-
-                    if (ext.equals("mp3", ignoreCase = true)) {
-                        try {
-                            RandomAccessFile(renamedFile, "rw").use { raf ->
-                                if (raf.length() > 128) {
-                                    raf.seek(raf.length() - 128)
-                                    val tagBytes = ByteArray(3)
-                                    raf.read(tagBytes)
-                                    val hasTag = String(tagBytes) == "TAG"
-                                    if (!hasTag) {
-                                        raf.seek(raf.length())
-                                        raf.write("TAG".toByteArray(Charsets.ISO_8859_1))
-                                    } else {
-                                        raf.seek(raf.length() - 125)
-                                    }
-                                    val titleBytes = ByteArray(30)
-                                    val tB = newTitle.toByteArray(Charsets.ISO_8859_1)
-                                    System.arraycopy(tB, 0, titleBytes, 0, tB.size.coerceAtMost(30))
-                                    raf.write(titleBytes)
-
-                                    val artistBytes = ByteArray(30)
-                                    val aB = newArtist.toByteArray(Charsets.ISO_8859_1)
-                                    System.arraycopy(aB, 0, artistBytes, 0, aB.size.coerceAtMost(30))
-                                    raf.write(artistBytes)
-
-                                    val albumBytes = ByteArray(30)
-                                    val alB = newAlbum.toByteArray(Charsets.ISO_8859_1)
-                                    System.arraycopy(alB, 0, albumBytes, 0, alB.size.coerceAtMost(30))
-                                    raf.write(albumBytes)
-                                }
-                            }
-                        } catch (_: Exception) {}
-                    }
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
             }
 
+            // 3. Physical Audio Tag Writing using jaudiotagger (MP3 ID3v2, FLAC, M4A, WAV)
+            try {
+                val targetPhysicalFile = File(finalPath)
+                if (targetPhysicalFile.exists() && targetPhysicalFile.canWrite()) {
+                    val audioFile = AudioFileIO.read(targetPhysicalFile)
+                    val tag = audioFile.tagOrCreateAndSetDefault
+
+                    tag.setField(FieldKey.TITLE, newTitle)
+                    tag.setField(FieldKey.ARTIST, newArtist)
+                    tag.setField(FieldKey.ALBUM, newAlbum)
+
+                    val releaseDateMillis = newDate.toLongOrNull()
+                    if (releaseDateMillis != null && releaseDateMillis > 0L) {
+                        val yearStr = SimpleDateFormat("yyyy", Locale.ENGLISH).format(releaseDateMillis)
+                        val fullDateStr = SimpleDateFormat("yyyy-MM-dd", Locale.ENGLISH).format(releaseDateMillis)
+                        tag.setField(FieldKey.YEAR, yearStr)
+                        tag.setField(FieldKey.RECORD_LABEL, fullDateStr)
+                    }
+
+                    if (coverPath != null && File(coverPath).exists()) {
+                        val artwork = ArtworkFactory.createArtworkFromFile(File(coverPath))
+                        tag.deleteArtworkField()
+                        tag.setField(artwork)
+                    }
+
+                    audioFile.commit()
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+
+            // 4. Update Android System MediaStore Database
             try {
                 val cv = ContentValues().apply {
                     put(MediaStore.Audio.Media.TITLE, newTitle)
@@ -1747,11 +1758,19 @@ class MusicManager(private val context: Context) {
                         put(MediaStore.Audio.Media.DATA, finalPath)
                         put(MediaStore.Audio.Media.DISPLAY_NAME, File(finalPath).name)
                     }
+                    val releaseDateMillis = newDate.toLongOrNull()
+                    if (releaseDateMillis != null && releaseDateMillis > 0L) {
+                        val yearInt = SimpleDateFormat("yyyy", Locale.ENGLISH).format(releaseDateMillis).toIntOrNull()
+                        if (yearInt != null) put(MediaStore.Audio.Media.YEAR, yearInt)
+                    }
                 }
                 context.contentResolver.update(song.uri, cv, null, null)
                 MediaScannerConnection.scanFile(context, arrayOf(finalPath), null, null)
-            } catch (_: Exception) {}
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
 
+            // 5. Internal Preference Persistence
             prefs.edit()
                 .putString("custom_title_${song.id}", newTitle)
                 .putString("custom_artist_${song.id}", newArtist)
@@ -1768,6 +1787,7 @@ class MusicManager(private val context: Context) {
                 customCoverPath = coverPath
             )
 
+            // 6. Live UI & Player Queue Update
             withContext(Dispatchers.Main.immediate) {
                 val index = allSongs.indexOfFirst { it.id == song.id }
                 if (index != -1) allSongs[index] = updated
