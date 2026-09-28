@@ -102,7 +102,7 @@ import kotlin.math.roundToInt
 import kotlin.math.sin
 
 // =========================================================================
-// 1. IN-APP 1:1 SQUARE ALBUM ART CROPPER DIALOG (Clean Bounds & Visible Buttons)
+// 1. IN-APP 1:1 SQUARE ALBUM ART CROPPER DIALOG (Shifted Up & Elevated Bar)
 // =========================================================================
 
 @Composable
@@ -151,6 +151,7 @@ fun SquareAlbumArtCropperDialog(
 
     var measuredViewportWidth by remember { mutableFloatStateOf(1f) }
     var measuredViewportHeight by remember { mutableFloatStateOf(1f) }
+    var calculatedShiftUpPx by remember { mutableFloatStateOf(0f) }
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -167,7 +168,7 @@ fun SquareAlbumArtCropperDialog(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(60.dp)
+                    .height(56.dp)
                     .padding(horizontal = 20.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
@@ -194,7 +195,7 @@ fun SquareAlbumArtCropperDialog(
                 }
             }
 
-            // Cropper Canvas Area with strict boundary clipping to prevent image bleeding
+            // Cropper Canvas Area: Shifted halfway up to eliminate upper dead space
             BoxWithConstraints(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -204,12 +205,18 @@ fun SquareAlbumArtCropperDialog(
                 measuredViewportWidth = constraints.maxWidth.toFloat()
                 measuredViewportHeight = constraints.maxHeight.toFloat()
 
-                val boxSizePx = min(measuredViewportWidth, measuredViewportHeight) * 0.84f
+                val boxSizePx = min(measuredViewportWidth, measuredViewportHeight) * 0.86f
+
+                // Half the top distance shifted upward
+                val naturalTopGap = (measuredViewportHeight - boxSizePx) / 2f
+                val shiftUp = (naturalTopGap * 0.50f).coerceAtLeast(0f)
+                calculatedShiftUpPx = shiftUp
+
                 val cropRect = Rect(
                     left = (measuredViewportWidth - boxSizePx) / 2f,
-                    top = (measuredViewportHeight - boxSizePx) / 2f,
+                    top = naturalTopGap - shiftUp,
                     right = (measuredViewportWidth + boxSizePx) / 2f,
-                    bottom = (measuredViewportHeight + boxSizePx) / 2f
+                    bottom = (naturalTopGap - shiftUp) + boxSizePx
                 )
 
                 val initialScale = remember(bmp.width, bmp.height, boxSizePx) {
@@ -238,7 +245,7 @@ fun SquareAlbumArtCropperDialog(
                         val scaledH = bmpHeight * scale
 
                         val drawLeft = (size.width - scaledW) / 2f + offset.x
-                        val drawTop = (size.height - scaledH) / 2f + offset.y
+                        val drawTop = (size.height - scaledH) / 2f - shiftUp + offset.y
 
                         drawImage(
                             image = bmp.asImageBitmap(),
@@ -279,12 +286,12 @@ fun SquareAlbumArtCropperDialog(
                 }
             }
 
-            // Perfectly Positioned Bottom Action Bar
+            // Bottom Action Bar: Lifted up from the screen bottom with 40dp margin
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(Color(0xFF0F172A))
-                    .padding(horizontal = 20.dp, vertical = 16.dp)
+                    .padding(start = 20.dp, end = 20.dp, top = 14.dp, bottom = 40.dp)
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -293,11 +300,11 @@ fun SquareAlbumArtCropperDialog(
                 ) {
                     Button(
                         onClick = onDismiss,
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0x24FFFFFF)),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0x28FFFFFF)),
                         shape = RoundedCornerShape(14.dp),
                         modifier = Modifier
                             .weight(1f)
-                            .height(52.dp)
+                            .height(50.dp)
                     ) {
                         Text("Cancel", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
                     }
@@ -309,16 +316,19 @@ fun SquareAlbumArtCropperDialog(
 
                             val viewportW = measuredViewportWidth
                             val viewportH = measuredViewportHeight
-                            val boxSize = min(viewportW, viewportH) * 0.84f
+                            val boxSize = min(viewportW, viewportH) * 0.86f
+
+                            val naturalTopGap = (viewportH - boxSize) / 2f
+                            val shiftUp = calculatedShiftUpPx
 
                             val cropLeft = (viewportW - boxSize) / 2f
-                            val cropTop = (viewportH - boxSize) / 2f
+                            val cropTop = naturalTopGap - shiftUp
 
                             val scaledW = bmpWidth * scale
                             val scaledH = bmpHeight * scale
 
                             val drawLeft = (viewportW - scaledW) / 2f + offset.x
-                            val drawTop = (viewportH - scaledH) / 2f + offset.y
+                            val drawTop = (viewportH - scaledH) / 2f - shiftUp + offset.y
 
                             val relLeft = (cropLeft - drawLeft) / scale
                             val relTop = (cropTop - drawTop) / scale
@@ -345,7 +355,7 @@ fun SquareAlbumArtCropperDialog(
                         shape = RoundedCornerShape(14.dp),
                         modifier = Modifier
                             .weight(1f)
-                            .height(52.dp)
+                            .height(50.dp)
                     ) {
                         Text("Crop & Apply", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
                     }
