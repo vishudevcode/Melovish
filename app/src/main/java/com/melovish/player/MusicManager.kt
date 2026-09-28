@@ -232,8 +232,9 @@ class MusicManager(private val context: Context) {
     var artistsSortOrder by mutableStateOf(
         try {
             ArtistSortOrder.valueOf(prefs.getString("pref_sort_artists", ArtistSortOrder.NAME_A_TO_Z.name) ?: ArtistSortOrder.NAME_A_TO_Z.name)
-        } catch (_: Exception) {}
-        ArtistSortOrder.NAME_A_TO_Z
+        } catch (_: Exception) {
+            ArtistSortOrder.NAME_A_TO_Z
+        }
     )
 
     var artistInnerSortOrder by mutableStateOf(
@@ -1026,7 +1027,6 @@ class MusicManager(private val context: Context) {
             ArtistSortOrder.NAME_Z_TO_A -> parsedArtistsList.sortedByDescending { it.name.lowercase(Locale.getDefault()) }
             ArtistSortOrder.MOST_TRACKS -> parsedArtistsList.sortedByDescending { it.songs.size }
             ArtistSortOrder.FEWEST_TRACKS -> parsedArtistsList.sortedBy { it.songs.size }
-            else -> parsedArtistsList
         }
     }
 
