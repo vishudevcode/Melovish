@@ -4,9 +4,6 @@ import android.net.Uri
 import android.view.HapticFeedbackConstants
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -45,7 +42,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -60,16 +56,17 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.zIndex
 import androidx.media3.common.util.UnstableApi
 import coil.compose.AsyncImage
 import kotlinx.coroutines.launch
@@ -82,7 +79,6 @@ import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.roundToInt
 import kotlin.math.sin
-import kotlin.math.sqrt
 
 // =========================================================================
 // 1. WHEEL ROLLER CODE-LOCK DATE PICKER (Matches Image 2)
@@ -101,7 +97,7 @@ fun WheelRollerDatePickerDialog(
     }
 
     var selectedYear by remember { mutableIntStateOf(initialCal.get(Calendar.YEAR)) }
-    var selectedMonth by remember { mutableIntStateOf(initialCal.get(Calendar.MONTH)) } // 0-based
+    var selectedMonth by remember { mutableIntStateOf(initialCal.get(Calendar.MONTH)) }
     var selectedDay by remember { mutableIntStateOf(initialCal.get(Calendar.DAY_OF_MONTH)) }
 
     val daysInMonth by remember {
@@ -158,7 +154,6 @@ fun WheelRollerDatePickerDialog(
                 .background(Color.White)
                 .clickable(enabled = false) {}
         ) {
-            // Green Header (Matches Image 2)
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -180,7 +175,6 @@ fun WheelRollerDatePickerDialog(
                 )
             }
 
-            // Wheel Roller Area (3 columns: Day, Month, Year)
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -188,7 +182,6 @@ fun WheelRollerDatePickerDialog(
                     .padding(horizontal = 16.dp),
                 contentAlignment = Alignment.Center
             ) {
-                // Centered Selector Highlight Band
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -202,7 +195,6 @@ fun WheelRollerDatePickerDialog(
                     horizontalArrangement = Arrangement.SpaceEvenly,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // Day Roller Column
                     TumblerWheelColumn(
                         items = (1..daysInMonth).map { it.toString() },
                         selectedIndex = (selectedDay - 1).coerceAtLeast(0),
@@ -210,7 +202,6 @@ fun WheelRollerDatePickerDialog(
                         onItemSelected = { index -> selectedDay = index + 1 }
                     )
 
-                    // Month Roller Column
                     TumblerWheelColumn(
                         items = monthNames,
                         selectedIndex = selectedMonth,
@@ -218,7 +209,6 @@ fun WheelRollerDatePickerDialog(
                         onItemSelected = { index -> selectedMonth = index }
                     )
 
-                    // Year Roller Column
                     TumblerWheelColumn(
                         items = yearsList.map { it.toString() },
                         selectedIndex = yearsList.indexOf(selectedYear).coerceAtLeast(0),
@@ -227,7 +217,6 @@ fun WheelRollerDatePickerDialog(
                     )
                 }
 
-                // Top & Bottom Fade Gradient
                 Box(
                     modifier = Modifier
                         .align(Alignment.TopCenter)
@@ -244,7 +233,6 @@ fun WheelRollerDatePickerDialog(
                 )
             }
 
-            // Action Buttons (CANCEL / OK)
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -342,7 +330,7 @@ private fun TumblerWheelColumn(
 }
 
 // =========================================================================
-// 2. MATERIAL DESIGN ANALOG CLOCK TIME PICKER (Matches Images 3 & 4)
+// 2. STABLE MATERIAL DESIGN ANALOG CLOCK TIME PICKER (Crash-Free)
 // =========================================================================
 
 enum class ClockSelectionMode {
@@ -402,7 +390,7 @@ fun MaterialAnalogClockPickerDialog(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Digital Blocks Header with AM/PM toggle (Matches Images 3 & 4)
+            // Digital Blocks Header with AM/PM toggle
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.Center,
@@ -423,7 +411,7 @@ fun MaterialAnalogClockPickerDialog(
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = String.format("%02d", selectedHour12),
+                        text = String.format(Locale.US, "%02d", selectedHour12),
                         fontSize = 44.sp,
                         fontWeight = FontWeight.Bold,
                         color = if (clockMode == ClockSelectionMode.HOUR) accent else Color(0xFF1D1B20)
@@ -453,7 +441,7 @@ fun MaterialAnalogClockPickerDialog(
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = String.format("%02d", selectedMinute),
+                        text = String.format(Locale.US, "%02d", selectedMinute),
                         fontSize = 44.sp,
                         fontWeight = FontWeight.Bold,
                         color = if (clockMode == ClockSelectionMode.MINUTE) accent else Color(0xFF1D1B20)
@@ -506,7 +494,7 @@ fun MaterialAnalogClockPickerDialog(
 
             Spacer(modifier = Modifier.height(28.dp))
 
-            // Analog Dial Touch Canvas
+            // Analog Dial Touch Surface
             Box(
                 modifier = Modifier
                     .size(256.dp)
@@ -539,7 +527,6 @@ fun MaterialAnalogClockPickerDialog(
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // Footer Cancel / Save Buttons
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.End,
@@ -585,89 +572,92 @@ private fun AnalogClockDial(
     onMinuteChanged: (Int) -> Unit,
     onHourConfirmed: () -> Unit
 ) {
-    Canvas(
-        modifier = Modifier
-            .fillMaxSize()
-            .pointerInput(mode) {
-                detectTapGestures { offset ->
-                    val center = Offset(size.width / 2f, size.height / 2f)
-                    val dx = offset.x - center.x
-                    val dy = offset.y - center.y
-                    var angleDeg = Math.toDegrees(atan2(dy.toDouble(), dx.toDouble())).toFloat() + 90f
-                    if (angleDeg < 0f) angleDeg += 360f
+    val density = LocalDensity.current
 
-                    if (mode == ClockSelectionMode.HOUR) {
-                        var h = (angleDeg / 30f).roundToInt()
-                        if (h == 0) h = 12
-                        if (h > 12) h = 12
-                        onHourChanged(h)
-                        onHourConfirmed()
-                    } else {
-                        var m = (angleDeg / 6f).roundToInt()
-                        if (m >= 60) m = 0
-                        onMinuteChanged(m)
-                    }
-                }
-            }
-            .pointerInput(mode) {
-                detectDragGestures(
-                    onDragEnd = {
-                        if (mode == ClockSelectionMode.HOUR) onHourConfirmed()
-                    }
-                ) { change, _ ->
-                    val center = Offset(size.width / 2f, size.height / 2f)
-                    val dx = change.position.x - center.x
-                    val dy = change.position.y - center.y
-                    var angleDeg = Math.toDegrees(atan2(dy.toDouble(), dx.toDouble())).toFloat() + 90f
-                    if (angleDeg < 0f) angleDeg += 360f
-
-                    if (mode == ClockSelectionMode.HOUR) {
-                        var h = (angleDeg / 30f).roundToInt()
-                        if (h == 0) h = 12
-                        if (h > 12) h = 12
-                        onHourChanged(h)
-                    } else {
-                        var m = (angleDeg / 6f).roundToInt()
-                        if (m >= 60) m = 0
-                        onMinuteChanged(m)
-                    }
-                }
-            }
-    ) {
-        val center = Offset(size.width / 2f, size.height / 2f)
-        val radius = size.width / 2f
-        val pointerLength = radius * 0.72f
-
-        val activeAngleDeg = if (mode == ClockSelectionMode.HOUR) {
-            (selectedHour12 % 12) * 30f
-        } else {
-            selectedMinute * 6f
-        }
-        val rad = (activeAngleDeg - 90f) * (PI.toFloat() / 180f)
-        val handThumb = Offset(center.x + (pointerLength * cos(rad)), center.y + (pointerLength * sin(rad)))
-
-        // Draw Center Pivot
-        drawCircle(color = accentColor, radius = 5.dp.toPx(), center = center)
-
-        // Draw Clock Hand Line
-        drawLine(
-            color = accentColor,
-            start = center,
-            end = handThumb,
-            strokeWidth = 2.dp.toPx(),
-            cap = StrokeCap.Round
-        )
-
-        // Draw Active Selector Circle
-        drawCircle(
-            color = accentColor,
-            radius = 18.dp.toPx(),
-            center = handThumb
-        )
-    }
-
-    // Number overlay layer
     Box(modifier = Modifier.fillMaxSize()) {
+        Canvas(
+            modifier = Modifier
+                .fillMaxSize()
+                .pointerInput(mode) {
+                    detectTapGestures { offset ->
+                        val center = Offset(size.width / 2f, size.height / 2f)
+                        val dx = offset.x - center.x
+                        val dy = offset.y - center.y
+                        var angleDeg = Math.toDegrees(atan2(dy.toDouble(), dx.toDouble())).toFloat() + 90f
+                        if (angleDeg < 0f) angleDeg += 360f
+
+                        if (mode == ClockSelectionMode.HOUR) {
+                            var h = (angleDeg / 30f).roundToInt()
+                            if (h == 0) h = 12
+                            if (h > 12) h = 12
+                            onHourChanged(h)
+                            onHourConfirmed()
+                        } else {
+                            var m = (angleDeg / 6f).roundToInt()
+                            if (m >= 60) m = 0
+                            onMinuteChanged(m)
+                        }
+                    }
+                }
+                .pointerInput(mode) {
+                    detectDragGestures(
+                        onDragEnd = {
+                            if (mode == ClockSelectionMode.HOUR) onHourConfirmed()
+                        }
+                    ) { change, _ ->
+                        change.consume()
+                        val center = Offset(size.width / 2f, size.height / 2f)
+                        val dx = change.position.x - center.x
+                        val dy = change.position.y - center.y
+                        var angleDeg = Math.toDegrees(atan2(dy.toDouble(), dx.toDouble())).toFloat() + 90f
+                        if (angleDeg < 0f) angleDeg += 360f
+
+                        if (mode == ClockSelectionMode.HOUR) {
+                            var h = (angleDeg / 30f).roundToInt()
+                            if (h == 0) h = 12
+                            if (h > 12) h = 12
+                            onHourChanged(h)
+                        } else {
+                            var m = (angleDeg / 6f).roundToInt()
+                            if (m >= 60) m = 0
+                            onMinuteChanged(m)
+                        }
+                    }
+                }
+        ) {
+            val center = Offset(size.width / 2f, size.height / 2f)
+            val radius = size.width / 2f
+            val pointerLength = radius * 0.72f
+
+            val activeAngleDeg = if (mode == ClockSelectionMode.HOUR) {
+                (selectedHour12 % 12) * 30f
+            } else {
+                selectedMinute * 6f
+            }
+            val rad = (activeAngleDeg - 90f) * (PI.toFloat() / 180f)
+            val handThumb = Offset(center.x + (pointerLength * cos(rad)), center.y + (pointerLength * sin(rad)))
+
+            // Center Pivot
+            drawCircle(color = accentColor, radius = 5.dp.toPx(), center = center)
+
+            // Hand Line
+            drawLine(
+                color = accentColor,
+                start = center,
+                end = handThumb,
+                strokeWidth = 2.dp.toPx(),
+                cap = StrokeCap.Round
+            )
+
+            // Active Knob Circle
+            drawCircle(
+                color = accentColor,
+                radius = 18.dp.toPx(),
+                center = handThumb
+            )
+        }
+
+        // Render Dial Numbers via absolute layout positioning (zero illegal padding)
         val count = 12
         for (i in 1..count) {
             val angleDeg = i * (360f / count)
@@ -676,7 +666,7 @@ private fun AnalogClockDial(
                 i.toString()
             } else {
                 val min = (i * 5) % 60
-                String.format("%02d", min)
+                String.format(Locale.US, "%02d", min)
             }
             val isSelected = if (mode == ClockSelectionMode.HOUR) {
                 selectedHour12 == i
@@ -686,19 +676,22 @@ private fun AnalogClockDial(
 
             Box(
                 modifier = Modifier
-                    .fillMaxSize()
-                    .padding(26.dp),
+                    .fillMaxSize(),
                 contentAlignment = Alignment.Center
             ) {
-                val xOffset = (100 * cos(rad)).dp
-                val yOffset = (100 * sin(rad)).dp
+                val offsetDistance = with(density) { 92.dp.toPx() }
+                val tx = (offsetDistance * cos(rad))
+                val ty = (offsetDistance * sin(rad))
 
                 Text(
                     text = textToDisplay,
                     fontSize = if (mode == ClockSelectionMode.HOUR) 15.sp else 13.sp,
                     fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
                     color = if (isSelected) Color.White else Color(0xFF1D1B20),
-                    modifier = Modifier.padding(start = xOffset * 2, top = yOffset * 2)
+                    modifier = Modifier.graphicsLayer {
+                        translationX = tx
+                        translationY = ty
+                    }
                 )
             }
         }
@@ -706,7 +699,7 @@ private fun AnalogClockDial(
 }
 
 // =========================================================================
-// 3. BEAUTIFUL TAG EDITOR DIALOG WITH LIVE FILE BADGE & TIME PICKER
+// 3. COMPLETE TAG EDITOR DIALOG
 // =========================================================================
 
 @UnstableApi
@@ -776,7 +769,7 @@ fun TagEditorDialog(
                     .fillMaxSize()
                     .verticalScroll(rememberScrollState())
             ) {
-                // Header Row
+                // Header
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -842,7 +835,6 @@ fun TagEditorDialog(
                             Text("🎵", fontSize = 36.sp)
                         }
 
-                        // Frosted Camera Overlay
                         Box(
                             modifier = Modifier
                                 .align(Alignment.BottomCenter)
@@ -884,7 +876,6 @@ fun TagEditorDialog(
 
                 Spacer(modifier = Modifier.height(20.dp))
 
-                // Editable Fields
                 OutlinedTextField(
                     value = title,
                     onValueChange = { title = it },
@@ -930,7 +921,6 @@ fun TagEditorDialog(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // Date & Time Picker Trigger Section
                 Text(
                     text = "Release Date & Time",
                     fontSize = 12.5.sp,
@@ -983,7 +973,6 @@ fun TagEditorDialog(
 
                 Spacer(modifier = Modifier.height(28.dp))
 
-                // Save Button
                 Button(
                     onClick = {
                         manager.updateSongMetadata(
@@ -1013,7 +1002,6 @@ fun TagEditorDialog(
         }
     }
 
-    // Modal Dialogs
     if (showWheelDatePicker) {
         WheelRollerDatePickerDialog(
             initialDateMillis = dateMillis,

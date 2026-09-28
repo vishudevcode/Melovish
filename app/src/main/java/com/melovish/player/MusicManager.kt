@@ -71,6 +71,7 @@ import org.jaudiotagger.tag.images.ArtworkFactory
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
+import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.text.SimpleDateFormat
 import java.util.Locale
@@ -1662,7 +1663,8 @@ class MusicManager(private val context: Context) {
 
     /**
      * Physical Audio File Tag & Metadata Editor
-     * Exclusively called by the Tag Editor to alter storage file bytes.
+     * Safely updates internal byte containers via a scratchpad copy and streams back
+     * into Android storage through ContentResolver openOutputStream.
      */
     fun updateSongMetadata(
         song: Song,
@@ -1675,7 +1677,7 @@ class MusicManager(private val context: Context) {
         managerScope.launch(Dispatchers.IO) {
             var coverPath = song.customCoverPath
 
-            // 1. Save new custom cover image if selected
+            // 1. Process custom cover art
             if (customCoverUri != null) {
                 try {
                     val inputStream = context.contentResolver.openInputStream(customCoverUri)
@@ -1699,29 +1701,25 @@ class MusicManager(private val context: Context) {
             }
 
             var finalPath = song.path
+            var fileUpdatedOnDisk = false
 
-            // 2. Physical File Renaming on Storage
+            // 2. Physical File Tag Writing using JAudioTagger via Temporary File Pipeline
             try {
                 val origFile = File(song.path)
-                if (origFile.exists() && origFile.canWrite()) {
-                    val ext = origFile.extension
-                    val sanitizedTitle = newTitle.replace(Regex("[\\\\/:*?\"<>|]"), "_").trim()
-                    val newFileName = if (ext.isNotBlank()) "$sanitizedTitle.$ext" else sanitizedTitle
-                    val renamedFile = File(origFile.parentFile, newFileName)
+                val ext = origFile.extension.ifBlank { "mp3" }
+                val tempScratchpad = File(context.cacheDir, "tag_edit_${System.currentTimeMillis()}.$ext")
 
-                    if (origFile.name != newFileName && origFile.renameTo(renamedFile)) {
-                        finalPath = renamedFile.absolutePath
+                // Pull exact content from Scoped Storage URI to writable app cache
+                val inputStream = context.contentResolver.openInputStream(song.uri)
+                if (inputStream != null) {
+                    FileOutputStream(tempScratchpad).use { output ->
+                        inputStream.copyTo(output)
                     }
+                    inputStream.close()
                 }
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
 
-            // 3. Physical Audio Tag Writing using jaudiotagger (MP3 ID3v2, FLAC, M4A, WAV)
-            try {
-                val targetPhysicalFile = File(finalPath)
-                if (targetPhysicalFile.exists() && targetPhysicalFile.canWrite()) {
-                    val audioFile = AudioFileIO.read(targetPhysicalFile)
+                if (tempScratchpad.exists() && tempScratchpad.length() > 0) {
+                    val audioFile = AudioFileIO.read(tempScratchpad)
                     val tag = audioFile.tagOrCreateAndSetDefault
 
                     tag.setField(FieldKey.TITLE, newTitle)
@@ -1743,20 +1741,46 @@ class MusicManager(private val context: Context) {
                     }
 
                     audioFile.commit()
+
+                    // Stream modified bytes back to the original physical file on storage
+                    context.contentResolver.openOutputStream(song.uri, "wt")?.use { targetOutStream ->
+                        FileInputStream(tempScratchpad).use { scratchpadIn ->
+                            scratchpadIn.copyTo(targetOutStream)
+                        }
+                    }
+                    tempScratchpad.delete()
+                    fileUpdatedOnDisk = true
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
             }
 
-            // 4. Update Android System MediaStore Database
+            // 3. Rename File via Native Filesystem (if accessible) and MediaStore
+            val sanitizedTitle = newTitle.replace(Regex("[\\\\/:*?\"<>|]"), "_").trim()
+            val origFile = File(song.path)
+            val ext = origFile.extension
+            val newFileName = if (ext.isNotBlank()) "$sanitizedTitle.$ext" else sanitizedTitle
+
+            try {
+                if (origFile.exists() && origFile.name != newFileName && origFile.canWrite()) {
+                    val renamedFile = File(origFile.parentFile, newFileName)
+                    if (origFile.renameTo(renamedFile)) {
+                        finalPath = renamedFile.absolutePath
+                    }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+
+            // 4. Update System MediaStore Index and MediaScanner
             try {
                 val cv = ContentValues().apply {
                     put(MediaStore.Audio.Media.TITLE, newTitle)
                     put(MediaStore.Audio.Media.ARTIST, newArtist)
                     put(MediaStore.Audio.Media.ALBUM, newAlbum)
+                    put(MediaStore.Audio.Media.DISPLAY_NAME, newFileName)
                     if (finalPath != song.path) {
                         put(MediaStore.Audio.Media.DATA, finalPath)
-                        put(MediaStore.Audio.Media.DISPLAY_NAME, File(finalPath).name)
                     }
                     val releaseDateMillis = newDate.toLongOrNull()
                     if (releaseDateMillis != null && releaseDateMillis > 0L) {
@@ -1797,7 +1821,11 @@ class MusicManager(private val context: Context) {
                 if (qIdx != -1) playbackQueue[qIdx] = updated
                 if (currentSong?.id == song.id) currentSong = updated
                 updateNotification()
-                Toast.makeText(context, "Saved & updated file tags", Toast.LENGTH_SHORT).show()
+                Toast.makeText(
+                    context,
+                    if (fileUpdatedOnDisk) "Tags & physical file updated on storage!" else "Metadata updated in app",
+                    Toast.LENGTH_SHORT
+                ).show()
             }
 
             val parsed = withContext(Dispatchers.Default) {
