@@ -65,6 +65,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.ClipOp
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipPath
@@ -100,7 +101,7 @@ import kotlin.math.roundToInt
 import kotlin.math.sin
 
 // =========================================================================
-// 1. IN-APP 1:1 SQUARE ALBUM ART CROPPER DIALOG (Perfect Screen Fit)
+// 1. IN-APP 1:1 SQUARE ALBUM ART CROPPER DIALOG (Clean Button Placement)
 // =========================================================================
 
 @Composable
@@ -158,7 +159,7 @@ fun SquareAlbumArtCropperDialog(
                 .statusBarsPadding()
                 .navigationBarsPadding()
         ) {
-            // 1. Top Header Bar
+            // Header Bar
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -189,7 +190,7 @@ fun SquareAlbumArtCropperDialog(
                 }
             }
 
-            // 2. Center Cropper Viewport
+            // Cropper Canvas Area
             BoxWithConstraints(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -198,7 +199,6 @@ fun SquareAlbumArtCropperDialog(
                 val viewportWidthPx = constraints.maxWidth.toFloat()
                 val viewportHeightPx = constraints.maxHeight.toFloat()
 
-                // Calculate square box based on the active viewport area
                 val boxSizePx = min(viewportWidthPx, viewportHeightPx) * 0.86f
                 val cropRect = Rect(
                     left = (viewportWidthPx - boxSizePx) / 2f,
@@ -235,20 +235,17 @@ fun SquareAlbumArtCropperDialog(
                         val drawLeft = (size.width - scaledW) / 2f + offset.x
                         val drawTop = (size.height - scaledH) / 2f + offset.y
 
-                        // Draw Image
                         drawImage(
                             image = bmp.asImageBitmap(),
                             dstOffset = androidx.compose.ui.unit.IntOffset(drawLeft.roundToInt(), drawTop.roundToInt()),
                             dstSize = androidx.compose.ui.unit.IntSize(scaledW.roundToInt(), scaledH.roundToInt())
                         )
 
-                        // Outer Vignette
                         val cropPath = Path().apply { addRect(cropRect) }
                         clipPath(cropPath, clipOp = ClipOp.Difference) {
                             drawRect(Color(0xD9000000))
                         }
 
-                        // Outline Box
                         drawRect(
                             color = Color.White,
                             topLeft = Offset(cropRect.left, cropRect.top),
@@ -256,7 +253,6 @@ fun SquareAlbumArtCropperDialog(
                             style = Stroke(width = 2.dp.toPx())
                         )
 
-                        // Rule of Thirds
                         val thirdW = cropRect.width / 3f
                         val thirdH = cropRect.height / 3f
 
@@ -278,7 +274,7 @@ fun SquareAlbumArtCropperDialog(
                 }
             }
 
-            // 3. Elevated Bottom Action Bar (Safe from Navigation Bar overlay)
+            // Elevated Button Bar
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -306,7 +302,6 @@ fun SquareAlbumArtCropperDialog(
                             val bmpWidth = bmp.width.toFloat()
                             val bmpHeight = bmp.height.toFloat()
 
-                            // Use identical scale & bounds
                             val viewportW = (context.resources.displayMetrics.widthPixels).toFloat()
                             val viewportH = (context.resources.displayMetrics.heightPixels * 0.70f)
                             val boxSize = min(viewportW, viewportH) * 0.86f
