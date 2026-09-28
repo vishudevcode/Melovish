@@ -18,9 +18,11 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -636,7 +638,6 @@ private fun AnalogClockDial(
         val radius = size.width / 2f
         val pointerLength = radius * 0.72f
 
-        // Calculate active hand angle
         val activeAngleDeg = if (mode == ClockSelectionMode.HOUR) {
             (selectedHour12 % 12) * 30f
         } else {
@@ -667,7 +668,7 @@ private fun AnalogClockDial(
 
     // Number overlay layer
     Box(modifier = Modifier.fillMaxSize()) {
-        val count = if (mode == ClockSelectionMode.HOUR) 12 else 12
+        val count = 12
         for (i in 1..count) {
             val angleDeg = i * (360f / count)
             val rad = (angleDeg - 90f) * (PI.toFloat() / 180f)
@@ -929,7 +930,7 @@ fun TagEditorDialog(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // Date & Time Picker Section (Displays formatted string, tap opens Wheel/Clock pickers)
+                // Date & Time Picker Trigger Section
                 Text(
                     text = "Release Date & Time",
                     fontSize = 12.5.sp,
@@ -982,7 +983,7 @@ fun TagEditorDialog(
 
                 Spacer(modifier = Modifier.height(28.dp))
 
-                // Save Button (Triggers physical file write)
+                // Save Button
                 Button(
                     onClick = {
                         manager.updateSongMetadata(
@@ -1012,7 +1013,7 @@ fun TagEditorDialog(
         }
     }
 
-    // Modal Pickers
+    // Modal Dialogs
     if (showWheelDatePicker) {
         WheelRollerDatePickerDialog(
             initialDateMillis = dateMillis,
