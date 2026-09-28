@@ -358,8 +358,8 @@ fun DefaultProfileAvatar(modifier: Modifier = Modifier, backgroundColor: Color =
 }
 
 /**
- * Dynamic Material You Palette Extractor.
- * Extracts dominant colors from album art to dynamically color the player and queue.
+ * Robust Material You Palette Extractor.
+ * Dynamically computes dominant and vibrant tones from album bitmaps.
  */
 suspend fun extractMaterialYouPaletteAsync(bitmap: Bitmap?, isDarkMode: Boolean, fallbackAccent: Color): MaterialYouPalette = withContext(Dispatchers.Default) {
     if (bitmap == null) {
@@ -746,6 +746,8 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
 
     val activeSong = manager.currentSong ?: currentQueue[pagerState.currentPage]
     var albumArtBitmap by remember(activeSong.id) { mutableStateOf(manager.getCachedAlbumArt(activeSong.id)) }
+    
+    // Reactively load album art if missing in cache
     LaunchedEffect(activeSong.id) {
         albumArtBitmap = manager.loadAlbumArtAsync(activeSong)
     }
@@ -772,7 +774,7 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
         mutableStateOf(if (isDark) defaultDarkPalette else defaultLightPalette)
     }
 
-    // Reactive Material You Palette: Re-extracts dynamically when bitmap or colorful player state changes
+    // Fully reactive palette calculation triggered when bitmap finishes loading
     LaunchedEffect(activeSong.id, albumArtBitmap, isDark, userAccent, manager.isColorfulPlayer) {
         targetPalette = if (manager.isColorfulPlayer) {
             extractMaterialYouPaletteAsync(albumArtBitmap, isDark, userAccent)
