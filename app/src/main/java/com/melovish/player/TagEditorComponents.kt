@@ -57,7 +57,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
@@ -330,7 +329,7 @@ private fun TumblerWheelColumn(
 }
 
 // =========================================================================
-// 2. STABLE MATERIAL DESIGN ANALOG CLOCK TIME PICKER (Crash-Free)
+// 2. MATERIAL DESIGN ANALOG CLOCK TIME PICKER (Matches Images 3 & 4)
 // =========================================================================
 
 enum class ClockSelectionMode {
@@ -657,7 +656,7 @@ private fun AnalogClockDial(
             )
         }
 
-        // Render Dial Numbers via absolute layout positioning (zero illegal padding)
+        // Render Dial Numbers via absolute layout positioning
         val count = 12
         for (i in 1..count) {
             val angleDeg = i * (360f / count)
@@ -973,9 +972,10 @@ fun TagEditorDialog(
 
                 Spacer(modifier = Modifier.height(28.dp))
 
+                // Save Button invoking requestFileWritePermissionAndSave
                 Button(
                     onClick = {
-                        manager.updateSongMetadata(
+                        manager.requestFileWritePermissionAndSave(
                             song = song,
                             newTitle = title.trim(),
                             newArtist = artist.trim(),

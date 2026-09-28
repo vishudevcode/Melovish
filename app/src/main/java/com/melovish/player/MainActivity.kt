@@ -1,6 +1,7 @@
 package com.melovish.player
 
 import android.Manifest
+import android.app.Activity
 import android.app.Application
 import android.content.ComponentCallbacks2
 import android.content.Intent
@@ -8,10 +9,13 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import androidx.activity.result.ActivityResultLauncher
+import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.animation.AnimatedVisibility
@@ -133,6 +137,17 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
 class MainActivity : ComponentActivity() {
     private val viewModel by viewModels<MusicViewModel>()
 
+    // Native Android System Dialog Launcher: "Allow Melovish to modify this audio file?"
+    val writeRequestLauncher: ActivityResultLauncher<IntentSenderRequest> =
+        registerForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { result ->
+            if (result.resultCode == Activity.RESULT_OK) {
+                viewModel.manager.executePendingStorageWrite()
+            } else {
+                Toast.makeText(this, "Permission denied: File not modified", Toast.LENGTH_SHORT).show()
+                viewModel.manager.clearPendingStorageWrite()
+            }
+        }
+
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
@@ -146,6 +161,9 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
+        // Attach Activity to MusicManager for MediaStore.createWriteRequest dialog popups
+        viewModel.manager.attachActivity(this)
+
         try {
             val serviceIntent = Intent(this, MediaPlaybackService::class.java)
             ContextCompat.startForegroundService(this, serviceIntent)
@@ -179,6 +197,11 @@ class MainActivity : ComponentActivity() {
         } else {
             viewModel.manager.scanStorage()
         }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        viewModel.manager.detachActivity()
     }
 
     override fun onTrimMemory(level: Int) {
@@ -643,7 +666,6 @@ fun HeroAlbumCard(
             }
         }
 
-        // Elevated Frosted Bottom Gradient Banner with bottom padding safety
         Box(
             modifier = Modifier
                 .align(Alignment.BottomCenter)

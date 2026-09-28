@@ -1,8 +1,10 @@
 package com.melovish.player
 
+import android.app.Activity
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
+import android.app.RecoverableSecurityException
 import android.content.BroadcastReceiver
 import android.content.ContentUris
 import android.content.ContentValues
@@ -28,6 +30,7 @@ import android.provider.MediaStore
 import android.provider.Settings
 import android.util.LruCache
 import android.widget.Toast
+import androidx.activity.result.IntentSenderRequest
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
@@ -81,6 +84,15 @@ enum class GridViewMode {
     LIST, GRID_2, GRID_3, GRID_4, HERO_GRID
 }
 
+data class PendingTagWrite(
+    val song: Song,
+    val newTitle: String,
+    val newArtist: String,
+    val newAlbum: String,
+    val newDate: String,
+    val customCoverUri: Uri?
+)
+
 @UnstableApi
 class MusicManager(private val context: Context) {
 
@@ -88,6 +100,17 @@ class MusicManager(private val context: Context) {
         @Volatile
         var activeInstance: MusicManager? = null
             private set
+    }
+
+    private var attachedActivity: MainActivity? = null
+    private var pendingStorageWrite: PendingTagWrite? = null
+
+    fun attachActivity(activity: MainActivity) {
+        attachedActivity = activity
+    }
+
+    fun detachActivity() {
+        attachedActivity = null
     }
 
     private val exceptionHandler = CoroutineExceptionHandler { _, throwable ->
@@ -165,9 +188,7 @@ class MusicManager(private val context: Context) {
     val folderColors = mutableStateMapOf<String, Long>()
     val parsedArtistsList = mutableStateListOf<ArtistItem>()
 
-    // ==========================================
-    // SEPARATE VIEW MODES WITH PER-SCREEN MEMORY
-    // ==========================================
+    // View Modes
     private fun parseGridViewMode(saved: String?): GridViewMode {
         return try {
             if (saved == null || saved == "DETAILED_LIST") GridViewMode.LIST
@@ -184,9 +205,7 @@ class MusicManager(private val context: Context) {
     var artistInnerViewMode by mutableStateOf(parseGridViewMode(prefs.getString("pref_view_artist_inner", GridViewMode.LIST.name)))
     var playlistInnerViewMode by mutableStateOf(parseGridViewMode(prefs.getString("pref_view_playlist_inner", GridViewMode.LIST.name)))
 
-    // ==========================================
-    // SEPARATE SORT ORDERS WITH PER-SCREEN MEMORY
-    // ==========================================
+    // Sort Orders
     var currentSortOrder by mutableStateOf(
         try {
             SongSortOrder.valueOf(prefs.getString("saved_song_sort", SongSortOrder.A_TO_Z.name) ?: SongSortOrder.A_TO_Z.name)
@@ -853,9 +872,7 @@ class MusicManager(private val context: Context) {
         }
     }
 
-    // ========================================================
-    // PER-SCREEN INDEPENDENT VIEW MODE PERSISTENCE METHODS
-    // ========================================================
+    // View Modes
     fun updateHomeViewMode(mode: GridViewMode) {
         homeViewMode = mode
         managerScope.launch(Dispatchers.IO) {
@@ -934,9 +951,7 @@ class MusicManager(private val context: Context) {
         updatePlaylistInnerViewMode(modes[nextIdx])
     }
 
-    // ========================================================
-    // PER-SCREEN INDEPENDENT SORT ORDER PERSISTENCE METHODS
-    // ========================================================
+    // Sort Orders
     fun setPersistentSongSort(order: SongSortOrder) {
         currentSortOrder = order
         managerScope.launch(Dispatchers.IO) {
@@ -1661,12 +1676,11 @@ class MusicManager(private val context: Context) {
         savePlaylists()
     }
 
-    /**
-     * Physical Audio File Tag & Metadata Editor
-     * Safely updates internal byte containers via a scratchpad copy and streams back
-     * into Android storage through ContentResolver openOutputStream.
-     */
-    fun updateSongMetadata(
+    // =========================================================================
+    // NATIVE SYSTEM STORAGE WRITE CONFIRMATION & EXECUTION ENGINE
+    // =========================================================================
+
+    fun requestFileWritePermissionAndSave(
         song: Song,
         newTitle: String,
         newArtist: String,
@@ -1674,14 +1688,44 @@ class MusicManager(private val context: Context) {
         newDate: String,
         customCoverUri: Uri?
     ) {
-        managerScope.launch(Dispatchers.IO) {
-            var coverPath = song.customCoverPath
+        pendingStorageWrite = PendingTagWrite(song, newTitle, newArtist, newAlbum, newDate, customCoverUri)
 
-            // 1. Process custom cover art
-            if (customCoverUri != null) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            // Android 11+ (API 30+): Trigger native system confirmation dialogue
+            try {
+                val writePendingIntent = MediaStore.createWriteRequest(
+                    context.contentResolver,
+                    listOf(song.uri)
+                )
+                val intentSenderRequest = IntentSenderRequest.Builder(writePendingIntent.intentSender).build()
+                val act = attachedActivity
+                if (act != null) {
+                    act.writeRequestLauncher.launch(intentSenderRequest)
+                } else {
+                    executePendingStorageWrite()
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                executePendingStorageWrite()
+            }
+        } else {
+            // Android 10 and below
+            executePendingStorageWrite()
+        }
+    }
+
+    fun executePendingStorageWrite() {
+        val task = pendingStorageWrite ?: return
+        pendingStorageWrite = null
+
+        managerScope.launch(Dispatchers.IO) {
+            var coverPath = task.song.customCoverPath
+
+            // 1. Save new custom cover image if selected
+            if (task.customCoverUri != null) {
                 try {
-                    val inputStream = context.contentResolver.openInputStream(customCoverUri)
-                    val targetFile = File(context.filesDir, "cover_${song.id}.jpg")
+                    val inputStream = context.contentResolver.openInputStream(task.customCoverUri)
+                    val targetFile = File(context.filesDir, "cover_${task.song.id}.jpg")
                     val outputStream = FileOutputStream(targetFile)
                     inputStream?.copyTo(outputStream)
                     inputStream?.close()
@@ -1693,40 +1737,37 @@ class MusicManager(private val context: Context) {
                         inPreferredConfig = Bitmap.Config.RGB_565
                     }
                     val bmp = BitmapFactory.decodeFile(targetFile.absolutePath, opts)
-                    if (bmp != null) memoryCache.put(song.id, bmp)
-                    prefs.edit().putString("custom_cover_${song.id}", targetFile.absolutePath).apply()
+                    if (bmp != null) memoryCache.put(task.song.id, bmp)
+                    prefs.edit().putString("custom_cover_${task.song.id}", targetFile.absolutePath).apply()
                 } catch (e: Exception) {
                     e.printStackTrace()
                 }
             }
 
-            var finalPath = song.path
+            var finalPath = task.song.path
             var fileUpdatedOnDisk = false
 
-            // 2. Physical File Tag Writing using JAudioTagger via Temporary File Pipeline
+            // 2. Physical File Tag Writing using jaudiotagger via Scratchpad with Granted Write Stream
             try {
-                val origFile = File(song.path)
+                val origFile = File(task.song.path)
                 val ext = origFile.extension.ifBlank { "mp3" }
                 val tempScratchpad = File(context.cacheDir, "tag_edit_${System.currentTimeMillis()}.$ext")
 
-                // Pull exact content from Scoped Storage URI to writable app cache
-                val inputStream = context.contentResolver.openInputStream(song.uri)
-                if (inputStream != null) {
+                context.contentResolver.openInputStream(task.song.uri)?.use { input ->
                     FileOutputStream(tempScratchpad).use { output ->
-                        inputStream.copyTo(output)
+                        input.copyTo(output)
                     }
-                    inputStream.close()
                 }
 
                 if (tempScratchpad.exists() && tempScratchpad.length() > 0) {
                     val audioFile = AudioFileIO.read(tempScratchpad)
                     val tag = audioFile.tagOrCreateAndSetDefault
 
-                    tag.setField(FieldKey.TITLE, newTitle)
-                    tag.setField(FieldKey.ARTIST, newArtist)
-                    tag.setField(FieldKey.ALBUM, newAlbum)
+                    tag.setField(FieldKey.TITLE, task.newTitle)
+                    tag.setField(FieldKey.ARTIST, task.newArtist)
+                    tag.setField(FieldKey.ALBUM, task.newAlbum)
 
-                    val releaseDateMillis = newDate.toLongOrNull()
+                    val releaseDateMillis = task.newDate.toLongOrNull()
                     if (releaseDateMillis != null && releaseDateMillis > 0L) {
                         val yearStr = SimpleDateFormat("yyyy", Locale.ENGLISH).format(releaseDateMillis)
                         val fullDateStr = SimpleDateFormat("yyyy-MM-dd", Locale.ENGLISH).format(releaseDateMillis)
@@ -1742,8 +1783,8 @@ class MusicManager(private val context: Context) {
 
                     audioFile.commit()
 
-                    // Stream modified bytes back to the original physical file on storage
-                    context.contentResolver.openOutputStream(song.uri, "wt")?.use { targetOutStream ->
+                    // Stream updated bytes back into the storage file descriptor
+                    context.contentResolver.openOutputStream(task.song.uri, "wt")?.use { targetOutStream ->
                         FileInputStream(tempScratchpad).use { scratchpadIn ->
                             scratchpadIn.copyTo(targetOutStream)
                         }
@@ -1755,9 +1796,9 @@ class MusicManager(private val context: Context) {
                 e.printStackTrace()
             }
 
-            // 3. Rename File via Native Filesystem (if accessible) and MediaStore
-            val sanitizedTitle = newTitle.replace(Regex("[\\\\/:*?\"<>|]"), "_").trim()
-            val origFile = File(song.path)
+            // 3. Rename File via Native Filesystem and MediaStore
+            val sanitizedTitle = task.newTitle.replace(Regex("[\\\\/:*?\"<>|]"), "_").trim()
+            val origFile = File(task.song.path)
             val ext = origFile.extension
             val newFileName = if (ext.isNotBlank()) "$sanitizedTitle.$ext" else sanitizedTitle
 
@@ -1775,20 +1816,20 @@ class MusicManager(private val context: Context) {
             // 4. Update System MediaStore Index and MediaScanner
             try {
                 val cv = ContentValues().apply {
-                    put(MediaStore.Audio.Media.TITLE, newTitle)
-                    put(MediaStore.Audio.Media.ARTIST, newArtist)
-                    put(MediaStore.Audio.Media.ALBUM, newAlbum)
+                    put(MediaStore.Audio.Media.TITLE, task.newTitle)
+                    put(MediaStore.Audio.Media.ARTIST, task.newArtist)
+                    put(MediaStore.Audio.Media.ALBUM, task.newAlbum)
                     put(MediaStore.Audio.Media.DISPLAY_NAME, newFileName)
-                    if (finalPath != song.path) {
+                    if (finalPath != task.song.path) {
                         put(MediaStore.Audio.Media.DATA, finalPath)
                     }
-                    val releaseDateMillis = newDate.toLongOrNull()
+                    val releaseDateMillis = task.newDate.toLongOrNull()
                     if (releaseDateMillis != null && releaseDateMillis > 0L) {
                         val yearInt = SimpleDateFormat("yyyy", Locale.ENGLISH).format(releaseDateMillis).toIntOrNull()
                         if (yearInt != null) put(MediaStore.Audio.Media.YEAR, yearInt)
                     }
                 }
-                context.contentResolver.update(song.uri, cv, null, null)
+                context.contentResolver.update(task.song.uri, cv, null, null)
                 MediaScannerConnection.scanFile(context, arrayOf(finalPath), null, null)
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -1796,30 +1837,30 @@ class MusicManager(private val context: Context) {
 
             // 5. Internal Preference Persistence
             prefs.edit()
-                .putString("custom_title_${song.id}", newTitle)
-                .putString("custom_artist_${song.id}", newArtist)
-                .putString("custom_album_${song.id}", newAlbum)
-                .putString("custom_date_${song.id}", newDate)
+                .putString("custom_title_${task.song.id}", task.newTitle)
+                .putString("custom_artist_${task.song.id}", task.newArtist)
+                .putString("custom_album_${task.song.id}", task.newAlbum)
+                .putString("custom_date_${task.song.id}", task.newDate)
                 .apply()
 
-            val updated = song.copy(
-                title = newTitle,
-                artist = newArtist,
-                album = newAlbum,
-                releaseDate = newDate,
+            val updated = task.song.copy(
+                title = task.newTitle,
+                artist = task.newArtist,
+                album = task.newAlbum,
+                releaseDate = task.newDate,
                 path = finalPath,
                 customCoverPath = coverPath
             )
 
             // 6. Live UI & Player Queue Update
             withContext(Dispatchers.Main.immediate) {
-                val index = allSongs.indexOfFirst { it.id == song.id }
+                val index = allSongs.indexOfFirst { it.id == task.song.id }
                 if (index != -1) allSongs[index] = updated
-                val rawIdx = rawStorageSongs.indexOfFirst { it.id == song.id }
+                val rawIdx = rawStorageSongs.indexOfFirst { it.id == task.song.id }
                 if (rawIdx != -1) rawStorageSongs[rawIdx] = updated
-                val qIdx = playbackQueue.indexOfFirst { it.id == song.id }
+                val qIdx = playbackQueue.indexOfFirst { it.id == task.song.id }
                 if (qIdx != -1) playbackQueue[qIdx] = updated
-                if (currentSong?.id == song.id) currentSong = updated
+                if (currentSong?.id == task.song.id) currentSong = updated
                 updateNotification()
                 Toast.makeText(
                     context,
@@ -1836,6 +1877,21 @@ class MusicManager(private val context: Context) {
                 parsedArtistsList.addAll(parsed)
             }
         }
+    }
+
+    fun clearPendingStorageWrite() {
+        pendingStorageWrite = null
+    }
+
+    fun updateSongMetadata(
+        song: Song,
+        newTitle: String,
+        newArtist: String,
+        newAlbum: String,
+        newDate: String,
+        customCoverUri: Uri?
+    ) {
+        requestFileWritePermissionAndSave(song, newTitle, newArtist, newAlbum, newDate, customCoverUri)
     }
 
     private fun recordSongPlayed(song: Song) {
