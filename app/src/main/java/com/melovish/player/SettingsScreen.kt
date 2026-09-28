@@ -238,7 +238,7 @@ fun SettingsScreen(
             }
         }
 
-        // 3. Player Settings Section (With "Always play" integrated above Colourful Player)
+        // 3. Player Settings Section
         item(key = "player_settings_section", contentType = "player_settings_card") {
             Column(
                 modifier = Modifier
@@ -904,7 +904,7 @@ fun CircularColorPickerDialog(
                             .fillMaxSize()
                             .pointerInput(Unit) {
                                 detectDragGestures { change: PointerInputChange, _ ->
-                                    val center = Offset(size.width.toFloat() / 2f, size.height.toFloat() / 2f)
+                                    val center = Offset(size.width / 2f, size.height / 2f)
                                     val touch = change.position
                                     val dx = (touch.x - center.x).toDouble()
                                     val dy = (touch.y - center.y).toDouble()

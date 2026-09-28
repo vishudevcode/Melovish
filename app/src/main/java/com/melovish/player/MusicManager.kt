@@ -17,6 +17,7 @@ import android.graphics.BitmapFactory
 import android.media.AudioDeviceCallback
 import android.media.AudioDeviceInfo
 import android.media.AudioManager
+import android.media.AudioTrack
 import android.media.MediaMetadataRetriever
 import android.media.MediaScannerConnection
 import android.media.RingtoneManager
@@ -124,15 +125,46 @@ class MusicManager(private val context: Context) {
 
     private val channelMixingAudioProcessor = ChannelMixingAudioProcessor()
 
+    @Volatile
+    private var activeAudioTrack: AudioTrack? = null
+
     private val renderersFactory = object : DefaultRenderersFactory(context) {
         override fun buildAudioSink(
             context: Context,
             enableFloatOutput: Boolean,
             enableAudioTrackPlaybackParams: Boolean
         ): AudioSink {
-            return DefaultAudioSink.Builder(context)
+            val defaultSink = DefaultAudioSink.Builder(context)
                 .setAudioProcessors(arrayOf(channelMixingAudioProcessor))
                 .build()
+
+            defaultSink.setAudioSinkListener(object : DefaultAudioSink.AudioSinkListener {
+                override fun onAudioSessionIdChanged(audioSessionId: Int) {
+                    if (audioSessionId != C.AUDIO_SESSION_ID_UNSET && audioSessionId != 0) {
+                        bindHardwareAudioEffects(audioSessionId)
+                    }
+                    findAndBindActiveAudioTrack()
+                }
+
+                override fun onAudioTrackInitialized(
+                    defaultAudioSink: DefaultAudioSink,
+                    audioTrack: AudioTrack
+                ) {
+                    activeAudioTrack = audioTrack
+                    applyHardwareAudioRouting(selectedAudioOutput)
+                }
+
+                override fun onAudioTrackReleased(
+                    defaultAudioSink: DefaultAudioSink,
+                    audioTrack: AudioTrack
+                ) {
+                    if (activeAudioTrack == audioTrack) {
+                        activeAudioTrack = null
+                    }
+                }
+            })
+
+            return defaultSink
         }
     }
 
@@ -346,6 +378,12 @@ class MusicManager(private val context: Context) {
         applyChannelMixing()
         registerAudioDeviceCallback()
         applyHardwareAudioRouting(selectedAudioOutput)
+    }
+
+    private fun findAndBindActiveAudioTrack() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            applyHardwareAudioRouting(selectedAudioOutput)
+        }
     }
 
     private fun initDefaultEqualizerState() {
@@ -826,38 +864,81 @@ class MusicManager(private val context: Context) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             try {
                 val devices = audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
-                val targetDevice: AudioDeviceInfo? = when (output) {
+                val track = activeAudioTrack
+
+                when (output) {
                     "Phone" -> {
-                        devices.find { it.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER }
+                        val speakerDevice = devices.find { it.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER }
+                        if (speakerDevice != null) {
+                            track?.setPreferredDevice(speakerDevice)
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                                audioManager.setCommunicationDevice(speakerDevice)
+                            } else {
+                                @Suppress("DEPRECATION")
+                                audioManager.isSpeakerphoneOn = true
+                            }
+                        }
                     }
                     "Speaker" -> {
-                        devices.find {
+                        val externalSpeaker = devices.find {
                             it.type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP ||
                             it.type == AudioDeviceInfo.TYPE_LINE_ANALOG ||
                             it.type == AudioDeviceInfo.TYPE_LINE_DIGITAL ||
                             it.type == AudioDeviceInfo.TYPE_USB_DEVICE
-                        } ?: devices.find { it.type == AudioDeviceInfo.TYPE_WIRED_HEADPHONES }
+                        } ?: devices.find {
+                            it.type == AudioDeviceInfo.TYPE_WIRED_HEADPHONES ||
+                            it.type == AudioDeviceInfo.TYPE_WIRED_HEADSET
+                        }
+
+                        if (externalSpeaker != null) {
+                            track?.setPreferredDevice(externalSpeaker)
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                                audioManager.setCommunicationDevice(externalSpeaker)
+                            } else {
+                                @Suppress("DEPRECATION")
+                                audioManager.isSpeakerphoneOn = false
+                            }
+                        } else {
+                            track?.setPreferredDevice(null)
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                                audioManager.clearCommunicationDevice()
+                            } else {
+                                @Suppress("DEPRECATION")
+                                audioManager.isSpeakerphoneOn = false
+                            }
+                        }
                     }
                     "Buds" -> {
-                        devices.find {
+                        val headsetDevice = devices.find {
                             it.type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP ||
                             it.type == AudioDeviceInfo.TYPE_BLE_HEADSET ||
                             it.type == AudioDeviceInfo.TYPE_WIRED_HEADSET ||
-                            it.type == AudioDeviceInfo.TYPE_WIRED_HEADPHONES
+                            it.type == AudioDeviceInfo.TYPE_WIRED_HEADPHONES ||
+                            (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && it.type == AudioDeviceInfo.TYPE_USB_HEADSET)
+                        }
+
+                        if (headsetDevice != null) {
+                            track?.setPreferredDevice(headsetDevice)
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                                audioManager.setCommunicationDevice(headsetDevice)
+                            } else {
+                                @Suppress("DEPRECATION")
+                                audioManager.isSpeakerphoneOn = false
+                            }
+                        } else {
+                            track?.setPreferredDevice(null)
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                                audioManager.clearCommunicationDevice()
+                            } else {
+                                @Suppress("DEPRECATION")
+                                audioManager.isSpeakerphoneOn = false
+                            }
+                            if (player.isPlaying) {
+                                player.pause()
+                                Toast.makeText(context, "Headphones/Buds disconnected. Playback paused.", Toast.LENGTH_SHORT).show()
+                            }
                         }
                     }
-                    else -> null
-                }
-
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                    if (targetDevice != null) {
-                        audioManager.setCommunicationDevice(targetDevice)
-                    } else {
-                        audioManager.clearCommunicationDevice()
-                    }
-                } else {
-                    @Suppress("DEPRECATION")
-                    audioManager.isSpeakerphoneOn = (output == "Phone")
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -1691,7 +1772,6 @@ class MusicManager(private val context: Context) {
         pendingStorageWrite = PendingTagWrite(song, newTitle, newArtist, newAlbum, newDate, customCoverUri)
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            // Android 11+ (API 30+): Trigger native system confirmation dialogue
             try {
                 val writePendingIntent = MediaStore.createWriteRequest(
                     context.contentResolver,
@@ -1709,7 +1789,6 @@ class MusicManager(private val context: Context) {
                 executePendingStorageWrite()
             }
         } else {
-            // Android 10 and below
             executePendingStorageWrite()
         }
     }
@@ -1721,7 +1800,6 @@ class MusicManager(private val context: Context) {
         managerScope.launch(Dispatchers.IO) {
             var coverPath = task.song.customCoverPath
 
-            // 1. Save new custom cover image if selected
             if (task.customCoverUri != null) {
                 try {
                     val inputStream = context.contentResolver.openInputStream(task.customCoverUri)
@@ -1747,7 +1825,6 @@ class MusicManager(private val context: Context) {
             var finalPath = task.song.path
             var fileUpdatedOnDisk = false
 
-            // 2. Physical File Tag Writing using jaudiotagger via Scratchpad with Granted Write Stream
             try {
                 val origFile = File(task.song.path)
                 val ext = origFile.extension.ifBlank { "mp3" }
@@ -1783,7 +1860,6 @@ class MusicManager(private val context: Context) {
 
                     audioFile.commit()
 
-                    // Stream updated bytes back into the storage file descriptor
                     context.contentResolver.openOutputStream(task.song.uri, "wt")?.use { targetOutStream ->
                         FileInputStream(tempScratchpad).use { scratchpadIn ->
                             scratchpadIn.copyTo(targetOutStream)
@@ -1796,7 +1872,6 @@ class MusicManager(private val context: Context) {
                 e.printStackTrace()
             }
 
-            // 3. Rename File via Native Filesystem and MediaStore
             val sanitizedTitle = task.newTitle.replace(Regex("[\\\\/:*?\"<>|]"), "_").trim()
             val origFile = File(task.song.path)
             val ext = origFile.extension
@@ -1813,7 +1888,6 @@ class MusicManager(private val context: Context) {
                 e.printStackTrace()
             }
 
-            // 4. Update System MediaStore Index and MediaScanner
             try {
                 val cv = ContentValues().apply {
                     put(MediaStore.Audio.Media.TITLE, task.newTitle)
@@ -1835,7 +1909,6 @@ class MusicManager(private val context: Context) {
                 e.printStackTrace()
             }
 
-            // 5. Internal Preference Persistence
             prefs.edit()
                 .putString("custom_title_${task.song.id}", task.newTitle)
                 .putString("custom_artist_${task.song.id}", task.newArtist)
@@ -1852,7 +1925,6 @@ class MusicManager(private val context: Context) {
                 customCoverPath = coverPath
             )
 
-            // 6. Live UI & Player Queue Update
             withContext(Dispatchers.Main.immediate) {
                 val index = allSongs.indexOfFirst { it.id == task.song.id }
                 if (index != -1) allSongs[index] = updated
