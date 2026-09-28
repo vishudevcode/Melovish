@@ -536,6 +536,18 @@ fun ShimmerSkeletonRow(isDark: Boolean) {
     }
 }
 
+@Composable
+fun ShimmerSkeletonGridItem(aspectRatio: Float = 1f, isDark: Boolean, isHero: Boolean = false) {
+    val brush = shimmerBrush(isDark)
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .aspectRatio(aspectRatio)
+            .clip(RoundedCornerShape(if (isHero) 20.dp else 18.dp))
+            .background(brush)
+    )
+}
+
 // 1:1 Standard Square Card with Full Information
 @UnstableApi
 @Composable
@@ -1239,6 +1251,7 @@ fun HomeScreen(
 
     val configuration = LocalConfiguration.current
     val cardWidth = ((configuration.screenWidthDp - 32 - (3 * 8)) / 4).coerceAtLeast(76).dp
+    val showSkeleton = (manager.isScanningStorage || manager.isInitialLoading) && manager.allSongs.isEmpty()
 
     Box(modifier = Modifier.fillMaxSize()) {
         LazyColumn(
@@ -1251,10 +1264,10 @@ fun HomeScreen(
                 Text(text = "Recently Played", color = textColor, fontSize = 18.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp))
                 Spacer(modifier = Modifier.height(10.dp))
 
-                if (manager.isScanningStorage && manager.allSongs.isEmpty()) {
+                if (showSkeleton) {
                     val brush = shimmerBrush(isDark)
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        items(3) {
+                        items(4) {
                             Box(
                                 modifier = Modifier
                                     .width(116.dp)
@@ -1311,7 +1324,19 @@ fun HomeScreen(
                 }
                 Spacer(modifier = Modifier.height(10.dp))
 
-                if (manager.customPlaylists.isEmpty()) {
+                if (showSkeleton) {
+                    val brush = shimmerBrush(isDark)
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        items(4) {
+                            Box(
+                                modifier = Modifier
+                                    .size(cardWidth)
+                                    .clip(RoundedCornerShape(16.dp))
+                                    .background(brush)
+                            )
+                        }
+                    }
+                } else if (manager.customPlaylists.isEmpty()) {
                     Box(modifier = Modifier.fillMaxWidth().height(90.dp).clip(RoundedCornerShape(18.dp)).background(if (isDark) Color(0x14FFFFFF) else Color(0x14000000)), contentAlignment = Alignment.Center) {
                         Text("No playlists yet. Tap 'Manage' to add.", color = Color(0xFF64748B), fontSize = 13.sp)
                     }
@@ -1373,7 +1398,7 @@ fun HomeScreen(
                     Text("All Songs", color = textColor, fontSize = 18.sp, fontWeight = FontWeight.Bold)
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Box(modifier = Modifier.clip(RoundedCornerShape(12.dp)).background(if (isDark) Color(0x1FFFFFFF) else Color(0xFFF1F5F9)).padding(horizontal = 10.dp, vertical = 6.dp)) {
-                            Text("${manager.allSongs.size} Songs", color = textColor, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            Text(if (showSkeleton) "Loading..." else "${manager.allSongs.size} Songs", color = textColor, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                         }
                         Spacer(modifier = Modifier.width(6.dp))
 
@@ -1410,9 +1435,60 @@ fun HomeScreen(
                 }
             }
 
-            if (manager.isScanningStorage && manager.allSongs.isEmpty()) {
-                items(6) {
-                    ShimmerSkeletonRow(isDark = isDark)
+            if (showSkeleton) {
+                // Adaptive skeleton based on the user's saved view mode
+                when (manager.homeViewMode) {
+                    GridViewMode.LIST -> {
+                        items(8) {
+                            ShimmerSkeletonRow(isDark = isDark)
+                        }
+                    }
+                    GridViewMode.GRID_2 -> {
+                        items(4) {
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                Box(modifier = Modifier.weight(1f)) {
+                                    ShimmerSkeletonGridItem(aspectRatio = 1f, isDark = isDark)
+                                }
+                                Box(modifier = Modifier.weight(1f)) {
+                                    ShimmerSkeletonGridItem(aspectRatio = 1f, isDark = isDark)
+                                }
+                            }
+                        }
+                    }
+                    GridViewMode.GRID_3 -> {
+                        items(4) {
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                for (i in 0 until 3) {
+                                    Box(modifier = Modifier.weight(1f)) {
+                                        ShimmerSkeletonGridItem(aspectRatio = 1f, isDark = isDark)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    GridViewMode.GRID_4 -> {
+                        items(4) {
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                for (i in 0 until 4) {
+                                    Box(modifier = Modifier.weight(1f)) {
+                                        ShimmerSkeletonGridItem(aspectRatio = 1f, isDark = isDark)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    GridViewMode.HERO_GRID -> {
+                        items(3) {
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                Box(modifier = Modifier.weight(1f)) {
+                                    ShimmerSkeletonGridItem(aspectRatio = 1f, isDark = isDark, isHero = true)
+                                }
+                                Box(modifier = Modifier.weight(1f)) {
+                                    ShimmerSkeletonGridItem(aspectRatio = 1f, isDark = isDark, isHero = true)
+                                }
+                            }
+                        }
+                    }
                 }
             } else {
                 when (manager.homeViewMode) {
@@ -1527,7 +1603,7 @@ fun HomeScreen(
             }
         }
 
-        if (manager.currentSong == null) {
+        if (manager.currentSong == null && !showSkeleton) {
             Box(
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
@@ -1782,7 +1858,7 @@ fun LibraryFolderSquareCard(
     }
 }
 
-// Library Screen: Seamless single-touch transition to rainbow picker matching HomeScreen pattern
+// Library Screen
 @OptIn(ExperimentalFoundationApi::class)
 @UnstableApi
 @Composable
@@ -2024,7 +2100,6 @@ fun LibraryScreen(manager: MusicManager, listState: LazyListState, onFolderClick
         )
     }
 
-    // Exact mirror of HomeScreen logic: opens directly on first touch
     if (customizingFolder != null && !showRainbowWheelForFolder) {
         val folder = customizingFolder!!
         FolderColorDialog(

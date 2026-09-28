@@ -236,6 +236,7 @@ class MusicManager(private val context: Context) {
     private var isFadingOutForCrossfade = false
 
     var isScanningStorage by mutableStateOf(false)
+    var isInitialLoading by mutableStateOf(true)
 
     val allSongs = mutableStateListOf<Song>()
     val rawStorageSongs = mutableStateListOf<Song>()
@@ -401,13 +402,17 @@ class MusicManager(private val context: Context) {
         setupBroadcastReceiver()
         loadPreferences()
         loadColorPresets()
-        loadInstantCache()
         setupPlayerListener()
         startPositionTracker()
         syncDeviceVolume()
         applyChannelMixing()
         registerAudioDeviceCallback()
         updateDeviceRoutingAndHighlight()
+
+        // Background asynchronous instant cache loading for zero startup delay
+        managerScope.launch(Dispatchers.IO) {
+            loadInstantCacheAsync()
+        }
     }
 
     private fun initDefaultEqualizerState() {
@@ -784,11 +789,6 @@ class MusicManager(private val context: Context) {
         }
     }
 
-    /**
-     * Smooth, non-clipping volume boost.
-     * Prevents harsh square-wave clipping, thumping, and speaker pumping by applying
-     * an anti-saturation logarithmic curve and gentle sub-bass damping above 110%.
-     */
     private fun applySmoothVolumeBoost(level: Float) {
         if (loudnessEnhancer == null) {
             val sId = if (boundAudioSessionId != C.AUDIO_SESSION_ID_UNSET && boundAudioSessionId != 0) {
@@ -809,7 +809,6 @@ class MusicManager(private val context: Context) {
             return
         }
 
-        // Logarithmic soft curve: smooth acoustic boost without hard digital overdrive
         val boostFactor = ((level - 100f) / 100f).coerceIn(0f, 1f)
         val cleanGainMb = (ln(1.0 + (boostFactor * 1.718)) * 850.0).toInt().coerceIn(0, 950)
 
@@ -895,12 +894,6 @@ class MusicManager(private val context: Context) {
         updateDeviceRoutingAndHighlight()
     }
 
-    /**
-     * Isolated Hardware Routing & Real-Time Reactive Highlighting:
-     * - Keeps system-wide audio mode normal so YouTube and other apps play through earphones undisturbed.
-     * - When 'Phone' is selected, decouples usage attributes so only Melovish targets the speaker.
-     * - Dynamically updates 'effectiveAudioOutput' so Settings automatically highlights the actual output device.
-     */
     fun updateDeviceRoutingAndHighlight() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
             effectiveAudioOutput = "Phone"
@@ -1212,8 +1205,12 @@ class MusicManager(private val context: Context) {
         } catch (_: Exception) {}
     }
 
-    private fun loadInstantCache() {
-        val cachedJson = prefs.getString("cached_songs_catalog", null) ?: return
+    private suspend fun loadInstantCacheAsync() = withContext(Dispatchers.IO) {
+        val cachedJson = prefs.getString("cached_songs_catalog", null)
+        if (cachedJson == null) {
+            withContext(Dispatchers.Main.immediate) { isInitialLoading = false }
+            return@withContext
+        }
         try {
             val arr = JSONArray(cachedJson)
             val list = ArrayList<Song>()
@@ -1245,13 +1242,20 @@ class MusicManager(private val context: Context) {
                 )
             }
             if (list.isNotEmpty()) {
-                allSongs.clear()
-                allSongs.addAll(list)
-                rawStorageSongs.clear()
-                rawStorageSongs.addAll(list)
-                refreshHistory()
+                withContext(Dispatchers.Main.immediate) {
+                    allSongs.clear()
+                    allSongs.addAll(list)
+                    rawStorageSongs.clear()
+                    rawStorageSongs.addAll(list)
+                    refreshHistory()
+                    isInitialLoading = false
+                }
+            } else {
+                withContext(Dispatchers.Main.immediate) { isInitialLoading = false }
             }
-        } catch (_: Exception) {}
+        } catch (_: Exception) {
+            withContext(Dispatchers.Main.immediate) { isInitialLoading = false }
+        }
     }
 
     private fun persistSongsCache(songs: List<Song>) {
@@ -1411,6 +1415,7 @@ class MusicManager(private val context: Context) {
                 parsedArtistsList.clear()
                 parsedArtistsList.addAll(parsed)
                 isScanningStorage = false
+                isInitialLoading = false
             }
             persistSongsCache(visibleSongs)
         }
@@ -1801,9 +1806,20 @@ class MusicManager(private val context: Context) {
                     put("folderName", pl.folderName ?: "")
                     put("icon", pl.icon)
                     put("iconColorHex", pl.iconColorHex)
-                    val idsArr = JSONArray()
-                    pl.songIds.forEach { idsArr.put(it) }
-                    put("songIds", idsArr)
+                    val idsArr = obj.getJSONArray("songIds")
+                    val songIds = ArrayList<Long>()
+                    for (j in 0 until idsArr.length()) songIds.add(idsArr.getLong(j))
+                    customPlaylists.add(
+                        Playlist(
+                            id = id,
+                            name = name,
+                            songIds = songIds.toImmutableList(),
+                            isFolderPinned = isFolder,
+                            folderName = folderName,
+                            icon = icon,
+                            iconColorHex = iconColorHex
+                        )
+                    )
                 }
                 arr.put(obj)
             }
