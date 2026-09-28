@@ -57,6 +57,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Switch
@@ -109,6 +110,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import java.util.Locale
 import kotlin.math.abs
+import kotlin.math.roundToInt
 
 // Live Animated 4-Bar Equalizer
 @Composable
@@ -223,7 +225,7 @@ fun GlassmorphicFolderIcon(folderColor: Color, modifier: Modifier = Modifier) {
     )
 }
 
-// Folder Color Dialog: Corrected so opening rainbow picker does not dismiss state
+// Folder Color Dialog
 @Composable
 fun FolderColorDialog(
     folderName: String,
@@ -306,7 +308,6 @@ fun FolderColorDialog(
                                     }
                             )
                         }
-                        // Rainbow picker trigger: Calls onOpenRainbowPicker() directly without clearing state via onDismiss()
                         Box(
                             modifier = Modifier
                                 .size(38.dp)
@@ -679,27 +680,9 @@ fun ReorderDragHandle(tint: Color, modifier: Modifier = Modifier) {
         val h = size.height
         val strokeW = 3.2f.dp.toPx()
 
-        drawLine(
-            color = tint,
-            start = Offset(w * 0.10f, h * 0.25f),
-            end = Offset(w * 0.90f, h * 0.25f),
-            strokeWidth = strokeW,
-            cap = StrokeCap.Round
-        )
-        drawLine(
-            color = tint,
-            start = Offset(w * 0.10f, h * 0.50f),
-            end = Offset(w * 0.90f, h * 0.50f),
-            strokeWidth = strokeW,
-            cap = StrokeCap.Round
-        )
-        drawLine(
-            color = tint,
-            start = Offset(w * 0.10f, h * 0.75f),
-            end = Offset(w * 0.90f, h * 0.75f),
-            strokeWidth = strokeW,
-            cap = StrokeCap.Round
-        )
+        drawLine(color = tint, start = Offset(w * 0.10f, h * 0.25f), end = Offset(w * 0.90f, h * 0.25f), strokeWidth = strokeW, cap = StrokeCap.Round)
+        drawLine(color = tint, start = Offset(w * 0.10f, h * 0.50f), end = Offset(w * 0.90f, h * 0.50f), strokeWidth = strokeW, cap = StrokeCap.Round)
+        drawLine(color = tint, start = Offset(w * 0.10f, h * 0.75f), end = Offset(w * 0.90f, h * 0.75f), strokeWidth = strokeW, cap = StrokeCap.Round)
     }
 }
 
@@ -955,6 +938,7 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                             .pointerInput(pageSong.id) {
                                 detectTapGestures(
                                     onDoubleTap = { tapOffset ->
+                                        manager.triggerHapticFeedback(true)
                                         if (tapOffset.x < size.width / 2f) {
                                             showSeekLeftAnim = true
                                             manager.seekTo((manager.currentPosition - 10000L).coerceAtLeast(0L))
@@ -1041,7 +1025,10 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                         accentColor = userAccent,
                         textColor = animTextSecondary,
                         isDark = isDark,
-                        onSeek = { manager.seekTo(it) }
+                        onSeek = {
+                            manager.triggerHapticFeedback(false)
+                            manager.seekTo(it)
+                        }
                     )
 
                     Row(
@@ -1052,12 +1039,18 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                         RepeatControlIcon(
                             repeatMode = manager.repeatModeState,
                             tint = monoColor,
-                            modifier = Modifier.clickable { manager.toggleRepeat() }.padding(8.dp)
+                            modifier = Modifier.clickable {
+                                manager.triggerHapticFeedback(false)
+                                manager.toggleRepeat()
+                            }.padding(8.dp)
                         )
 
                         PreviousControlIcon(
                             tint = monoColor,
-                            modifier = Modifier.clickable { manager.playPrevious() }.padding(8.dp)
+                            modifier = Modifier.clickable {
+                                manager.triggerHapticFeedback(false)
+                                manager.playPrevious()
+                            }.padding(8.dp)
                         )
 
                         Box(
@@ -1067,6 +1060,7 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                                 .clip(CircleShape)
                                 .background(if (isDark) Color.White else Color(0xFF0F172A))
                                 .clickable {
+                                    manager.triggerHapticFeedback(true)
                                     if (pageSong.id != manager.currentSong?.id) {
                                         manager.playSong(pageSong, currentQueue, manager.currentSectionName)
                                     } else {
@@ -1097,13 +1091,19 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
 
                         NextControlIcon(
                             tint = monoColor,
-                            modifier = Modifier.clickable { manager.playNext() }.padding(8.dp)
+                            modifier = Modifier.clickable {
+                                manager.triggerHapticFeedback(false)
+                                manager.playNext()
+                            }.padding(8.dp)
                         )
 
                         ShuffleControlIcon(
                             isShuffleOn = manager.isShuffleOn,
                             tint = monoColor,
-                            modifier = Modifier.clickable { manager.toggleShuffle() }.padding(8.dp)
+                            modifier = Modifier.clickable {
+                                manager.triggerHapticFeedback(false)
+                                manager.toggleShuffle()
+                            }.padding(8.dp)
                         )
                     }
 
@@ -1119,7 +1119,10 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                     ) {
                         EqualizerSlidersIcon(
                             tint = animTextPrimary,
-                            modifier = Modifier.clickable { showEqualizerSheet = true }
+                            modifier = Modifier.clickable {
+                                manager.triggerHapticFeedback(false)
+                                showEqualizerSheet = true
+                            }
                         )
 
                         val isTimerActive = manager.sleepTimerRemainingSeconds > 0
@@ -1128,7 +1131,10 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(4.dp),
-                            modifier = Modifier.clickable { showSleepDialog = true }
+                            modifier = Modifier.clickable {
+                                manager.triggerHapticFeedback(false)
+                                showSleepDialog = true
+                            }
                         ) {
                             SleepTimerClockIcon(
                                 isActive = isTimerActive,
@@ -1152,14 +1158,21 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                             isFavorite = isTrackFavorite,
                             defaultTint = animTextPrimary,
                             modifier = Modifier.clickable {
+                                manager.triggerHapticFeedback(true)
                                 val currentTrackInList = manager.allSongs.find { it.id == pageSong.id } ?: pageSong
                                 manager.toggleFavorite(currentTrackInList)
                             }
                         )
 
-                        Text("≡♪", fontSize = 24.sp, fontWeight = FontWeight.Black, color = animTextPrimary, modifier = Modifier.clickable { showQueueSheet = true })
+                        Text("≡♪", fontSize = 24.sp, fontWeight = FontWeight.Black, color = animTextPrimary, modifier = Modifier.clickable {
+                            manager.triggerHapticFeedback(false)
+                            showQueueSheet = true
+                        })
 
-                        Text("•••", fontSize = 24.sp, fontWeight = FontWeight.Black, color = animTextPrimary, modifier = Modifier.clickable { showMenuModal = true })
+                        Text("•••", fontSize = 24.sp, fontWeight = FontWeight.Black, color = animTextPrimary, modifier = Modifier.clickable {
+                            manager.triggerHapticFeedback(false)
+                            showMenuModal = true
+                        })
                     }
                 }
             }
@@ -1208,7 +1221,6 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                         MenuRow("🎚️", "Equalizer", isDark) { showMenuModal = false; showEqualizerSheet = true }
                         MenuRow("🏷️", "Tag Editor", isDark) { showMenuModal = false; showTagEditorDialog = true }
                         MenuRow("➕", "Add to Playlist", isDark) { showMenuModal = false; showAddToPlaylistDialog = true }
-                        
                         MenuRow("⏱️", "Playback Speed", isDark) { showMenuModal = false; showSpeedDialog = true }
 
                         MenuRow("🗑️", "Delete from Device", isDark, isDanger = true) {
@@ -1332,6 +1344,7 @@ fun QueueSheet(
                         try {
                             listState.scrollBy(-20f)
                         } catch (_: Exception) {}
+                        manager.triggerHapticFeedback(false)
                         manager.moveQueueItem(currentIdx, currentIdx - 1)
                         draggingIndex = currentIdx - 1
                         draggingOffsetPx += itemHeightPx
@@ -1339,6 +1352,7 @@ fun QueueSheet(
                         try {
                             listState.scrollBy(20f)
                         } catch (_: Exception) {}
+                        manager.triggerHapticFeedback(false)
                         manager.moveQueueItem(currentIdx, currentIdx + 1)
                         draggingIndex = currentIdx + 1
                         draggingOffsetPx -= itemHeightPx
@@ -1446,6 +1460,7 @@ fun QueueSheet(
                             )
                             .clickable {
                                 if (draggingSongId == null) {
+                                    manager.triggerHapticFeedback(false)
                                     manager.playSong(song, manager.playbackQueue, manager.currentSectionName)
                                 }
                             }
@@ -1497,6 +1512,7 @@ fun QueueSheet(
                                 .pointerInput(song.id) {
                                     detectDragGesturesAfterLongPress(
                                         onDragStart = {
+                                            manager.triggerHapticFeedback(true)
                                             draggingSongId = song.id
                                             val currentActualIndex = manager.playbackQueue.indexOfFirst { it.id == song.id }
                                             draggingIndex = if (currentActualIndex != -1) currentActualIndex else index
@@ -1512,11 +1528,13 @@ fun QueueSheet(
                                             val threshold = itemHeightPx * 0.65f
 
                                             while (draggingOffsetPx > threshold && currentActualIndex < manager.playbackQueue.size - 1) {
+                                                manager.triggerHapticFeedback(false)
                                                 manager.moveQueueItem(currentActualIndex, currentActualIndex + 1)
                                                 draggingIndex = currentActualIndex + 1
                                                 draggingOffsetPx -= itemHeightPx
                                             }
                                             while (draggingOffsetPx < -threshold && currentActualIndex > 0) {
+                                                manager.triggerHapticFeedback(false)
                                                 manager.moveQueueItem(currentActualIndex, currentActualIndex - 1)
                                                 draggingIndex = currentActualIndex - 1
                                                 draggingOffsetPx += itemHeightPx
@@ -1606,7 +1624,10 @@ fun EqualizerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         Switch(
                             checked = manager.isEqEnabled,
-                            onCheckedChange = { manager.toggleEqualizer(it) },
+                            onCheckedChange = {
+                                manager.triggerHapticFeedback(false)
+                                manager.toggleEqualizer(it)
+                            },
                             colors = SwitchDefaults.colors(
                                 checkedThumbColor = Color.White,
                                 checkedTrackColor = accent
@@ -1639,7 +1660,10 @@ fun EqualizerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                                     modifier = Modifier
                                         .clip(RoundedCornerShape(12.dp))
                                         .background(if (isSel) accent else if (isDark) Color(0x22FFFFFF) else Color(0xFFF1F5F9))
-                                        .clickable { manager.applyEqPreset(preset) }
+                                        .clickable {
+                                            manager.triggerHapticFeedback(false)
+                                            manager.applyEqPreset(preset)
+                                        }
                                         .padding(horizontal = 14.dp, vertical = 8.dp)
                                 ) {
                                     Text(
@@ -1685,6 +1709,7 @@ fun EqualizerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                                         accentColor = if (manager.isEqEnabled) accent else Color.Gray,
                                         isDark = isDark,
                                         onLevelChange = { newLevel ->
+                                            manager.triggerHapticFeedback(false)
                                             manager.setEqBandLevel(i, newLevel)
                                         }
                                     )
@@ -1704,7 +1729,13 @@ fun EqualizerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                             Text("Bass Boost: ${if (manager.isEqEnabled) manager.bassBoostPercent else 0}%", color = textColor, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                             Slider(
                                 value = if (manager.isEqEnabled) manager.bassBoostPercent.toFloat() else 0f,
-                                onValueChange = { manager.setBassBoost(it.toInt()) },
+                                onValueChange = {
+                                    val rounded = it.toInt()
+                                    if (rounded != manager.bassBoostPercent) {
+                                        manager.triggerHapticFeedback(false)
+                                        manager.setBassBoost(rounded)
+                                    }
+                                },
                                 valueRange = 0f..100f,
                                 enabled = manager.isEqEnabled,
                                 colors = SliderDefaults.colors(thumbColor = accent, activeTrackColor = accent)
@@ -1715,7 +1746,13 @@ fun EqualizerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                             Text("3D Surround (Virtualizer): ${if (manager.isEqEnabled) manager.virtualizerPercent else 0}%", color = textColor, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                             Slider(
                                 value = if (manager.isEqEnabled) manager.virtualizerPercent.toFloat() else 0f,
-                                onValueChange = { manager.setVirtualizer(it.toInt()) },
+                                onValueChange = {
+                                    val rounded = it.toInt()
+                                    if (rounded != manager.virtualizerPercent) {
+                                        manager.triggerHapticFeedback(false)
+                                        manager.setVirtualizer(rounded)
+                                    }
+                                },
                                 valueRange = 0f..100f,
                                 enabled = manager.isEqEnabled,
                                 colors = SliderDefaults.colors(thumbColor = accent, activeTrackColor = accent)
@@ -1743,7 +1780,10 @@ fun EqualizerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                                 }
                                 Switch(
                                     checked = manager.isRemoveVocals,
-                                    onCheckedChange = { manager.toggleRemoveVocals(it) }
+                                    onCheckedChange = {
+                                        manager.triggerHapticFeedback(false)
+                                        manager.toggleRemoveVocals(it)
+                                    }
                                 )
                             }
 
@@ -1758,7 +1798,10 @@ fun EqualizerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                                 }
                                 Switch(
                                     checked = manager.isStopBass,
-                                    onCheckedChange = { manager.toggleStopBass(it) }
+                                    onCheckedChange = {
+                                        manager.triggerHapticFeedback(false)
+                                        manager.toggleStopBass(it)
+                                    }
                                 )
                             }
                         }
@@ -1939,14 +1982,17 @@ fun MiniPlayerDock(manager: MusicManager, onClick: () -> Unit) {
                 Text(song.title, color = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A), fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text("${formatFileSize(song.size)} • ${if (song.artist.isNotBlank()) song.artist else "Melovish"}", color = accent, fontSize = 11.sp, maxLines = 1)
             }
-            Box(modifier = Modifier.size(38.dp).clip(CircleShape).background(accent).clickable { manager.togglePlayPause() }, contentAlignment = Alignment.Center) {
+            Box(modifier = Modifier.size(38.dp).clip(CircleShape).background(accent).clickable {
+                manager.triggerHapticFeedback(true)
+                manager.togglePlayPause()
+            }, contentAlignment = Alignment.Center) {
                 Text(if (manager.isPlaying) "❚❚" else "▶", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
             }
         }
     }
 }
 
-// Sleep Timer Dialog
+// Sleep Timer Dialog with Per-Unit Haptic Feedback
 @UnstableApi
 @Composable
 fun SleepTimerDialog(manager: MusicManager, onDismiss: () -> Unit) {
@@ -1991,7 +2037,11 @@ fun SleepTimerDialog(manager: MusicManager, onDismiss: () -> Unit) {
                                 Text("⏳ Timer Active", color = Color(0xFFEF4444), fontSize = 13.sp, fontWeight = FontWeight.Bold)
                                 Text("${manager.sleepTimerRemainingSeconds / 60}m remaining", color = textColor, fontSize = 12.sp)
                             }
-                            Button(onClick = { manager.endSleepTimer(); onDismiss() }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444)), shape = RoundedCornerShape(10.dp)) {
+                            Button(onClick = {
+                                manager.triggerHapticFeedback(true)
+                                manager.endSleepTimer()
+                                onDismiss()
+                            }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444)), shape = RoundedCornerShape(10.dp)) {
                                 Text("End", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                             }
                         }
@@ -2004,7 +2054,11 @@ fun SleepTimerDialog(manager: MusicManager, onDismiss: () -> Unit) {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     listOf(15, 30, 45, 60).forEach { mins ->
                         Box(
-                            modifier = Modifier.weight(1f).height(44.dp).clip(RoundedCornerShape(12.dp)).background(if (isDark) Color(0x1AFFFFFF) else Color(0xFFF1F5F9)).clickable { manager.setSleepTimer(mins); onDismiss() },
+                            modifier = Modifier.weight(1f).height(44.dp).clip(RoundedCornerShape(12.dp)).background(if (isDark) Color(0x1AFFFFFF) else Color(0xFFF1F5F9)).clickable {
+                                manager.triggerHapticFeedback(false)
+                                manager.setSleepTimer(mins)
+                                onDismiss()
+                            },
                             contentAlignment = Alignment.Center
                         ) {
                             Text("$mins min", color = textColor, fontSize = 13.sp, fontWeight = FontWeight.Bold)
@@ -2014,7 +2068,11 @@ fun SleepTimerDialog(manager: MusicManager, onDismiss: () -> Unit) {
 
                 Spacer(modifier = Modifier.height(12.dp))
                 Box(
-                    modifier = Modifier.fillMaxWidth().height(44.dp).clip(RoundedCornerShape(12.dp)).background(if (isDark) Color(0x1AFFFFFF) else Color(0xFFF1F5F9)).clickable { manager.setSleepTimerToEndOfTrack(); onDismiss() },
+                    modifier = Modifier.fillMaxWidth().height(44.dp).clip(RoundedCornerShape(12.dp)).background(if (isDark) Color(0x1AFFFFFF) else Color(0xFFF1F5F9)).clickable {
+                        manager.triggerHapticFeedback(false)
+                        manager.setSleepTimerToEndOfTrack()
+                        onDismiss()
+                    },
                     contentAlignment = Alignment.Center
                 ) {
                     Text("End of current track", color = textColor, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
@@ -2026,13 +2084,39 @@ fun SleepTimerDialog(manager: MusicManager, onDismiss: () -> Unit) {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
                     Column(modifier = Modifier.weight(1f)) {
                         Text("Hours: $customHours", color = Color(0xFF64748B), fontSize = 12.sp)
-                        Slider(value = customHours.toFloat(), onValueChange = { customHours = it.toInt() }, valueRange = 0f..24f, colors = SliderDefaults.colors(thumbColor = accent, activeTrackColor = accent))
+                        Slider(
+                            value = customHours.toFloat(),
+                            onValueChange = {
+                                val rounded = it.toInt()
+                                if (rounded != customHours) {
+                                    manager.triggerHapticFeedback(false)
+                                    customHours = rounded
+                                }
+                            },
+                            valueRange = 0f..24f,
+                            colors = SliderDefaults.colors(thumbColor = accent, activeTrackColor = accent)
+                        )
                     }
                     Column(modifier = Modifier.weight(1f)) {
                         Text("Minutes: $customMinutes", color = Color(0xFF64748B), fontSize = 12.sp)
-                        Slider(value = customMinutes.toFloat(), onValueChange = { customMinutes = it.toInt() }, valueRange = 1f..60f, colors = SliderDefaults.colors(thumbColor = accent, activeTrackColor = accent))
+                        Slider(
+                            value = customMinutes.toFloat(),
+                            onValueChange = {
+                                val rounded = it.toInt()
+                                if (rounded != customMinutes) {
+                                    manager.triggerHapticFeedback(false)
+                                    customMinutes = rounded
+                                }
+                            },
+                            valueRange = 1f..60f,
+                            colors = SliderDefaults.colors(thumbColor = accent, activeTrackColor = accent)
+                        )
                     }
-                    Button(onClick = { manager.setSleepTimer((customHours * 60) + customMinutes); onDismiss() }, colors = ButtonDefaults.buttonColors(containerColor = accent), shape = RoundedCornerShape(12.dp), modifier = Modifier.height(48.dp)) {
+                    Button(onClick = {
+                        manager.triggerHapticFeedback(true)
+                        manager.setSleepTimer((customHours * 60) + customMinutes)
+                        onDismiss()
+                    }, colors = ButtonDefaults.buttonColors(containerColor = accent), shape = RoundedCornerShape(12.dp), modifier = Modifier.height(48.dp)) {
                         Text("Set", color = Color.White, fontWeight = FontWeight.Bold)
                     }
                 }
@@ -2092,10 +2176,15 @@ fun LyricsDialog(song: Song, isDark: Boolean, onDismiss: () -> Unit) {
     }
 }
 
-// Add to Playlist Dialog
+// Add to Playlist Dialog with Inline + New Playlist Creator
 @Composable
 fun AddToPlaylistDialog(manager: MusicManager, song: Song, onDismiss: () -> Unit) {
     val isDark = manager.isDarkMode
+    val textColor = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A)
+    val accent = manager.accentColor
+    var isCreatingNew by remember { mutableStateOf(false) }
+    var newPlaylistName by remember { mutableStateOf("") }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -2108,36 +2197,111 @@ fun AddToPlaylistDialog(manager: MusicManager, song: Song, onDismiss: () -> Unit
     ) {
         Box(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)).background(if (isDark) Color(0xFF1E293B) else Color.White).clickable(enabled = false) {}.padding(22.dp)) {
             Column {
-                Text("Add to Playlist", color = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A), fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Add to Playlist", color = textColor, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                    Button(
+                        onClick = {
+                            manager.triggerHapticFeedback(false)
+                            isCreatingNew = !isCreatingNew
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = accent),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Text(if (isCreatingNew) "Cancel" else "+ New", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+
+                if (isCreatingNew) {
+                    Spacer(modifier = Modifier.height(14.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        OutlinedTextField(
+                            value = newPlaylistName,
+                            onValueChange = { newPlaylistName = it },
+                            placeholder = { Text("Playlist Name") },
+                            modifier = Modifier.weight(1f),
+                            singleLine = true,
+                            shape = RoundedCornerShape(12.dp)
+                        )
+                        Button(
+                            onClick = {
+                                if (newPlaylistName.isNotBlank()) {
+                                    manager.triggerHapticFeedback(true)
+                                    manager.createPlaylistAndAddSong(newPlaylistName.trim(), song.id)
+                                    onDismiss()
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = accent),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.height(54.dp)
+                        ) {
+                            Text("Create", color = Color.White, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+
                 Spacer(modifier = Modifier.height(14.dp))
-                LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.weight(1f, fill = false).height(240.dp)) {
                     items(
                         items = manager.customPlaylists,
                         key = { it.id },
                         contentType = { "playlist_picker_row" }
                     ) { pl ->
-                        Row(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(if (isDark) Color(0x1AFFFFFF) else Color(0xFFF1F5F9)).clickable { manager.addSongToPlaylist(song.id, pl); onDismiss() }.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                            GlassmorphicFolderIcon(folderColor = Color(pl.iconColorHex), modifier = Modifier.size(24.dp))
-                            Spacer(modifier = Modifier.width(10.dp))
-                            Text(pl.name, color = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A), fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                        val isAlreadyIn = song.id in pl.songIds
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(if (isDark) Color(0x1AFFFFFF) else Color(0xFFF1F5F9))
+                                .clickable {
+                                    manager.triggerHapticFeedback(false)
+                                    if (isAlreadyIn) {
+                                        manager.removeSongFromPlaylist(song.id, pl)
+                                    } else {
+                                        manager.addSongToPlaylist(song.id, pl)
+                                    }
+                                    onDismiss()
+                                }
+                                .padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                                GlassmorphicFolderIcon(folderColor = Color(pl.iconColorHex), modifier = Modifier.size(24.dp))
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Text(pl.name, color = textColor, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                            }
+                            if (isAlreadyIn) {
+                                Text("✓ Added", color = accent, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            }
                         }
                     }
                 }
                 Spacer(modifier = Modifier.height(16.dp))
-                Button(onClick = { onDismiss() }, modifier = Modifier.fillMaxWidth().height(48.dp), colors = ButtonDefaults.buttonColors(containerColor = if (isDark) Color(0x22FFFFFF) else Color(0xFFF1F5F9)), shape = RoundedCornerShape(12.dp)) {
-                    Text("Cancel", color = if (isDark) Color.White else Color(0xFF0F172A), fontWeight = FontWeight.Bold)
+                Button(onClick = onDismiss, modifier = Modifier.fillMaxWidth().height(48.dp), colors = ButtonDefaults.buttonColors(containerColor = if (isDark) Color(0x22FFFFFF) else Color(0xFFF1F5F9)), shape = RoundedCornerShape(12.dp)) {
+                    Text("Close", color = textColor, fontWeight = FontWeight.Bold)
                 }
             }
         }
     }
 }
 
-// Magnetic Speed Dialog
+// Magnetic Speed Dialog with Prominent Dots & Tactile Notches
 @Composable
 fun MagneticSpeedDialog(manager: MusicManager, onDismiss: () -> Unit) {
     var speed by remember { mutableFloatStateOf(manager.playbackSpeed) }
     val isDark = manager.isDarkMode
     val accent = manager.accentColor
+    val prominentSteps = remember {
+        listOf(0.25f, 0.5f, 1.0f, 1.25f, 1.5f, 1.75f, 2.0f, 2.25f, 2.5f, 2.75f, 3.0f)
+    }
 
     Box(
         modifier = Modifier
@@ -2151,19 +2315,94 @@ fun MagneticSpeedDialog(manager: MusicManager, onDismiss: () -> Unit) {
     ) {
         Box(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)).background(if (isDark) Color(0xFF1E293B) else Color.White).padding(24.dp)) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("Playback Speed: ${String.format(Locale.US, "%.2fx", speed)}", color = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A), fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                Spacer(modifier = Modifier.height(16.dp))
-                Slider(
-                    value = speed,
-                    onValueChange = { raw ->
-                        val snapped = manager.setMagneticSpeed(raw)
-                        speed = snapped
-                    },
-                    valueRange = 0.25f..3.0f,
-                    colors = SliderDefaults.colors(thumbColor = accent, activeTrackColor = accent)
+                Text(
+                    text = "Playback Speed: ${String.format(Locale.US, "%.2fx", speed)}",
+                    color = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A),
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold
                 )
-                Spacer(modifier = Modifier.height(18.dp))
-                Button(onClick = { onDismiss() }, modifier = Modifier.fillMaxWidth().height(48.dp), shape = RoundedCornerShape(12.dp), colors = ButtonDefaults.buttonColors(containerColor = accent)) {
+                Spacer(modifier = Modifier.height(20.dp))
+
+                // Track with Prominent Indicator Dots
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 6.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Canvas(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(24.dp)
+                    ) {
+                        val centerY = size.height / 2f
+                        val trackStart = 10.dp.toPx()
+                        val trackEnd = size.width - 10.dp.toPx()
+                        val trackWidth = trackEnd - trackStart
+
+                        prominentSteps.forEach { step ->
+                            val stepFraction = (step - 0.25f) / (3.0f - 0.25f)
+                            val dotX = trackStart + (stepFraction * trackWidth)
+                            val is1X = (step == 1.0f)
+
+                            drawCircle(
+                                color = if (is1X) accent else if (isDark) Color(0xFF64748B) else Color(0xFFCBD5E1),
+                                radius = if (is1X) 4.5.dp.toPx() else 3.dp.toPx(),
+                                center = Offset(dotX, centerY)
+                            )
+                        }
+                    }
+
+                    Slider(
+                        value = speed,
+                        onValueChange = { raw ->
+                            // Check if close to any prominent step
+                            var snappedVal = raw
+                            for (st in prominentSteps) {
+                                if (abs(raw - st) <= 0.05f) {
+                                    snappedVal = st
+                                    break
+                                }
+                            }
+                            if (snappedVal != speed) {
+                                if (snappedVal in prominentSteps) {
+                                    manager.triggerHapticFeedback(snappedVal == 1.0f)
+                                }
+                                speed = manager.setMagneticSpeed(snappedVal)
+                            }
+                        },
+                        valueRange = 0.25f..3.0f,
+                        colors = SliderDefaults.colors(
+                            thumbColor = accent,
+                            activeTrackColor = accent.copy(alpha = 0.7f),
+                            inactiveTrackColor = Color.Transparent
+                        )
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(6.dp))
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 14.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text("0.25x", color = Color(0xFF64748B), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    Text("1.0x (Normal)", color = accent, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    Text("3.0x", color = Color(0xFF64748B), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                }
+
+                Spacer(modifier = Modifier.height(20.dp))
+                Button(
+                    onClick = {
+                        manager.triggerHapticFeedback(true)
+                        onDismiss()
+                    },
+                    modifier = Modifier.fillMaxWidth().height(48.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = accent)
+                ) {
                     Text("Done", color = Color.White, fontWeight = FontWeight.Bold)
                 }
             }

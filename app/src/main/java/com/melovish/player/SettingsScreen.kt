@@ -121,7 +121,10 @@ fun SettingsScreen(
                     .clip(RoundedCornerShape(22.dp))
                     .background(cardBg)
                     .border(1.dp, if (isDark) Color(0x22FFFFFF) else Color(0xFFE2E8F0), RoundedCornerShape(22.dp))
-                    .clickable { onOpenProfile() }
+                    .clickable {
+                        manager.triggerHapticFeedback(false)
+                        onOpenProfile()
+                    }
                     .padding(18.dp)
             ) {
                 Text("Profile", color = textColor, fontSize = 16.sp, fontWeight = FontWeight.Bold)
@@ -194,7 +197,10 @@ fun SettingsScreen(
                                 .clip(RoundedCornerShape(12.dp))
                                 .background(if (isSel) accent.copy(alpha = 0.15f) else if (isDark) Color(0x14FFFFFF) else Color(0xFFF1F5F9))
                                 .border(1.5.dp, if (isSel) accent else Color.Transparent, RoundedCornerShape(12.dp))
-                                .clickable { manager.setTheme(mode) },
+                                .clickable {
+                                    manager.triggerHapticFeedback(false)
+                                    manager.setTheme(mode)
+                                },
                             contentAlignment = Alignment.Center
                         ) {
                             Text(mode, color = if (isSel) accent else textColor, fontSize = 13.sp, fontWeight = FontWeight.Bold)
@@ -219,7 +225,10 @@ fun SettingsScreen(
                                 .clip(CircleShape)
                                 .background(col)
                                 .border(2.dp, if (manager.accentColor == col) Color.White else Color.Transparent, CircleShape)
-                                .clickable { manager.updateAccent(col) }
+                                .clickable {
+                                    manager.triggerHapticFeedback(false)
+                                    manager.updateAccent(col)
+                                }
                         )
                     }
 
@@ -229,7 +238,10 @@ fun SettingsScreen(
                             .clip(CircleShape)
                             .background(Brush.sweepGradient(listOf(Color.Red, Color.Yellow, Color.Green, Color.Cyan, Color.Blue, Color.Magenta, Color.Red)))
                             .border(2.dp, Color.White, CircleShape)
-                            .clickable { showCircularPicker = true },
+                            .clickable {
+                                manager.triggerHapticFeedback(false)
+                                showCircularPicker = true
+                            },
                         contentAlignment = Alignment.Center
                     ) {
                         Box(modifier = Modifier.size(12.dp).clip(CircleShape).background(Color.White))
@@ -259,6 +271,7 @@ fun SettingsScreen(
                     checked = manager.isAlwaysPlay,
                     textColor = textColor
                 ) {
+                    manager.triggerHapticFeedback(false)
                     manager.toggleAlwaysPlay(it)
                 }
 
@@ -271,6 +284,7 @@ fun SettingsScreen(
                     checked = manager.isColorfulPlayer,
                     textColor = textColor
                 ) {
+                    manager.triggerHapticFeedback(false)
                     manager.isColorfulPlayer = it
                     manager.prefs.edit().putBoolean("colorful_player", it).apply()
                 }
@@ -284,6 +298,7 @@ fun SettingsScreen(
                     checked = manager.isResumeFirstOnly,
                     textColor = textColor
                 ) {
+                    manager.triggerHapticFeedback(false)
                     manager.isResumeFirstOnly = it
                     manager.prefs.edit().putBoolean("resume_first", it).apply()
                 }
@@ -297,6 +312,7 @@ fun SettingsScreen(
                     checked = manager.isFadeOnStart,
                     textColor = textColor
                 ) {
+                    manager.triggerHapticFeedback(false)
                     manager.isFadeOnStart = it
                     manager.prefs.edit().putBoolean("fade_start", it).apply()
                 }
@@ -310,6 +326,7 @@ fun SettingsScreen(
                     checked = manager.isGaplessEnabled,
                     textColor = textColor
                 ) {
+                    manager.triggerHapticFeedback(false)
                     manager.isGaplessEnabled = it
                     manager.prefs.edit().putBoolean("gapless", it).apply()
                 }
@@ -323,6 +340,7 @@ fun SettingsScreen(
                     checked = manager.isCrossfadeEnabled,
                     textColor = textColor
                 ) {
+                    manager.triggerHapticFeedback(false)
                     manager.isCrossfadeEnabled = it
                     manager.prefs.edit().putBoolean("crossfade_enabled", it).apply()
                 }
@@ -347,8 +365,12 @@ fun SettingsScreen(
                         Slider(
                             value = manager.crossfadeDuration,
                             onValueChange = {
-                                manager.crossfadeDuration = it
-                                manager.prefs.edit().putFloat("crossfade_duration", it).apply()
+                                val rounded = it.toInt()
+                                if (rounded.toFloat() != manager.crossfadeDuration) {
+                                    manager.triggerHapticFeedback(false)
+                                    manager.crossfadeDuration = rounded.toFloat()
+                                    manager.prefs.edit().putFloat("crossfade_duration", rounded.toFloat()).apply()
+                                }
                             },
                             valueRange = 1f..12f,
                             steps = 10,
@@ -371,7 +393,10 @@ fun SettingsScreen(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(12.dp))
                                 .background(if (isSel) accent else if (isDark) Color(0x22FFFFFF) else Color(0xFFF1F5F9))
-                                .clickable { manager.setPagerTransition(effect) }
+                                .clickable {
+                                    manager.triggerHapticFeedback(false)
+                                    manager.setPagerTransition(effect)
+                                }
                                 .padding(horizontal = 14.dp, vertical = 8.dp)
                         ) {
                             Text(
@@ -407,6 +432,7 @@ fun SettingsScreen(
                     checked = manager.isLosslessEnabled,
                     textColor = textColor
                 ) {
+                    manager.triggerHapticFeedback(false)
                     manager.isLosslessEnabled = it
                     manager.prefs.edit().putBoolean("lossless", it).apply()
                 }
@@ -420,18 +446,23 @@ fun SettingsScreen(
                     checked = manager.isVolumeNormalized,
                     textColor = textColor
                 ) {
+                    manager.triggerHapticFeedback(false)
                     manager.toggleVolumeNormalization(it)
                 }
 
                 Spacer(modifier = Modifier.height(14.dp))
 
                 Text("Volume Boost", color = textColor, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                Text("Increase the maximum volume (${manager.volumeBoostLevel.toInt()}%).", color = Color(0xFF64748B), fontSize = 12.sp)
+                Text("Increase the maximum volume without muffled clipping (${manager.volumeBoostLevel.toInt()}%).", color = Color(0xFF64748B), fontSize = 12.sp)
 
                 Slider(
                     value = manager.volumeBoostLevel,
                     onValueChange = { liveLevel ->
-                        manager.setVolumeBoost(liveLevel)
+                        val rounded = liveLevel.toInt()
+                        if (rounded != manager.volumeBoostLevel.toInt()) {
+                            if (rounded % 10 == 0) manager.triggerHapticFeedback(false)
+                            manager.setVolumeBoost(liveLevel)
+                        }
                     },
                     valueRange = 100f..200f,
                     modifier = Modifier.fillMaxWidth(),
@@ -447,6 +478,7 @@ fun SettingsScreen(
                     checked = manager.isMonoAudio,
                     textColor = textColor
                 ) {
+                    manager.triggerHapticFeedback(false)
                     manager.toggleMonoAudio(it)
                 }
 
@@ -463,7 +495,6 @@ fun SettingsScreen(
                         Triple("Speaker", "🔊  Speaker", "Ext / BT Speaker"),
                         Triple("Buds", "🎧  Buds", "Earphones / BT")
                     ).forEach { (outputKey, label, _) ->
-                        // Automatically highlights according to real-time effective output
                         val isHighlighted = manager.effectiveAudioOutput == outputKey
                         Box(
                             modifier = Modifier
@@ -473,7 +504,7 @@ fun SettingsScreen(
                                 .background(if (isHighlighted) accent.copy(alpha = 0.16f) else if (isDark) Color(0x14FFFFFF) else Color(0xFFF1F5F9))
                                 .border(1.5.dp, if (isHighlighted) accent else Color.Transparent, RoundedCornerShape(12.dp))
                                 .clickable {
-                                    // If user taps the already active output, restore to Auto
+                                    manager.triggerHapticFeedback(true)
                                     if (manager.userSelectedAudioOutput == outputKey) {
                                         manager.setAudioOutputRouting("Auto")
                                     } else {
@@ -506,7 +537,10 @@ fun SettingsScreen(
 
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         Button(
-                            onClick = onOpenEqualizer,
+                            onClick = {
+                                manager.triggerHapticFeedback(false)
+                                onOpenEqualizer()
+                            },
                             colors = ButtonDefaults.buttonColors(containerColor = if (isDark) Color(0x22FFFFFF) else Color(0xFFF1F5F9)),
                             shape = RoundedCornerShape(10.dp)
                         ) {
@@ -515,7 +549,10 @@ fun SettingsScreen(
 
                         Switch(
                             checked = manager.isEqEnabled,
-                            onCheckedChange = { manager.toggleEqualizer(it) },
+                            onCheckedChange = {
+                                manager.triggerHapticFeedback(false)
+                                manager.toggleEqualizer(it)
+                            },
                             colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = accent)
                         )
                     }
@@ -547,7 +584,10 @@ fun SettingsScreen(
                         Text("Exclude specific folders from library.", color = Color(0xFF64748B), fontSize = 12.sp)
                     }
                     Button(
-                        onClick = { activeSubScreen = "hide_folders" },
+                        onClick = {
+                            manager.triggerHapticFeedback(false)
+                            activeSubScreen = "hide_folders"
+                        },
                         colors = ButtonDefaults.buttonColors(containerColor = if (isDark) Color(0x22FFFFFF) else Color(0xFFF1F5F9)),
                         shape = RoundedCornerShape(10.dp)
                     ) {
@@ -567,12 +607,41 @@ fun SettingsScreen(
                         Text("Hide specific audio files from library.", color = Color(0xFF64748B), fontSize = 12.sp)
                     }
                     Button(
-                        onClick = { activeSubScreen = "hide_audio" },
+                        onClick = {
+                            manager.triggerHapticFeedback(false)
+                            activeSubScreen = "hide_audio"
+                        },
                         colors = ButtonDefaults.buttonColors(containerColor = if (isDark) Color(0x22FFFFFF) else Color(0xFFF1F5F9)),
                         shape = RoundedCornerShape(10.dp)
                     ) {
                         Text("Manage", color = textColor, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                     }
+                }
+            }
+        }
+
+        // 6. Haptics & Feedback Section (Placed right below Content Manager)
+        item(key = "haptics_section", contentType = "haptics_card") {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(22.dp))
+                    .background(cardBg)
+                    .border(1.dp, if (isDark) Color(0x22FFFFFF) else Color(0xFFE2E8F0), RoundedCornerShape(22.dp))
+                    .padding(18.dp)
+            ) {
+                Text("Haptics & Feedback", color = textColor, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                Text("Configure tactile vibration responses for sliders and controls.", color = Color(0xFF64748B), fontSize = 12.sp)
+                Spacer(modifier = Modifier.height(16.dp))
+
+                SettingSwitchRow(
+                    icon = "📳",
+                    title = "Haptic Feedback",
+                    subtitle = "Vibrate when adjusting sliders, switches, and scrubbers",
+                    checked = manager.isHapticsEnabled,
+                    textColor = textColor
+                ) {
+                    manager.toggleHaptics(it)
                 }
             }
         }
@@ -583,6 +652,7 @@ fun SettingsScreen(
             currentColor = accent,
             isDark = isDark,
             onColorSelected = { col ->
+                manager.triggerHapticFeedback(true)
                 manager.updateAccent(col)
                 showCircularPicker = false
             },
@@ -674,7 +744,10 @@ fun ManageHiddenFoldersFullScreen(
                             .clip(RoundedCornerShape(18.dp))
                             .background(if (isDark) Color(0x1AE53935) else Color.White)
                             .border(1.2.dp, Color(0x66E53935), RoundedCornerShape(18.dp))
-                            .clickable { manager.toggleHideFolder(folder) }
+                            .clickable {
+                                manager.triggerHapticFeedback(false)
+                                manager.toggleHideFolder(folder)
+                            }
                             .padding(horizontal = 16.dp, vertical = 16.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
@@ -710,7 +783,10 @@ fun ManageHiddenFoldersFullScreen(
                         .clip(RoundedCornerShape(18.dp))
                         .background(cardBg)
                         .border(1.dp, if (isDark) Color(0x22FFFFFF) else Color(0xFFECEFF3), RoundedCornerShape(18.dp))
-                        .clickable { manager.toggleHideFolder(folder) }
+                        .clickable {
+                            manager.triggerHapticFeedback(false)
+                            manager.toggleHideFolder(folder)
+                        }
                         .padding(horizontal = 16.dp, vertical = 16.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
@@ -809,7 +885,10 @@ fun ManageHiddenAudioFullScreen(
                             .clip(RoundedCornerShape(18.dp))
                             .background(if (isDark) Color(0x1AE53935) else Color.White)
                             .border(1.2.dp, Color(0x66E53935), RoundedCornerShape(18.dp))
-                            .clickable { manager.toggleHideAudio(song.id) }
+                            .clickable {
+                                manager.triggerHapticFeedback(false)
+                                manager.toggleHideAudio(song.id)
+                            }
                             .padding(horizontal = 16.dp, vertical = 14.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
@@ -844,7 +923,10 @@ fun ManageHiddenAudioFullScreen(
                         .clip(RoundedCornerShape(18.dp))
                         .background(cardBg)
                         .border(1.dp, if (isDark) Color(0x22FFFFFF) else Color(0xFFECEFF3), RoundedCornerShape(18.dp))
-                        .clickable { manager.toggleHideAudio(song.id) }
+                        .clickable {
+                            manager.triggerHapticFeedback(false)
+                            manager.toggleHideAudio(song.id)
+                        }
                         .padding(horizontal = 16.dp, vertical = 14.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
@@ -913,7 +995,7 @@ fun CircularColorPickerDialog(
                                     val dx = (touch.x - center.x).toDouble()
                                     val dy = (touch.y - center.y).toDouble()
                                     val dist = sqrt(dx * dx + dy * dy)
-                                    val radius = (size.width / 2f).toDouble()
+                                    val radius = (size.width.toFloat() / 2f).toDouble()
                                     if (dist >= radius * 0.65) {
                                         var angle = Math.toDegrees(atan2(dy, dx)).toFloat()
                                         if (angle < 0f) angle += 360f

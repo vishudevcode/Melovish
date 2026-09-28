@@ -25,9 +25,14 @@ import android.media.audiofx.LoudnessEnhancer
 import android.media.audiofx.Virtualizer
 import android.net.Uri
 import android.os.Build
+import android.os.CombinedVibration
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.os.VibratorManager
 import android.provider.MediaStore
 import android.provider.Settings
 import android.util.LruCache
+import android.view.HapticFeedbackConstants
 import android.widget.Toast
 import androidx.activity.result.IntentSenderRequest
 import androidx.compose.runtime.getValue
@@ -77,6 +82,7 @@ import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.text.SimpleDateFormat
 import java.util.Locale
+import kotlin.math.ln
 import kotlin.math.pow
 
 enum class GridViewMode {
@@ -120,6 +126,60 @@ class MusicManager(private val context: Context) {
     val prefs: SharedPreferences = context.getSharedPreferences("melovish_prefs_v13", Context.MODE_PRIVATE)
     private val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
     private val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+
+    // Haptics service
+    private val vibrator: Vibrator? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        val vm = context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as? VibratorManager
+        vm?.defaultVibrator
+    } else {
+        @Suppress("DEPRECATION")
+        context.getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
+    }
+
+    var isHapticsEnabled by mutableStateOf(prefs.getBoolean("haptics_enabled", true))
+
+    fun triggerHapticFeedback(isStrong: Boolean = false) {
+        if (!isHapticsEnabled) return
+        try {
+            val actView = attachedActivity?.window?.decorView
+            if (actView != null) {
+                val constant = if (isStrong) {
+                    HapticFeedbackConstants.LONG_PRESS
+                } else {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+                        HapticFeedbackConstants.KEYBOARD_TAP
+                    } else {
+                        HapticFeedbackConstants.VIRTUAL_KEY
+                    }
+                }
+                actView.performHapticFeedback(constant)
+                return
+            }
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                val effect = VibrationEffect.createPredefined(
+                    if (isStrong) VibrationEffect.EFFECT_CLICK else VibrationEffect.EFFECT_TICK
+                )
+                vibrator?.vibrate(effect)
+            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                @Suppress("DEPRECATION")
+                vibrator?.vibrate(
+                    VibrationEffect.createOneShot(if (isStrong) 25L else 12L, if (isStrong) 180 else 100)
+                )
+            } else {
+                @Suppress("DEPRECATION")
+                vibrator?.vibrate(if (isStrong) 20L else 10L)
+            }
+        } catch (_: Exception) {}
+    }
+
+    fun toggleHaptics(enabled: Boolean) {
+        isHapticsEnabled = enabled
+        managerScope.launch(Dispatchers.IO) {
+            prefs.edit().putBoolean("haptics_enabled", enabled).apply()
+        }
+        if (enabled) triggerHapticFeedback(true)
+    }
 
     private val channelMixingAudioProcessor = ChannelMixingAudioProcessor()
 
@@ -282,9 +342,7 @@ class MusicManager(private val context: Context) {
     var isMonoAudio by mutableStateOf(prefs.getBoolean("mono", false))
 
     // Audio Routing System
-    // userSelectedAudioOutput: "Auto", "Phone", "Speaker", "Buds"
     var userSelectedAudioOutput by mutableStateOf(prefs.getString("audio_output_manual", "Auto") ?: "Auto")
-    // effectiveAudioOutput: what is currently highlighted in the UI and active on hardware ("Phone", "Speaker", "Buds")
     var effectiveAudioOutput by mutableStateOf("Phone")
 
     var isEqEnabled by mutableStateOf(prefs.getBoolean("eq_enabled", true))
@@ -553,9 +611,7 @@ class MusicManager(private val context: Context) {
             }
 
             loudnessEnhancer = LoudnessEnhancer(sessionId).apply {
-                val boostGainMb = (((volumeBoostLevel - 100f) / 100f) * 2000f).toInt().coerceIn(0, 3000)
-                setTargetGain(boostGainMb)
-                enabled = volumeBoostLevel > 100f || isVolumeNormalized
+                applySmoothVolumeBoost(volumeBoostLevel)
             }
 
             applyVolumeNormalization()
@@ -579,10 +635,7 @@ class MusicManager(private val context: Context) {
             virtualizer?.enabled = isEqEnabled
             virtualizer?.setStrength((virtualizerPercent * 10).toShort().coerceIn(0, 1000))
 
-            val boostGainMb = (((volumeBoostLevel - 100f) / 100f) * 2000f).toInt().coerceIn(0, 3000)
-            loudnessEnhancer?.setTargetGain(boostGainMb)
-            loudnessEnhancer?.enabled = volumeBoostLevel > 100f || isVolumeNormalized
-
+            applySmoothVolumeBoost(volumeBoostLevel)
             applyVolumeNormalization()
             applyChannelMixing()
         } catch (e: Exception) {
@@ -731,27 +784,44 @@ class MusicManager(private val context: Context) {
         }
     }
 
-    fun setVolumeBoost(level: Float) {
-        volumeBoostLevel = level
-        val sessionId = if (boundAudioSessionId != C.AUDIO_SESSION_ID_UNSET && boundAudioSessionId != 0) {
-            boundAudioSessionId
-        } else {
-            player.audioSessionId
-        }
-
-        if (sessionId != C.AUDIO_SESSION_ID_UNSET && sessionId != 0) {
-            try {
-                if (loudnessEnhancer == null) {
-                    loudnessEnhancer = LoudnessEnhancer(sessionId)
-                }
-                val boostGainMb = (((level - 100f) / 100f) * 2000f).toInt().coerceIn(0, 3000)
-                loudnessEnhancer?.setTargetGain(boostGainMb)
-                loudnessEnhancer?.enabled = level > 100f || isVolumeNormalized
-            } catch (e: Exception) {
-                e.printStackTrace()
+    /**
+     * Smooth, non-clipping volume boost.
+     * Prevents harsh square-wave clipping, thumping, and speaker pumping by applying
+     * an anti-saturation logarithmic curve and gentle sub-bass damping above 110%.
+     */
+    private fun applySmoothVolumeBoost(level: Float) {
+        if (loudnessEnhancer == null) {
+            val sId = if (boundAudioSessionId != C.AUDIO_SESSION_ID_UNSET && boundAudioSessionId != 0) {
+                boundAudioSessionId
+            } else {
+                player.audioSessionId
+            }
+            if (sId != C.AUDIO_SESSION_ID_UNSET && sId != 0) {
+                try {
+                    loudnessEnhancer = LoudnessEnhancer(sId)
+                } catch (_: Exception) {}
             }
         }
 
+        if (level <= 100f) {
+            loudnessEnhancer?.setTargetGain(0)
+            loudnessEnhancer?.enabled = isVolumeNormalized
+            return
+        }
+
+        // Logarithmic soft curve: smooth acoustic boost without hard digital overdrive
+        val boostFactor = ((level - 100f) / 100f).coerceIn(0f, 1f)
+        val cleanGainMb = (ln(1.0 + (boostFactor * 1.718)) * 850.0).toInt().coerceIn(0, 950)
+
+        try {
+            loudnessEnhancer?.setTargetGain(cleanGainMb)
+            loudnessEnhancer?.enabled = true
+        } catch (_: Exception) {}
+    }
+
+    fun setVolumeBoost(level: Float) {
+        volumeBoostLevel = level
+        applySmoothVolumeBoost(level)
         managerScope.launch(Dispatchers.IO) {
             prefs.edit().putFloat("vol_boost", level).apply()
         }
@@ -784,10 +854,9 @@ class MusicManager(private val context: Context) {
             } catch (_: Exception) {}
         } else {
             player.volume = 1.0f
-            val baseGain = (targetDb * 100).toInt().coerceIn(0, 800)
-            val boostGain = (((volumeBoostLevel - 100f) / 100f) * 2000f).toInt().coerceIn(0, 3000)
+            val baseGain = (targetDb * 60).toInt().coerceIn(0, 400)
             try {
-                loudnessEnhancer?.setTargetGain(baseGain + boostGain)
+                loudnessEnhancer?.setTargetGain(baseGain)
                 loudnessEnhancer?.enabled = true
             } catch (_: Exception) {}
         }
@@ -827,10 +896,10 @@ class MusicManager(private val context: Context) {
     }
 
     /**
-     * Isolated Hardware Routing & Auto-Highlighting
-     * 1. Preserves AudioManager.MODE_NORMAL so YouTube and other apps play through earphones undisturbed.
-     * 2. When 'Phone' is manually selected, decouples usage attributes so only Melovish targets the speaker.
-     * 3. Dynamically updates 'effectiveAudioOutput' so Settings automatically highlights the actual output device.
+     * Isolated Hardware Routing & Real-Time Reactive Highlighting:
+     * - Keeps system-wide audio mode normal so YouTube and other apps play through earphones undisturbed.
+     * - When 'Phone' is selected, decouples usage attributes so only Melovish targets the speaker.
+     * - Dynamically updates 'effectiveAudioOutput' so Settings automatically highlights the actual output device.
      */
     fun updateDeviceRoutingAndHighlight() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
@@ -839,7 +908,6 @@ class MusicManager(private val context: Context) {
         }
 
         try {
-            // NEVER set communication mode or speakerphoneOn so third party apps keep their earphones route
             audioManager.mode = AudioManager.MODE_NORMAL
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 audioManager.clearCommunicationDevice()
@@ -869,10 +937,7 @@ class MusicManager(private val context: Context) {
 
             when (userSelectedAudioOutput) {
                 "Phone" -> {
-                    // Manual Override: Force Melovish to the phone speaker while other apps stay in earphones
                     effectiveAudioOutput = "Phone"
-                    
-                    // Decouple audio usage attribute so the OS gives Melovish an independent speaker output route
                     player.setAudioAttributes(
                         AudioAttributes.Builder()
                             .setContentType(C.AUDIO_CONTENT_TYPE_SONIFICATION)
@@ -909,7 +974,6 @@ class MusicManager(private val context: Context) {
                     }
                 }
                 else -> {
-                    // "Auto" Default Mode: Naturally prioritize Buds > Speaker > Phone Speaker
                     player.setAudioAttributes(
                         AudioAttributes.Builder()
                             .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
@@ -1636,7 +1700,7 @@ class MusicManager(private val context: Context) {
         playSong(candidate, allSongs, "Storage", initialPositionMs = startPosition)
     }
 
-    fun createPlaylist(name: String) {
+    fun createPlaylist(name: String): Playlist {
         val newPl = Playlist(
             id = System.currentTimeMillis().toString(),
             name = name,
@@ -1644,6 +1708,18 @@ class MusicManager(private val context: Context) {
         )
         customPlaylists.add(newPl)
         savePlaylists()
+        return newPl
+    }
+
+    fun createPlaylistAndAddSong(name: String, songId: Long): Playlist {
+        val newPl = Playlist(
+            id = System.currentTimeMillis().toString(),
+            name = name,
+            songIds = listOf(songId).toImmutableList()
+        )
+        customPlaylists.add(newPl)
+        savePlaylists()
+        return newPl
     }
 
     fun pinFolderAsPlaylist(folderName: String) {
