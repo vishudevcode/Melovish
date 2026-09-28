@@ -821,15 +821,9 @@ class MusicManager(private val context: Context) {
         applyHardwareAudioRouting(output)
     }
 
-    /**
-     * Isolated Audio Routing
-     * Uses player.setPreferredAudioDevice(...) to route Melovish's stream independently.
-     * Leaves system-wide routing untouched so third-party apps remain on connected headphones/speakers.
-     */
     fun applyHardwareAudioRouting(output: String) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             try {
-                // Clear any leftover telephony/system-wide communication overrides
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                     audioManager.clearCommunicationDevice()
                 } else {
@@ -842,13 +836,8 @@ class MusicManager(private val context: Context) {
 
                 when (output) {
                     "Phone" -> {
-                        // Bind this player specifically to the built-in phone speaker
                         val speakerDevice = devices.find { it.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER }
-                        if (speakerDevice != null) {
-                            player.setPreferredAudioDevice(speakerDevice)
-                        } else {
-                            player.clearPreferredAudioDevice()
-                        }
+                        player.setPreferredAudioDevice(speakerDevice)
                     }
                     "Speaker" -> {
                         val externalSpeaker = devices.find {
@@ -861,11 +850,7 @@ class MusicManager(private val context: Context) {
                             it.type == AudioDeviceInfo.TYPE_WIRED_HEADSET
                         }
 
-                        if (externalSpeaker != null) {
-                            player.setPreferredAudioDevice(externalSpeaker)
-                        } else {
-                            player.clearPreferredAudioDevice()
-                        }
+                        player.setPreferredAudioDevice(externalSpeaker)
                     }
                     "Buds" -> {
                         val headsetDevice = devices.find {
@@ -876,15 +861,11 @@ class MusicManager(private val context: Context) {
                             (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && it.type == AudioDeviceInfo.TYPE_USB_HEADSET)
                         }
 
-                        if (headsetDevice != null) {
-                            player.setPreferredAudioDevice(headsetDevice)
-                        } else {
-                            // Do not fall back to the phone speaker if buds are selected
-                            player.clearPreferredAudioDevice()
-                            if (player.isPlaying) {
-                                player.pause()
-                                Toast.makeText(context, "Headphones/Buds not detected.", Toast.LENGTH_SHORT).show()
-                            }
+                        player.setPreferredAudioDevice(headsetDevice)
+
+                        if (headsetDevice == null && player.isPlaying) {
+                            player.pause()
+                            Toast.makeText(context, "Headphones/Buds not detected.", Toast.LENGTH_SHORT).show()
                         }
                     }
                 }
