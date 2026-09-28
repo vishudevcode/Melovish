@@ -837,6 +837,9 @@ class MusicManager(private val context: Context) {
                             @Suppress("DEPRECATION")
                             audioManager.isSpeakerphoneOn = true
                         }
+                        if (speakerDevice != null) {
+                            player.setPreferredAudioDevice(speakerDevice)
+                        }
                     }
                     "Speaker" -> {
                         val externalSpeaker = devices.find {
@@ -859,6 +862,7 @@ class MusicManager(private val context: Context) {
                             @Suppress("DEPRECATION")
                             audioManager.isSpeakerphoneOn = false
                         }
+                        player.setPreferredAudioDevice(externalSpeaker)
                     }
                     "Buds" -> {
                         val headsetDevice = devices.find {
@@ -879,6 +883,8 @@ class MusicManager(private val context: Context) {
                             @Suppress("DEPRECATION")
                             audioManager.isSpeakerphoneOn = false
                         }
+
+                        player.setPreferredAudioDevice(headsetDevice)
 
                         if (headsetDevice == null && player.isPlaying) {
                             player.pause()
