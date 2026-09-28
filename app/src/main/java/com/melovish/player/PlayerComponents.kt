@@ -64,6 +64,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -110,6 +111,7 @@ import kotlinx.coroutines.withContext
 import java.util.Locale
 import kotlin.math.abs
 
+// Live Animated 4-Bar Equalizer
 @Composable
 fun LiveAudioWaveEqualizer(isAnimating: Boolean, accentColor: Color, modifier: Modifier = Modifier) {
     val infiniteTransition = rememberInfiniteTransition(label = "audioWave")
@@ -136,6 +138,7 @@ fun LiveAudioWaveEqualizer(isAnimating: Boolean, accentColor: Color, modifier: M
     }
 }
 
+// Vector Curved Back Arrow Icon
 @Composable
 fun CurvedBackArrowIcon(tint: Color, modifier: Modifier = Modifier) {
     Spacer(
@@ -158,6 +161,7 @@ fun CurvedBackArrowIcon(tint: Color, modifier: Modifier = Modifier) {
     )
 }
 
+// Circular Embossed Glass Back Button
 @Composable
 fun GlassBackButton(isDark: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
     Box(
@@ -174,6 +178,7 @@ fun GlassBackButton(isDark: Boolean, onClick: () -> Unit, modifier: Modifier = M
     }
 }
 
+// Glassmorphic Folder Icon
 @Composable
 fun GlassmorphicFolderIcon(folderColor: Color, modifier: Modifier = Modifier) {
     Spacer(
@@ -219,6 +224,7 @@ fun GlassmorphicFolderIcon(folderColor: Color, modifier: Modifier = Modifier) {
     )
 }
 
+// Folder Color Dialog
 @Composable
 fun FolderColorDialog(
     folderName: String,
@@ -330,6 +336,7 @@ fun FolderColorDialog(
     }
 }
 
+// Minimalist Vector Avatar
 @Composable
 fun DefaultProfileAvatar(modifier: Modifier = Modifier, backgroundColor: Color = Color(0xFF030712)) {
     Spacer(
@@ -358,8 +365,7 @@ fun DefaultProfileAvatar(modifier: Modifier = Modifier, backgroundColor: Color =
 }
 
 /**
- * Robust Material You Palette Extractor.
- * Dynamically computes dominant and vibrant tones from album bitmaps.
+ * Fully Restored Material You Dynamic Palette Extractor
  */
 suspend fun extractMaterialYouPaletteAsync(bitmap: Bitmap?, isDarkMode: Boolean, fallbackAccent: Color): MaterialYouPalette = withContext(Dispatchers.Default) {
     if (bitmap == null) {
@@ -370,7 +376,7 @@ suspend fun extractMaterialYouPaletteAsync(bitmap: Bitmap?, isDarkMode: Boolean,
         }
     }
     try {
-        val scaled = Bitmap.createScaledBitmap(bitmap, 24, 24, false)
+        val scaled = Bitmap.createScaledBitmap(bitmap, 16, 16, false)
         var totalR = 0L; var totalG = 0L; var totalB = 0L; var count = 0
         var maxSat = -1f; var vibrantColor = android.graphics.Color.WHITE
         val hsv = FloatArray(3)
@@ -383,21 +389,21 @@ suspend fun extractMaterialYouPaletteAsync(bitmap: Bitmap?, isDarkMode: Boolean,
                 totalB += android.graphics.Color.blue(p)
                 count++
                 android.graphics.Color.colorToHSV(p, hsv)
-                if (hsv[1] > maxSat && hsv[2] > 0.20f && hsv[2] < 0.95f) {
+                if (hsv[1] > maxSat && hsv[2] > 0.22f && hsv[2] < 0.95f) {
                     maxSat = hsv[1]
                     vibrantColor = p
                 }
             }
         }
-        val dom = if (maxSat > 0.25f) vibrantColor else android.graphics.Color.rgb((totalR / count).toInt(), (totalG / count).toInt(), (totalB / count).toInt())
+        val dom = if (maxSat > 0.28f) vibrantColor else android.graphics.Color.rgb((totalR / count).toInt(), (totalG / count).toInt(), (totalB / count).toInt())
         android.graphics.Color.colorToHSV(dom, hsv)
         val hue = hsv[0]
         val sat = hsv[1].coerceIn(0.35f, 0.85f)
 
         if (isDarkMode) {
-            val top = Color(android.graphics.Color.HSVToColor(floatArrayOf(hue, sat * 0.60f, 0.22f)))
-            val bot = Color(android.graphics.Color.HSVToColor(floatArrayOf((hue + 18f) % 360f, sat * 0.75f, 0.08f)))
-            val acc = Color(android.graphics.Color.HSVToColor(floatArrayOf(hue, sat * 0.90f, 0.90f)))
+            val top = Color(android.graphics.Color.HSVToColor(floatArrayOf(hue, sat * 0.65f, 0.20f)))
+            val bot = Color(android.graphics.Color.HSVToColor(floatArrayOf((hue + 18f) % 360f, sat * 0.8f, 0.08f)))
+            val acc = Color(android.graphics.Color.HSVToColor(floatArrayOf(hue, sat * 0.9f, 0.90f)))
             val surf = Color(android.graphics.Color.HSVToColor(floatArrayOf(hue, sat * 0.35f, 0.28f))).copy(alpha = 0.55f)
             MaterialYouPalette(top, bot, acc, surf, Color(0xFFF8FAFC), Color(0xFFCBD5E1))
         } else {
@@ -419,6 +425,7 @@ suspend fun extractMaterialYouPaletteAsync(bitmap: Bitmap?, isDarkMode: Boolean,
     }
 }
 
+// 100% Mathematically Centered Progress Bar
 @Composable
 fun IsolatedScrubberLeaf(
     currentPositionMs: Long,
@@ -531,6 +538,7 @@ fun IsolatedScrubberLeaf(
     }
 }
 
+// Vector Heart Icon
 @Composable
 fun HeartIconVector(isFavorite: Boolean, defaultTint: Color, modifier: Modifier = Modifier) {
     val heartColor = if (isFavorite) Color(0xFFFF2A55) else defaultTint
@@ -564,6 +572,7 @@ fun HeartIconVector(isFavorite: Boolean, defaultTint: Color, modifier: Modifier 
     )
 }
 
+// Vector Bold Clock Icon with Top Timer Crown
 @Composable
 fun SleepTimerClockIcon(
     isActive: Boolean,
@@ -623,6 +632,7 @@ fun SleepTimerClockIcon(
     )
 }
 
+// Vector 3-Sliders Equalizer Icon
 @Composable
 fun EqualizerSlidersIcon(
     tint: Color,
@@ -654,6 +664,7 @@ fun EqualizerSlidersIcon(
     }
 }
 
+// Triple-Line Drag Handle Icon
 @Composable
 fun ReorderDragHandle(tint: Color, modifier: Modifier = Modifier) {
     Canvas(modifier = modifier) {
@@ -667,6 +678,7 @@ fun ReorderDragHandle(tint: Color, modifier: Modifier = Modifier) {
     }
 }
 
+// Full Player Sheet
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @UnstableApi
 @Composable
@@ -676,7 +688,7 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
     val userAccent = manager.accentColor
     val monoColor = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A)
 
-    val currentQueue = remember(manager.playbackQueue.size) {
+    val currentQueue = remember(manager.playbackQueue.size, manager.playbackQueue.toList()) {
         if (manager.playbackQueue.isNotEmpty()) manager.playbackQueue.toList()
         else if (manager.currentSong != null) listOf(manager.currentSong!!)
         else emptyList()
@@ -746,10 +758,8 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
 
     val activeSong = manager.currentSong ?: currentQueue[pagerState.currentPage]
     var albumArtBitmap by remember(activeSong.id) { mutableStateOf(manager.getCachedAlbumArt(activeSong.id)) }
-    
-    // Reactively load album art if missing in cache
     LaunchedEffect(activeSong.id) {
-        albumArtBitmap = manager.loadAlbumArtAsync(activeSong)
+        if (albumArtBitmap == null) albumArtBitmap = manager.loadAlbumArtAsync(activeSong)
     }
 
     val defaultDarkPalette = MaterialYouPalette(
@@ -774,7 +784,6 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
         mutableStateOf(if (isDark) defaultDarkPalette else defaultLightPalette)
     }
 
-    // Fully reactive palette calculation triggered when bitmap finishes loading
     LaunchedEffect(activeSong.id, albumArtBitmap, isDark, userAccent, manager.isColorfulPlayer) {
         targetPalette = if (manager.isColorfulPlayer) {
             extractMaterialYouPaletteAsync(albumArtBitmap, isDark, userAccent)
@@ -822,7 +831,7 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
             pageSpacing = 16.dp,
             flingBehavior = PagerDefaults.flingBehavior(
                 state = pagerState,
-                snapAnimationSpec = spring(stiffness = 450f, dampingRatio = 0.82f)
+                snapAnimationSpec = spring(stiffness = 550f, dampingRatio = 0.82f)
             ),
             modifier = Modifier.fillMaxSize()
         ) { pageIndex ->
@@ -830,7 +839,7 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
 
             var pageBmp by remember(pageSong.id) { mutableStateOf(manager.getCachedAlbumArt(pageSong.id)) }
             LaunchedEffect(pageSong.id) {
-                pageBmp = manager.loadAlbumArtAsync(pageSong)
+                if (pageBmp == null) pageBmp = manager.loadAlbumArtAsync(pageSong)
             }
 
             Column(
@@ -991,7 +1000,7 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                         )
                         Spacer(modifier = Modifier.height(3.dp))
                         Text(
-                            text = "${pageSong.formattedSize} • ${pageSong.displayArtist}",
+                            text = "${formatFileSize(pageSong.size)} • ${if (pageSong.artist.isNotBlank()) pageSong.artist else "Unknown Artist"}",
                             color = animTextSecondary,
                             fontSize = 13.sp,
                             fontWeight = FontWeight.Medium,
@@ -1182,7 +1191,7 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                 ) {
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text(
-                            text = "${activeSong.title} - ${activeSong.displayArtist}",
+                            text = "${activeSong.title} - ${if (activeSong.artist.isNotBlank()) activeSong.artist else "Unknown"}",
                             fontSize = 17.sp,
                             fontWeight = FontWeight.Bold,
                             color = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A),
@@ -1191,7 +1200,7 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                         )
                         Spacer(modifier = Modifier.height(6.dp))
 
-                        MenuRow("👤", "Artist: ${activeSong.displayArtist}", isDark) { showMenuModal = false }
+                        MenuRow("👤", "Artist: ${if (activeSong.artist.isNotBlank()) activeSong.artist else "Unknown"}", isDark) { showMenuModal = false }
                         MenuRow("📜", "Lyrics", isDark) { showMenuModal = false; showLyricsDialog = true }
                         MenuRow("🔗", "Share", isDark) {
                             showMenuModal = false
@@ -1232,8 +1241,8 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
 
         AnimatedVisibility(
             visible = showQueueSheet,
-            enter = slideInVertically(initialOffsetY = { it }, animationSpec = spring(stiffness = 450f, dampingRatio = 0.82f)),
-            exit = slideOutVertically(targetOffsetY = { it }, animationSpec = spring(stiffness = 450f, dampingRatio = 0.82f)),
+            enter = slideInVertically(initialOffsetY = { it }, animationSpec = spring(stiffness = 500f, dampingRatio = 0.85f)),
+            exit = slideOutVertically(targetOffsetY = { it }, animationSpec = spring(stiffness = 500f, dampingRatio = 0.85f)),
             modifier = Modifier.fillMaxSize().zIndex(20f)
         ) {
             QueueSheet(
@@ -1257,6 +1266,7 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
     }
 }
 
+// Queue Sheet
 @OptIn(ExperimentalFoundationApi::class)
 @UnstableApi
 @Composable
@@ -1417,8 +1427,8 @@ fun QueueSheet(
                             .fillMaxWidth()
                             .animateItemPlacement(
                                 animationSpec = spring(
-                                    stiffness = 450f,
-                                    dampingRatio = 0.82f
+                                    stiffness = 550f,
+                                    dampingRatio = 0.85f
                                 )
                             )
                             .zIndex(if (isDraggingThis) 10f else 1f)
@@ -1477,7 +1487,7 @@ fun QueueSheet(
                             )
                             Spacer(modifier = Modifier.height(2.dp))
                             Text(
-                                text = "${song.formattedSize} • ${song.displayArtist}",
+                                text = "${formatFileSize(song.size)} • ${if (song.artist.isNotBlank()) song.artist else "Unknown Artist"}",
                                 color = subTextColor,
                                 fontSize = 12.sp,
                                 maxLines = 1,
@@ -1566,6 +1576,7 @@ fun QueueSheet(
     }
 }
 
+// Equalizer Sheet
 @Composable
 fun EqualizerSheet(manager: MusicManager, onDismiss: () -> Unit) {
     val isDark = manager.isDarkMode
@@ -1803,6 +1814,7 @@ fun EqualizerSheet(manager: MusicManager, onDismiss: () -> Unit) {
     }
 }
 
+// Vertical Line Mixer Slider for Frequency Bands
 @Composable
 fun VerticalBandFader(
     level: Int,
@@ -1919,6 +1931,7 @@ fun MenuRow(icon: String, text: String, isDark: Boolean, isDanger: Boolean = fal
     }
 }
 
+// Mini Player Dock
 @UnstableApi
 @Composable
 fun MiniPlayerDock(manager: MusicManager, onClick: () -> Unit) {
@@ -1928,7 +1941,7 @@ fun MiniPlayerDock(manager: MusicManager, onClick: () -> Unit) {
 
     var albumArtBitmap by remember(song.id) { mutableStateOf(manager.getCachedAlbumArt(song.id)) }
     LaunchedEffect(song.id) {
-        albumArtBitmap = manager.loadAlbumArtAsync(song)
+        if (albumArtBitmap == null) albumArtBitmap = manager.loadAlbumArtAsync(song)
     }
 
     Box(
@@ -1959,7 +1972,7 @@ fun MiniPlayerDock(manager: MusicManager, onClick: () -> Unit) {
             Spacer(modifier = Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(song.title, color = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A), fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text("${song.formattedSize} • ${if (song.artist.isNotBlank()) song.artist else "Melovish"}", color = accent, fontSize = 11.sp, maxLines = 1)
+                Text("${formatFileSize(song.size)} • ${if (song.artist.isNotBlank()) song.artist else "Melovish"}", color = accent, fontSize = 11.sp, maxLines = 1)
             }
             Box(modifier = Modifier.size(38.dp).clip(CircleShape).background(accent).clickable {
                 manager.triggerHapticFeedback(true)
@@ -1971,6 +1984,7 @@ fun MiniPlayerDock(manager: MusicManager, onClick: () -> Unit) {
     }
 }
 
+// Sleep Timer Dialog with Per-Unit Haptic Feedback
 @UnstableApi
 @Composable
 fun SleepTimerDialog(manager: MusicManager, onDismiss: () -> Unit) {
@@ -2113,6 +2127,7 @@ fun SleepTimerDialog(manager: MusicManager, onDismiss: () -> Unit) {
     }
 }
 
+// Lyrics Dialog
 @Composable
 fun LyricsDialog(song: Song, isDark: Boolean, onDismiss: () -> Unit) {
     val textColor = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A)
@@ -2153,6 +2168,7 @@ fun LyricsDialog(song: Song, isDark: Boolean, onDismiss: () -> Unit) {
     }
 }
 
+// Add to Playlist Dialog with Inline + New Playlist Creator
 @Composable
 fun AddToPlaylistDialog(manager: MusicManager, song: Song, onDismiss: () -> Unit) {
     val isDark = manager.isDarkMode
@@ -2269,6 +2285,7 @@ fun AddToPlaylistDialog(manager: MusicManager, song: Song, onDismiss: () -> Unit
     }
 }
 
+// Magnetic Speed Dialog with Prominent Dots & Tactile Notches
 @Composable
 fun MagneticSpeedDialog(manager: MusicManager, onDismiss: () -> Unit) {
     var speed by remember { mutableFloatStateOf(manager.playbackSpeed) }
@@ -2298,6 +2315,7 @@ fun MagneticSpeedDialog(manager: MusicManager, onDismiss: () -> Unit) {
                 )
                 Spacer(modifier = Modifier.height(20.dp))
 
+                // Track with Prominent Indicator Dots
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -2330,6 +2348,7 @@ fun MagneticSpeedDialog(manager: MusicManager, onDismiss: () -> Unit) {
                     Slider(
                         value = speed,
                         onValueChange = { raw ->
+                            // Check if close to any prominent step
                             var snappedVal = raw
                             for (st in prominentSteps) {
                                 if (abs(raw - st) <= 0.05f) {
@@ -2383,6 +2402,7 @@ fun MagneticSpeedDialog(manager: MusicManager, onDismiss: () -> Unit) {
     }
 }
 
+// Repeat Control Icon
 @Composable
 fun RepeatControlIcon(repeatMode: Int, tint: Color, modifier: Modifier = Modifier) {
     val isActive = repeatMode != Player.REPEAT_MODE_OFF
@@ -2429,6 +2449,7 @@ fun RepeatControlIcon(repeatMode: Int, tint: Color, modifier: Modifier = Modifie
     }
 }
 
+// Previous Control Icon
 @Composable
 fun PreviousControlIcon(tint: Color, modifier: Modifier = Modifier) {
     Spacer(
@@ -2450,6 +2471,7 @@ fun PreviousControlIcon(tint: Color, modifier: Modifier = Modifier) {
     )
 }
 
+// Next Control Icon
 @Composable
 fun NextControlIcon(tint: Color, modifier: Modifier = Modifier) {
     Spacer(
@@ -2471,6 +2493,7 @@ fun NextControlIcon(tint: Color, modifier: Modifier = Modifier) {
     )
 }
 
+// Shuffle Control Icon
 @Composable
 fun ShuffleControlIcon(isShuffleOn: Boolean, tint: Color, modifier: Modifier = Modifier) {
     val alpha = if (isShuffleOn) 1f else 0.4f
@@ -2516,112 +2539,4 @@ fun ShuffleControlIcon(isShuffleOn: Boolean, tint: Color, modifier: Modifier = M
             }
         }
     )
-}
-
-@Composable
-fun TagEditorDialog(
-    manager: MusicManager,
-    song: Song,
-    onDismiss: () -> Unit,
-    onRequestWritePermission: (Uri) -> Unit = {}
-) {
-    val isDark = manager.isDarkMode
-    val textColor = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A)
-    val accent = manager.accentColor
-
-    var titleText by remember(song.id) { mutableStateOf(song.title) }
-    var artistText by remember(song.id) { mutableStateOf(song.artist) }
-    var albumText by remember(song.id) { mutableStateOf(song.album) }
-    var dateText by remember(song.id) { mutableStateOf(song.releaseDate) }
-
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color.Transparent)
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null
-            ) { onDismiss() },
-        contentAlignment = Alignment.BottomCenter
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
-                .background(if (isDark) Color(0xFF1E293B) else Color.White)
-                .clickable(enabled = false) {}
-                .padding(22.dp)
-        ) {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text(
-                    text = "Edit Song Tags",
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = textColor
-                )
-
-                OutlinedTextField(
-                    value = titleText,
-                    onValueChange = { titleText = it },
-                    label = { Text("Title") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-
-                OutlinedTextField(
-                    value = artistText,
-                    onValueChange = { artistText = it },
-                    label = { Text("Artist") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-
-                OutlinedTextField(
-                    value = albumText,
-                    onValueChange = { albumText = it },
-                    label = { Text("Album") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    Button(
-                        onClick = onDismiss,
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(48.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = if (isDark) Color(0x22FFFFFF) else Color(0xFFF1F5F9)),
-                        shape = RoundedCornerShape(12.dp)
-                    ) {
-                        Text("Cancel", color = textColor, fontWeight = FontWeight.Bold)
-                    }
-
-                    Button(
-                        onClick = {
-                            val uri = manager.preparePendingStorageWrite(
-                                song = song,
-                                newTitle = titleText.trim(),
-                                newArtist = artistText.trim(),
-                                newAlbum = albumText.trim(),
-                                newDate = dateText.trim(),
-                                customCoverUri = null
-                            )
-                            onRequestWritePermission(uri)
-                            onDismiss()
-                        },
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(48.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = accent),
-                        shape = RoundedCornerShape(12.dp)
-                    ) {
-                        Text("Save", color = Color.White, fontWeight = FontWeight.Bold)
-                    }
-                }
-            }
-        }
-    }
 }
