@@ -78,6 +78,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
@@ -222,7 +223,7 @@ fun GlassmorphicFolderIcon(folderColor: Color, modifier: Modifier = Modifier) {
     )
 }
 
-// Folder Color Dialog
+// Folder Color Dialog: Corrected so opening rainbow picker does not dismiss state
 @Composable
 fun FolderColorDialog(
     folderName: String,
@@ -305,6 +306,7 @@ fun FolderColorDialog(
                                     }
                             )
                         }
+                        // Rainbow picker trigger: Calls onOpenRainbowPicker() directly without clearing state via onDismiss()
                         Box(
                             modifier = Modifier
                                 .size(38.dp)
@@ -312,7 +314,6 @@ fun FolderColorDialog(
                                 .background(Brush.sweepGradient(listOf(Color.Red, Color.Yellow, Color.Green, Color.Cyan, Color.Blue, Color.Magenta, Color.Red)))
                                 .border(2.dp, Color.White, CircleShape)
                                 .clickable {
-                                    onDismiss()
                                     onOpenRainbowPicker()
                                 },
                             contentAlignment = Alignment.Center
@@ -544,7 +545,7 @@ fun IsolatedScrubberLeaf(
     }
 }
 
-// Vector Heart Icon: Solid Glowing Red when Favorited
+// Vector Heart Icon
 @Composable
 fun HeartIconVector(isFavorite: Boolean, defaultTint: Color, modifier: Modifier = Modifier) {
     val heartColor = if (isFavorite) Color(0xFFFF2A55) else defaultTint
@@ -638,7 +639,7 @@ fun SleepTimerClockIcon(
     )
 }
 
-// Vector 3-Sliders Equalizer Icon for Full Player Bottom Dock
+// Vector 3-Sliders Equalizer Icon
 @Composable
 fun EqualizerSlidersIcon(
     tint: Color,
@@ -670,7 +671,7 @@ fun EqualizerSlidersIcon(
     }
 }
 
-// Bolder, Wider Triple-Line Drag Handle Icon
+// Triple-Line Drag Handle Icon
 @Composable
 fun ReorderDragHandle(tint: Color, modifier: Modifier = Modifier) {
     Canvas(modifier = modifier) {
@@ -702,7 +703,7 @@ fun ReorderDragHandle(tint: Color, modifier: Modifier = Modifier) {
     }
 }
 
-// Full Player Sheet with 1-Step Back Navigation & Immediate Equalizer Dock Button
+// Full Player Sheet
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @UnstableApi
 @Composable
@@ -761,7 +762,6 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
     var showLyricsDialog by remember { mutableStateOf(false) }
     var showAddToPlaylistDialog by remember { mutableStateOf(false) }
 
-    // Double-tap Seek Animation State
     var showSeekLeftAnim by remember { mutableStateOf(false) }
     var showSeekRightAnim by remember { mutableStateOf(false) }
 
@@ -823,7 +823,6 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
     val animTextPrimary by animateColorAsState(targetPalette.textPrimary, tween(350, easing = FastOutSlowInEasing), label = "textPrimary")
     val animTextSecondary by animateColorAsState(targetPalette.textSecondary, tween(350, easing = FastOutSlowInEasing), label = "textSecondary")
 
-    // Strict 1-Step Back Handler within Full Player
     BackHandler(enabled = showQueueSheet || showMenuModal || showSpeedDialog || showSleepDialog || showEqualizerSheet || showTagEditorDialog || showLyricsDialog || showAddToPlaylistDialog) {
         when {
             showQueueSheet -> showQueueSheet = false
@@ -912,7 +911,6 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                     .padding(horizontal = 24.dp)
                     .padding(top = 8.dp, bottom = 12.dp)
             ) {
-                // Top Action Bar
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -939,7 +937,6 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                     )
                 }
 
-                // Upper Section: Album Artwork
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -1007,7 +1004,6 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                     }
                 }
 
-                // Lower Section: Metadata, Scrubber, Playback Controls, & Dock
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -1048,7 +1044,6 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                         onSeek = { manager.seekTo(it) }
                     )
 
-                    // Control Buttons
                     Row(
                         modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
@@ -1112,7 +1107,6 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                         )
                     }
 
-                    // Bottom Dock: Direct Equalizer Access Icon
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -1171,7 +1165,6 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
             }
         }
 
-        // Action Menu Dialog
         if (showMenuModal) {
             Box(
                 modifier = Modifier
@@ -1261,7 +1254,6 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
             )
         }
 
-        // Dedicated Tag Editor from TagEditorComponents.kt
         if (showTagEditorDialog) {
             TagEditorDialog(manager = manager, song = activeSong, onDismiss = { showTagEditorDialog = false })
         }
@@ -1270,7 +1262,7 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
     }
 }
 
-// Queue Sheet: Continuous Multi-Item Drag & Drop, Edge Auto-Scroll, & Full Screen Swipe-Down to Dismiss
+// Queue Sheet
 @OptIn(ExperimentalFoundationApi::class)
 @UnstableApi
 @Composable
@@ -1574,7 +1566,7 @@ fun QueueSheet(
     }
 }
 
-// Unified Equalizer Sheet with On/Off Toggle to the Left of Save Button
+// Equalizer Sheet
 @Composable
 fun EqualizerSheet(manager: MusicManager, onDismiss: () -> Unit) {
     val isDark = manager.isDarkMode
@@ -1601,7 +1593,6 @@ fun EqualizerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                 .padding(22.dp)
         ) {
             Column(modifier = Modifier.fillMaxSize()) {
-                // Header with Equalizer On/Off Master Toggle on the Left of Save Button
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -1613,7 +1604,6 @@ fun EqualizerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                     }
 
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        // Master On/Off Switch
                         Switch(
                             checked = manager.isEqEnabled,
                             onCheckedChange = { manager.toggleEqualizer(it) },

@@ -137,7 +137,6 @@ class MusicViewModel(application: Application) : AndroidViewModel(application) {
 class MainActivity : ComponentActivity() {
     private val viewModel by viewModels<MusicViewModel>()
 
-    // Native Android System Dialog Launcher: "Allow Melovish to modify this audio file?"
     val writeRequestLauncher: ActivityResultLauncher<IntentSenderRequest> =
         registerForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { result ->
             if (result.resultCode == Activity.RESULT_OK) {
@@ -1685,7 +1684,7 @@ fun FolderColourPickerDialog(
     }
 }
 
-// 1:1 Dynamic Square Folder Card for Library Grid Modes with Elevated Floating Label
+// 1:1 Dynamic Square Folder Card
 @Composable
 fun LibraryFolderSquareCard(
     folderName: String,
@@ -1783,7 +1782,7 @@ fun LibraryFolderSquareCard(
     }
 }
 
-// Library Screen: Resolved Double Long-Press for Rainbow Color Picker
+// Library Screen: Seamless single-touch transition to rainbow picker matching HomeScreen pattern
 @OptIn(ExperimentalFoundationApi::class)
 @UnstableApi
 @Composable
@@ -1869,8 +1868,8 @@ fun LibraryScreen(manager: MusicManager, listState: LazyListState, onFolderClick
                                 .clip(RoundedCornerShape(18.dp))
                                 .background(cardBg)
                                 .border(1.dp, if (isDark) Color(0x22FFFFFF) else Color(0xFFECEFF3), RoundedCornerShape(18.dp))
-                            .combinedClickable(onClick = { onFolderClick(folderName) }, onLongClick = { customizingFolder = folderName })
-                            .padding(16.dp),
+                                .combinedClickable(onClick = { onFolderClick(folderName) }, onLongClick = { customizingFolder = folderName })
+                                .padding(16.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             GlassmorphicFolderIcon(folderColor = fColor, modifier = Modifier.size(42.dp))
@@ -2025,7 +2024,7 @@ fun LibraryScreen(manager: MusicManager, listState: LazyListState, onFolderClick
         )
     }
 
-    // Direct, single-click opening without intermediate clearing
+    // Exact mirror of HomeScreen logic: opens directly on first touch
     if (customizingFolder != null && !showRainbowWheelForFolder) {
         val folder = customizingFolder!!
         FolderColorDialog(
@@ -2110,7 +2109,7 @@ fun SearchScreen(manager: MusicManager, listState: LazyListState, onSongMenuClic
     }
 }
 
-// Playlist Detail Screen: Independent View Mode (5 modes) & Independent Sort Order with 1:1 Perfect Squares
+// Playlist Detail Screen
 @UnstableApi
 @Composable
 fun PlaylistDetailScreen(
@@ -2460,7 +2459,7 @@ fun FilteredSongsScreen(title: String, songs: ImmutableList<Song>, manager: Musi
     }
 }
 
-// Inside Folder Screen: Independent View Mode (5 modes) & Independent Sort Order with 1:1 Perfect Squares
+// Inside Folder Screen
 @UnstableApi
 @Composable
 fun FolderSongsScreen(folderName: String, manager: MusicManager, isDark: Boolean, onBack: () -> Unit, onSongMenuClick: (Song) -> Unit) {
