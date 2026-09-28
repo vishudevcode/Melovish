@@ -109,7 +109,6 @@ enum class ReverbPresetMode(val label: String) {
     PLATE("Plate")
 }
 
-// 6 Preset Pager Horizontal Transitions
 enum class PagerTransitionEffect(val label: String) {
     SLIDE("Slide"),
     CASCADE("Cascade"),
@@ -127,15 +126,19 @@ val EQUALIZER_32_BANDS = listOf(
 )
 
 /**
- * Zero-allocation scrubber time formatter.
+ * Millisecond Time Formatter (mm:ss or h:mm:ss)
  */
 fun formatTime(ms: Long): String {
-    val totalSeconds = (ms / 1000).coerceAtLeast(0)
-    val minutes = totalSeconds / 60
+    val totalSeconds = (ms / 1000).coerceAtLeast(0L)
+    val hours = totalSeconds / 3600
+    val minutes = (totalSeconds % 3600) / 60
     val seconds = totalSeconds % 60
-    val minStr = if (minutes < 10) "0$minutes" else minutes.toString()
-    val secStr = if (seconds < 10) "0$seconds" else seconds.toString()
-    return "$minStr:$secStr"
+
+    return if (hours > 0) {
+        String.format(Locale.US, "%d:%02d:%02d", hours, minutes, seconds)
+    } else {
+        String.format(Locale.US, "%02d:%02d", minutes, seconds)
+    }
 }
 
 /**
