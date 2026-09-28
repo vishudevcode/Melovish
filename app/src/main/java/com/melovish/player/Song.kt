@@ -5,6 +5,10 @@ import androidx.compose.runtime.Immutable
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.persistentListOf
 
+enum class GridViewMode {
+    LIST, GRID_2, GRID_3, GRID_4, HERO_GRID
+}
+
 @Immutable
 data class Song(
     val id: Long,
@@ -27,7 +31,6 @@ data class Song(
     val bitDepth: Int = 16,
     val replayGainTrackDb: Float = 0.0f,
     val replayGainAlbumDb: Float = 0.0f,
-    // Zero-allocation pre-formatted display cache for 120 FPS lists
     val formattedDuration: String = formatTime(duration),
     val formattedSize: String = formatFileSize(size),
     val displayArtist: String = if (artist.isNotBlank() && !artist.equals("<unknown>", ignoreCase = true)) artist else "Unknown Artist"
@@ -69,7 +72,7 @@ data class PlaybackUiState(
     val currentPositionMs: Long = 0L,
     val durationMs: Long = 0L,
     val playbackSpeed: Float = 1.0f,
-    val repeatMode: Int = 2, // Player.REPEAT_MODE_ALL
+    val repeatMode: Int = 2,
     val isShuffleOn: Boolean = false,
     val effectiveOutput: String = "Phone",
     val isScanning: Boolean = false,
@@ -142,10 +145,6 @@ val EQUALIZER_32_BANDS: List<String> = listOf(
     "5 kHz", "6.3 kHz", "8 kHz", "10 kHz", "12.5 kHz", "16 kHz", "18 kHz", "20 kHz"
 )
 
-/**
- * Ultra-Fast Direct Arithmetic Time Formatter (mm:ss or h:mm:ss).
- * Completely eliminates String.format regex parsing, vararg packing, and heap allocations.
- */
 fun formatTime(ms: Long): String {
     val totalSeconds = (ms / 1000L).coerceAtLeast(0L)
     val hours = totalSeconds / 3600L
@@ -179,10 +178,6 @@ fun formatTime(ms: Long): String {
     }
 }
 
-/**
- * High-Speed Adaptive File Size Formatter.
- * Avoids String.format allocations by computing one-decimal precision through fast integer arithmetic.
- */
 fun formatFileSize(bytes: Long): String {
     if (bytes <= 0L) return "0.0 MB"
     val kilo = 1024L

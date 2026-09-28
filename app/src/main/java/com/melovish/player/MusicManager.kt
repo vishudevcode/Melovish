@@ -1,5 +1,6 @@
 package com.melovish.player
 
+import android.app.Activity
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -30,7 +31,9 @@ import android.os.VibratorManager
 import android.provider.MediaStore
 import android.provider.Settings
 import android.util.LruCache
+import android.view.HapticFeedbackConstants
 import android.widget.Toast
+import androidx.activity.result.IntentSenderRequest
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
@@ -80,6 +83,7 @@ import org.json.JSONObject
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
+import java.lang.ref.WeakReference
 import java.text.SimpleDateFormat
 import java.util.Locale
 import kotlin.math.ln
@@ -103,7 +107,16 @@ class MusicManager(private val context: Context) {
             private set
     }
 
+    private var attachedActivityRef: WeakReference<MainActivity>? = null
     private var pendingStorageWrite: PendingTagWrite? = null
+
+    fun attachActivity(activity: MainActivity) {
+        attachedActivityRef = WeakReference(activity)
+    }
+
+    fun detachActivity() {
+        attachedActivityRef = null
+    }
 
     private val exceptionHandler = CoroutineExceptionHandler { _, throwable ->
         if (throwable !is CancellationException) {
@@ -116,7 +129,6 @@ class MusicManager(private val context: Context) {
     private val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
     private val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
-    // Decoupled System Haptics (Zero Activity Context Leak)
     private val vibrator: Vibrator? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
         val vm = context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as? VibratorManager
         vm?.defaultVibrator
@@ -130,6 +142,21 @@ class MusicManager(private val context: Context) {
     fun triggerHapticFeedback(isStrong: Boolean = false) {
         if (!isHapticsEnabled) return
         try {
+            val actView = attachedActivityRef?.get()?.window?.decorView
+            if (actView != null) {
+                val constant = if (isStrong) {
+                    HapticFeedbackConstants.LONG_PRESS
+                } else {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+                        HapticFeedbackConstants.KEYBOARD_TAP
+                    } else {
+                        HapticFeedbackConstants.VIRTUAL_KEY
+                    }
+                }
+                actView.performHapticFeedback(constant)
+                return
+            }
+
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 val effect = VibrationEffect.createPredefined(
                     if (isStrong) VibrationEffect.EFFECT_CLICK else VibrationEffect.EFFECT_TICK
@@ -194,7 +221,6 @@ class MusicManager(private val context: Context) {
     private var virtualizer: Virtualizer? = null
     private var loudnessEnhancer: LoudnessEnhancer? = null
 
-    // High-performance StateFlow exposure for 120 FPS UI synchronization
     private val _playbackUiState = MutableStateFlow(PlaybackUiState())
     val playbackUiState: StateFlow<PlaybackUiState> = _playbackUiState.asStateFlow()
 
@@ -352,7 +378,6 @@ class MusicManager(private val context: Context) {
     var profileEmail by mutableStateOf(prefs.getString("prof_email", "") ?: "")
     var profileImagePath by mutableStateOf(prefs.getString("prof_image_path", null))
 
-    // Hardware-accelerated memory cache to prevent Out-Of-Memory (OOM) errors
     private val maxCacheSize = (Runtime.getRuntime().maxMemory() / 1024 / 8).toInt().coerceAtLeast(1024 * 16)
     private val memoryCache = object : LruCache<Long, Bitmap>(maxCacheSize) {
         override fun sizeOf(key: Long, bitmap: Bitmap): Int = bitmap.byteCount / 1024
@@ -1154,7 +1179,6 @@ class MusicManager(private val context: Context) {
         }
     }
 
-    // Zero-I/O in-memory position tracker (eliminates flash write contention during playback)
     private fun startPositionTracker() {
         managerScope.launch {
             while (true) {
@@ -1842,6 +1866,39 @@ class MusicManager(private val context: Context) {
         customPlaylists.clear()
         customPlaylists.addAll(newList)
         savePlaylists()
+    }
+
+    // Direct interface for TagEditorComponents.kt and system writes
+    fun requestFileWritePermissionAndSave(
+        song: Song,
+        newTitle: String,
+        newArtist: String,
+        newAlbum: String,
+        newDate: String,
+        customCoverUri: Uri?
+    ) {
+        pendingStorageWrite = PendingTagWrite(song, newTitle, newArtist, newAlbum, newDate, customCoverUri)
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            try {
+                val writePendingIntent = MediaStore.createWriteRequest(
+                    context.contentResolver,
+                    listOf(song.uri)
+                )
+                val intentSenderRequest = IntentSenderRequest.Builder(writePendingIntent.intentSender).build()
+                val act = attachedActivityRef?.get()
+                if (act != null) {
+                    act.writeRequestLauncher.launch(intentSenderRequest)
+                } else {
+                    executePendingStorageWrite()
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                executePendingStorageWrite()
+            }
+        } else {
+            executePendingStorageWrite()
+        }
     }
 
     fun preparePendingStorageWrite(

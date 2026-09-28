@@ -9,6 +9,7 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.provider.MediaStore
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
@@ -100,6 +101,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.PointerInputChange
@@ -160,6 +162,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        viewModel.manager.attachActivity(this)
 
         try {
             val serviceIntent = Intent(this, MediaPlaybackService::class.java)
@@ -190,6 +193,11 @@ class MainActivity : ComponentActivity() {
                 }
             )
         }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        viewModel.manager.detachActivity()
     }
 
     private fun requestRequiredPermissions() {
@@ -1724,12 +1732,12 @@ fun FolderColourPickerDialog(
                             .fillMaxSize()
                             .pointerInput(Unit) {
                                 detectDragGestures { change: PointerInputChange, _ ->
-                                    val center = Offset(size.width.toFloat() / 2f, size.height.toFloat() / 2f)
+                                    val center = Offset(size.width / 2f, size.height / 2f)
                                     val touch = change.position
                                     val dx = (touch.x - center.x).toDouble()
                                     val dy = (touch.y - center.y).toDouble()
                                     val dist = sqrt(dx * dx + dy * dy)
-                                    val radius = (size.width.toFloat() / 2f).toDouble()
+                                    val radius = (size.width / 2f).toDouble()
                                     if (dist >= radius * 0.65) {
                                         var angle = Math.toDegrees(atan2(dy, dx)).toFloat()
                                         if (angle < 0f) angle += 360f
@@ -2556,6 +2564,7 @@ fun FilteredSongsScreen(title: String, songs: ImmutableList<Song>, manager: Musi
     }
 }
 
+// Inside Folder Screen
 @UnstableApi
 @Composable
 fun FolderSongsScreen(folderName: String, manager: MusicManager, isDark: Boolean, onBack: () -> Unit, onSongMenuClick: (Song) -> Unit) {
