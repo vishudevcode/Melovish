@@ -2,7 +2,6 @@ package com.melovish.player
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
-import android.graphics.Matrix
 import android.net.Uri
 import android.view.HapticFeedbackConstants
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -28,8 +27,10 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -64,8 +65,8 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.ClipOp
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
@@ -99,7 +100,7 @@ import kotlin.math.roundToInt
 import kotlin.math.sin
 
 // =========================================================================
-// 1. IN-APP 1:1 SQUARE ALBUM ART CROPPER DIALOG (Matches Pro Tag Editors)
+// 1. IN-APP 1:1 SQUARE ALBUM ART CROPPER DIALOG (Perfect Screen Fit)
 // =========================================================================
 
 @Composable
@@ -150,106 +151,19 @@ fun SquareAlbumArtCropperDialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false)
     ) {
-        BoxWithConstraints(
+        Column(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color(0xF0050811))
+                .background(Color(0xFF060913))
+                .statusBarsPadding()
+                .navigationBarsPadding()
         ) {
-            val screenWidthPx = constraints.maxWidth.toFloat()
-            val screenHeightPx = constraints.maxHeight.toFloat()
-
-            // Define the 1:1 Square Crop Viewport in Center
-            val boxSizePx = min(screenWidthPx, screenHeightPx) * 0.82f
-            val cropRect = Rect(
-                left = (screenWidthPx - boxSizePx) / 2f,
-                top = (screenHeightPx - boxSizePx) / 2f,
-                right = (screenWidthPx + boxSizePx) / 2f,
-                bottom = (screenHeightPx + boxSizePx) / 2f
-            )
-
-            // Initial fit scale calculation
-            val initialScale = remember(bmp.width, bmp.height, boxSizePx) {
-                max(boxSizePx / bmp.width.toFloat(), boxSizePx / bmp.height.toFloat())
-            }
-
-            LaunchedEffect(initialScale) {
-                if (scale < initialScale) scale = initialScale
-            }
-
-            // Interactive Pan & Zoom Layer
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .pointerInput(bmp) {
-                        detectTransformGestures { _, pan, zoom, _ ->
-                            scale = (scale * zoom).coerceIn(initialScale * 0.75f, initialScale * 5.0f)
-                            offset += pan
-                        }
-                    }
-            ) {
-                Canvas(modifier = Modifier.fillMaxSize()) {
-                    val bmpWidth = bmp.width.toFloat()
-                    val bmpHeight = bmp.height.toFloat()
-
-                    val scaledW = bmpWidth * scale
-                    val scaledH = bmpHeight * scale
-
-                    val drawLeft = (size.width - scaledW) / 2f + offset.x
-                    val drawTop = (size.height - scaledH) / 2f + offset.y
-
-                    // Draw image scaled and translated
-                    drawImage(
-                        image = bmp.asImageBitmap(),
-                        dstOffset = androidx.compose.ui.unit.IntOffset(drawLeft.roundToInt(), drawTop.roundToInt()),
-                        dstSize = androidx.compose.ui.unit.IntSize(scaledW.roundToInt(), scaledH.roundToInt())
-                    )
-
-                    // Draw Semi-transparent Vignette around the 1:1 Crop Window
-                    val cropPath = Path().apply {
-                        addRect(cropRect)
-                    }
-
-                    clipPath(cropPath, clipOp = ClipOp.Difference) {
-                        drawRect(Color(0xCC000000))
-                    }
-
-                    // Draw Crisp 1:1 Outline Border
-                    drawRect(
-                        color = Color.White,
-                        topLeft = Offset(cropRect.left, cropRect.top),
-                        size = Size(cropRect.width, cropRect.height),
-                        style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2.dp.toPx())
-                    )
-
-                    // Draw Rule-of-Thirds Grid lines
-                    val thirdW = cropRect.width / 3f
-                    val thirdH = cropRect.height / 3f
-
-                    for (i in 1..2) {
-                        // Vertical lines
-                        drawLine(
-                            color = Color.White.copy(alpha = 0.35f),
-                            start = Offset(cropRect.left + i * thirdW, cropRect.top),
-                            end = Offset(cropRect.left + i * thirdW, cropRect.bottom),
-                            strokeWidth = 1.dp.toPx()
-                        )
-                        // Horizontal lines
-                        drawLine(
-                            color = Color.White.copy(alpha = 0.35f),
-                            start = Offset(cropRect.left, cropRect.top + i * thirdH),
-                            end = Offset(cropRect.right, cropRect.top + i * thirdH),
-                            strokeWidth = 1.dp.toPx()
-                        )
-                    }
-                }
-            }
-
-            // Top Header Bar
+            // 1. Top Header Bar
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .align(Alignment.TopCenter)
-                    .padding(horizontal = 20.dp, vertical = 24.dp),
+                    .height(60.dp)
+                    .padding(horizontal = 20.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -260,70 +174,181 @@ fun SquareAlbumArtCropperDialog(
                     fontWeight = FontWeight.Bold
                 )
 
-                Text(
-                    text = "1:1 Square Preset",
-                    color = accentColor,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(accentColor.copy(alpha = 0.20f))
+                        .padding(horizontal = 10.dp, vertical = 5.dp)
+                ) {
+                    Text(
+                        text = "1:1 Square Preset",
+                        color = accentColor,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
             }
 
-            // Bottom Actions (Cancel / Crop & Apply)
-            Row(
+            // 2. Center Cropper Viewport
+            BoxWithConstraints(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .align(Alignment.BottomCenter)
-                    .padding(24.dp),
-                horizontalArrangement = Arrangement.spacedBy(16.dp),
-                verticalAlignment = Alignment.CenterVertically
+                    .weight(1f)
             ) {
-                Button(
-                    onClick = onDismiss,
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0x33FFFFFF)),
-                    shape = RoundedCornerShape(14.dp),
-                    modifier = Modifier.weight(1f).height(50.dp)
-                ) {
-                    Text("Cancel", color = Color.White, fontWeight = FontWeight.Bold)
+                val viewportWidthPx = constraints.maxWidth.toFloat()
+                val viewportHeightPx = constraints.maxHeight.toFloat()
+
+                // Calculate square box based on the active viewport area
+                val boxSizePx = min(viewportWidthPx, viewportHeightPx) * 0.86f
+                val cropRect = Rect(
+                    left = (viewportWidthPx - boxSizePx) / 2f,
+                    top = (viewportHeightPx - boxSizePx) / 2f,
+                    right = (viewportWidthPx + boxSizePx) / 2f,
+                    bottom = (viewportHeightPx + boxSizePx) / 2f
+                )
+
+                val initialScale = remember(bmp.width, bmp.height, boxSizePx) {
+                    max(boxSizePx / bmp.width.toFloat(), boxSizePx / bmp.height.toFloat())
                 }
 
-                Button(
-                    onClick = {
-                        // Compute and extract exact pixel coordinates
+                LaunchedEffect(initialScale) {
+                    if (scale < initialScale) scale = initialScale
+                }
+
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .pointerInput(bmp) {
+                            detectTransformGestures { _, pan, zoom, _ ->
+                                scale = (scale * zoom).coerceIn(initialScale * 0.75f, initialScale * 5.0f)
+                                offset += pan
+                            }
+                        }
+                ) {
+                    Canvas(modifier = Modifier.fillMaxSize()) {
                         val bmpWidth = bmp.width.toFloat()
                         val bmpHeight = bmp.height.toFloat()
+
                         val scaledW = bmpWidth * scale
                         val scaledH = bmpHeight * scale
 
-                        val drawLeft = (screenWidthPx - scaledW) / 2f + offset.x
-                        val drawTop = (screenHeightPx - scaledH) / 2f + offset.y
+                        val drawLeft = (size.width - scaledW) / 2f + offset.x
+                        val drawTop = (size.height - scaledH) / 2f + offset.y
 
-                        // Relative position of crop rectangle in scaled bitmap
-                        val relLeft = (cropRect.left - drawLeft) / scale
-                        val relTop = (cropRect.top - drawTop) / scale
-                        val relSize = boxSizePx / scale
+                        // Draw Image
+                        drawImage(
+                            image = bmp.asImageBitmap(),
+                            dstOffset = androidx.compose.ui.unit.IntOffset(drawLeft.roundToInt(), drawTop.roundToInt()),
+                            dstSize = androidx.compose.ui.unit.IntSize(scaledW.roundToInt(), scaledH.roundToInt())
+                        )
 
-                        val x = relLeft.coerceIn(0f, bmpWidth).toInt()
-                        val y = relTop.coerceIn(0f, bmpHeight).toInt()
-                        val width = relSize.coerceIn(1f, bmpWidth - x).toInt()
-                        val height = relSize.coerceIn(1f, bmpHeight - y).toInt()
-
-                        try {
-                            val croppedBmp = Bitmap.createBitmap(bmp, x, y, width, height)
-                            val outputFile = File(context.cacheDir, "cropped_cover_${System.currentTimeMillis()}.jpg")
-                            FileOutputStream(outputFile).use { out ->
-                                croppedBmp.compress(Bitmap.CompressFormat.JPEG, 92, out)
-                            }
-                            onCropped(Uri.fromFile(outputFile))
-                        } catch (e: Exception) {
-                            e.printStackTrace()
+                        // Outer Vignette
+                        val cropPath = Path().apply { addRect(cropRect) }
+                        clipPath(cropPath, clipOp = ClipOp.Difference) {
+                            drawRect(Color(0xD9000000))
                         }
-                        onDismiss()
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = accentColor),
-                    shape = RoundedCornerShape(14.dp),
-                    modifier = Modifier.weight(1f).height(50.dp)
+
+                        // Outline Box
+                        drawRect(
+                            color = Color.White,
+                            topLeft = Offset(cropRect.left, cropRect.top),
+                            size = Size(cropRect.width, cropRect.height),
+                            style = Stroke(width = 2.dp.toPx())
+                        )
+
+                        // Rule of Thirds
+                        val thirdW = cropRect.width / 3f
+                        val thirdH = cropRect.height / 3f
+
+                        for (i in 1..2) {
+                            drawLine(
+                                color = Color.White.copy(alpha = 0.35f),
+                                start = Offset(cropRect.left + i * thirdW, cropRect.top),
+                                end = Offset(cropRect.left + i * thirdW, cropRect.bottom),
+                                strokeWidth = 1.dp.toPx()
+                            )
+                            drawLine(
+                                color = Color.White.copy(alpha = 0.35f),
+                                start = Offset(cropRect.left, cropRect.top + i * thirdH),
+                                end = Offset(cropRect.right, cropRect.top + i * thirdH),
+                                strokeWidth = 1.dp.toPx()
+                            )
+                        }
+                    }
+                }
+            }
+
+            // 3. Elevated Bottom Action Bar (Safe from Navigation Bar overlay)
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(Color(0xFF0F172A))
+                    .padding(horizontal = 20.dp, vertical = 16.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(14.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("Crop & Apply", color = Color.White, fontWeight = FontWeight.Bold)
+                    Button(
+                        onClick = onDismiss,
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0x24FFFFFF)),
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(52.dp)
+                    ) {
+                        Text("Cancel", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                    }
+
+                    Button(
+                        onClick = {
+                            val bmpWidth = bmp.width.toFloat()
+                            val bmpHeight = bmp.height.toFloat()
+
+                            // Use identical scale & bounds
+                            val viewportW = (context.resources.displayMetrics.widthPixels).toFloat()
+                            val viewportH = (context.resources.displayMetrics.heightPixels * 0.70f)
+                            val boxSize = min(viewportW, viewportH) * 0.86f
+
+                            val cropLeft = (viewportW - boxSize) / 2f
+                            val cropTop = (viewportH - boxSize) / 2f
+
+                            val scaledW = bmpWidth * scale
+                            val scaledH = bmpHeight * scale
+
+                            val drawLeft = (viewportW - scaledW) / 2f + offset.x
+                            val drawTop = (viewportH - scaledH) / 2f + offset.y
+
+                            val relLeft = (cropLeft - drawLeft) / scale
+                            val relTop = (cropTop - drawTop) / scale
+                            val relSize = boxSize / scale
+
+                            val x = relLeft.coerceIn(0f, bmpWidth).toInt()
+                            val y = relTop.coerceIn(0f, bmpHeight).toInt()
+                            val width = relSize.coerceIn(1f, bmpWidth - x).toInt()
+                            val height = relSize.coerceIn(1f, bmpHeight - y).toInt()
+
+                            try {
+                                val croppedBmp = Bitmap.createBitmap(bmp, x, y, width, height)
+                                val outputFile = File(context.cacheDir, "cropped_cover_${System.currentTimeMillis()}.jpg")
+                                FileOutputStream(outputFile).use { out ->
+                                    croppedBmp.compress(Bitmap.CompressFormat.JPEG, 92, out)
+                                }
+                                onCropped(Uri.fromFile(outputFile))
+                            } catch (e: Exception) {
+                                e.printStackTrace()
+                            }
+                            onDismiss()
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = accentColor),
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(52.dp)
+                    ) {
+                        Text("Crop & Apply", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                    }
                 }
             }
         }
@@ -640,13 +665,11 @@ fun MaterialAnalogClockPickerDialog(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Digital Indicator with AM/PM toggle
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.Center,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Hour Digital Box
                 Box(
                     modifier = Modifier
                         .size(96.dp, 80.dp)
@@ -676,7 +699,6 @@ fun MaterialAnalogClockPickerDialog(
                     modifier = Modifier.padding(horizontal = 10.dp)
                 )
 
-                // Minute Digital Box
                 Box(
                     modifier = Modifier
                         .size(96.dp, 80.dp)
@@ -700,7 +722,6 @@ fun MaterialAnalogClockPickerDialog(
 
                 Spacer(modifier = Modifier.width(12.dp))
 
-                // AM / PM Toggle Column
                 Column(
                     modifier = Modifier
                         .clip(RoundedCornerShape(8.dp))
@@ -744,7 +765,6 @@ fun MaterialAnalogClockPickerDialog(
 
             Spacer(modifier = Modifier.height(28.dp))
 
-            // Analog Dial Touch Surface
             Box(
                 modifier = Modifier
                     .size(256.dp)
@@ -887,10 +907,8 @@ private fun AnalogClockDial(
             val rad = (activeAngleDeg - 90f) * (PI.toFloat() / 180f)
             val handThumb = Offset(center.x + (pointerLength * cos(rad)), center.y + (pointerLength * sin(rad)))
 
-            // Center Pivot
             drawCircle(color = accentColor, radius = 5.dp.toPx(), center = center)
 
-            // Hand Line
             drawLine(
                 color = accentColor,
                 start = center,
@@ -899,7 +917,6 @@ private fun AnalogClockDial(
                 cap = StrokeCap.Round
             )
 
-            // Active Knob Circle
             drawCircle(
                 color = accentColor,
                 radius = 18.dp.toPx(),
@@ -907,7 +924,6 @@ private fun AnalogClockDial(
             )
         }
 
-        // Render Dial Numbers via absolute layout positioning
         val count = 12
         for (i in 1..count) {
             val angleDeg = i * (360f / count)
@@ -925,8 +941,7 @@ private fun AnalogClockDial(
             }
 
             Box(
-                modifier = Modifier
-                    .fillMaxSize(),
+                modifier = Modifier.fillMaxSize(),
                 contentAlignment = Alignment.Center
             ) {
                 val offsetDistance = with(density) { 92.dp.toPx() }
@@ -949,7 +964,7 @@ private fun AnalogClockDial(
 }
 
 // =========================================================================
-// 4. COMPLETE TAG EDITOR DIALOG WITH 1:1 SQUARE CROPPING INTEGRATION
+// 4. COMPLETE TAG EDITOR DIALOG
 // =========================================================================
 
 @UnstableApi
@@ -978,7 +993,6 @@ fun TagEditorDialog(
     var showWheelDatePicker by remember { mutableStateOf(false) }
     var showAnalogClockPicker by remember { mutableStateOf(false) }
 
-    // Intercept image pick to launch the 1:1 Square Cropper Dialog
     val photoPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
@@ -1057,7 +1071,7 @@ fun TagEditorDialog(
 
                 Spacer(modifier = Modifier.height(18.dp))
 
-                // Hero Cover Art Changer Card with 1:1 Badge
+                // Hero Cover Art Changer Card
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically
@@ -1257,7 +1271,6 @@ fun TagEditorDialog(
         }
     }
 
-    // Modal 1:1 Album Art Cropper Dialog
     if (rawPickedUriForCrop != null) {
         SquareAlbumArtCropperDialog(
             sourceUri = rawPickedUriForCrop!!,
@@ -1270,7 +1283,6 @@ fun TagEditorDialog(
         )
     }
 
-    // Modal Wheel Roller Date Picker
     if (showWheelDatePicker) {
         WheelRollerDatePickerDialog(
             initialDateMillis = dateMillis,
@@ -1287,7 +1299,6 @@ fun TagEditorDialog(
         )
     }
 
-    // Modal Analog Clock Time Picker
     if (showAnalogClockPicker) {
         MaterialAnalogClockPickerDialog(
             initialTimeMillis = dateMillis,
