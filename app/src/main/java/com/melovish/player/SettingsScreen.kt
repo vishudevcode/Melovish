@@ -238,7 +238,7 @@ fun SettingsScreen(
             }
         }
 
-        // 3. Player Settings Section (With updated exact "Always play audio in background" subtitle)
+        // 3. Player Settings Section
         item(key = "player_settings_section", contentType = "player_settings_card") {
             Column(
                 modifier = Modifier
@@ -463,22 +463,30 @@ fun SettingsScreen(
                         Triple("Speaker", "🔊  Speaker", "Ext / BT Speaker"),
                         Triple("Buds", "🎧  Buds", "Earphones / BT")
                     ).forEach { (outputKey, label, _) ->
-                        val isSel = manager.selectedAudioOutput == outputKey
+                        // Automatically highlights according to real-time effective output
+                        val isHighlighted = manager.effectiveAudioOutput == outputKey
                         Box(
                             modifier = Modifier
                                 .weight(1f)
                                 .height(46.dp)
                                 .clip(RoundedCornerShape(12.dp))
-                                .background(if (isSel) accent.copy(alpha = 0.12f) else if (isDark) Color(0x14FFFFFF) else Color(0xFFF1F5F9))
-                                .border(1.5.dp, if (isSel) accent else Color.Transparent, RoundedCornerShape(12.dp))
-                                .clickable { manager.setAudioOutputRouting(outputKey) },
+                                .background(if (isHighlighted) accent.copy(alpha = 0.16f) else if (isDark) Color(0x14FFFFFF) else Color(0xFFF1F5F9))
+                                .border(1.5.dp, if (isHighlighted) accent else Color.Transparent, RoundedCornerShape(12.dp))
+                                .clickable {
+                                    // If user taps the already active output, restore to Auto
+                                    if (manager.userSelectedAudioOutput == outputKey) {
+                                        manager.setAudioOutputRouting("Auto")
+                                    } else {
+                                        manager.setAudioOutputRouting(outputKey)
+                                    }
+                                },
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
                                 text = label,
-                                color = if (isSel) accent else textColor,
+                                color = if (isHighlighted) accent else textColor,
                                 fontSize = 13.sp,
-                                fontWeight = if (isSel) FontWeight.Bold else FontWeight.Medium
+                                fontWeight = if (isHighlighted) FontWeight.Bold else FontWeight.Medium
                             )
                         }
                     }
@@ -905,7 +913,7 @@ fun CircularColorPickerDialog(
                                     val dx = (touch.x - center.x).toDouble()
                                     val dy = (touch.y - center.y).toDouble()
                                     val dist = sqrt(dx * dx + dy * dy)
-                                    val radius = (size.width.toFloat() / 2f).toDouble()
+                                    val radius = (size.width / 2f).toDouble()
                                     if (dist >= radius * 0.65) {
                                         var angle = Math.toDegrees(atan2(dy, dx)).toFloat()
                                         if (angle < 0f) angle += 360f

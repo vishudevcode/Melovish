@@ -281,8 +281,11 @@ class MusicManager(private val context: Context) {
     var volumeBoostLevel by mutableFloatStateOf(prefs.getFloat("vol_boost", 100f))
     var isMonoAudio by mutableStateOf(prefs.getBoolean("mono", false))
 
-    // Default is "Auto" so app naturally follows Android's default wired/Bluetooth priority
-    var selectedAudioOutput by mutableStateOf(prefs.getString("audio_output", "Auto") ?: "Auto")
+    // Audio Routing System
+    // userSelectedAudioOutput: "Auto", "Phone", "Speaker", "Buds"
+    var userSelectedAudioOutput by mutableStateOf(prefs.getString("audio_output_manual", "Auto") ?: "Auto")
+    // effectiveAudioOutput: what is currently highlighted in the UI and active on hardware ("Phone", "Speaker", "Buds")
+    var effectiveAudioOutput by mutableStateOf("Phone")
 
     var isEqEnabled by mutableStateOf(prefs.getBoolean("eq_enabled", true))
     var eqBandsCount by mutableIntStateOf(5)
@@ -323,12 +326,12 @@ class MusicManager(private val context: Context) {
     private val audioDeviceCallback = object : AudioDeviceCallback() {
         override fun onAudioDevicesAdded(addedDevices: Array<out AudioDeviceInfo>?) {
             syncDeviceVolume()
-            applyHardwareAudioRouting(selectedAudioOutput)
+            updateDeviceRoutingAndHighlight()
         }
 
         override fun onAudioDevicesRemoved(removedDevices: Array<out AudioDeviceInfo>?) {
             syncDeviceVolume()
-            applyHardwareAudioRouting(selectedAudioOutput)
+            updateDeviceRoutingAndHighlight()
         }
     }
 
@@ -346,7 +349,7 @@ class MusicManager(private val context: Context) {
         syncDeviceVolume()
         applyChannelMixing()
         registerAudioDeviceCallback()
-        applyHardwareAudioRouting(selectedAudioOutput)
+        updateDeviceRoutingAndHighlight()
     }
 
     private fun initDefaultEqualizerState() {
@@ -458,7 +461,7 @@ class MusicManager(private val context: Context) {
                         bindHardwareAudioEffects(sessionId)
                     }
                     updateNotification()
-                    applyHardwareAudioRouting(selectedAudioOutput)
+                    updateDeviceRoutingAndHighlight()
                 } else if (state == Player.STATE_ENDED) {
                     if (isGaplessEnabled) {
                         playNext()
@@ -480,7 +483,7 @@ class MusicManager(private val context: Context) {
                     recordSongPlayed(song)
                     updateNotification()
                     applyVolumeNormalization()
-                    applyHardwareAudioRouting(selectedAudioOutput)
+                    updateDeviceRoutingAndHighlight()
 
                     isFadingOutForCrossfade = false
                     if (isCrossfadeEnabled) {
@@ -816,75 +819,115 @@ class MusicManager(private val context: Context) {
     }
 
     fun setAudioOutputRouting(output: String) {
-        selectedAudioOutput = output
+        userSelectedAudioOutput = output
         managerScope.launch(Dispatchers.IO) {
-            prefs.edit().putString("audio_output", output).apply()
+            prefs.edit().putString("audio_output_manual", output).apply()
         }
-        applyHardwareAudioRouting(output)
+        updateDeviceRoutingAndHighlight()
     }
 
     /**
-     * Isolated Audio Routing
-     * Uses player.setPreferredAudioDevice(...) to route Melovish's stream independently.
-     * Leaves system-wide routing untouched so third-party apps remain on connected headphones/speakers.
+     * Isolated Hardware Routing & Auto-Highlighting
+     * 1. Preserves AudioManager.MODE_NORMAL so YouTube and other apps play through earphones undisturbed.
+     * 2. When 'Phone' is manually selected, decouples usage attributes so only Melovish targets the speaker.
+     * 3. Dynamically updates 'effectiveAudioOutput' so Settings automatically highlights the actual output device.
      */
-    fun applyHardwareAudioRouting(output: String) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            try {
-                // Keep system-wide audio mode normal so YouTube and other apps use standard OS routes
-                audioManager.mode = AudioManager.MODE_NORMAL
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                    audioManager.clearCommunicationDevice()
-                } else {
-                    @Suppress("DEPRECATION")
-                    audioManager.isSpeakerphoneOn = false
-                }
+    fun updateDeviceRoutingAndHighlight() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
+            effectiveAudioOutput = "Phone"
+            return
+        }
 
-                val devices = audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
-
-                when (output) {
-                    "Auto" -> {
-                        // Default behavior: Follows Android OS priority (earphones if connected, speaker if not)
-                        player.setPreferredAudioDevice(null)
-                    }
-                    "Phone" -> {
-                        // Force ONLY Melovish to built-in speaker while YouTube/other apps stay on connected earphones
-                        val speakerDevice = devices.find { it.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER }
-                        player.setPreferredAudioDevice(speakerDevice)
-                    }
-                    "Speaker" -> {
-                        val externalSpeaker = devices.find {
-                            it.type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP ||
-                            it.type == AudioDeviceInfo.TYPE_LINE_ANALOG ||
-                            it.type == AudioDeviceInfo.TYPE_LINE_DIGITAL ||
-                            it.type == AudioDeviceInfo.TYPE_USB_DEVICE
-                        } ?: devices.find {
-                            it.type == AudioDeviceInfo.TYPE_WIRED_HEADPHONES ||
-                            it.type == AudioDeviceInfo.TYPE_WIRED_HEADSET
-                        }
-
-                        player.setPreferredAudioDevice(externalSpeaker)
-                    }
-                    "Buds" -> {
-                        val headsetDevice = devices.find {
-                            it.type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP ||
-                            it.type == AudioDeviceInfo.TYPE_BLE_HEADSET ||
-                            it.type == AudioDeviceInfo.TYPE_WIRED_HEADSET ||
-                            it.type == AudioDeviceInfo.TYPE_WIRED_HEADPHONES ||
-                            (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && it.type == AudioDeviceInfo.TYPE_USB_HEADSET)
-                        }
-
-                        player.setPreferredAudioDevice(headsetDevice)
-
-                        if (headsetDevice == null && player.isPlaying) {
-                            player.pause()
-                            Toast.makeText(context, "Headphones/Buds not detected.", Toast.LENGTH_SHORT).show()
-                        }
-                    }
-                }
-            } catch (e: Exception) {
-                e.printStackTrace()
+        try {
+            // NEVER set communication mode or speakerphoneOn so third party apps keep their earphones route
+            audioManager.mode = AudioManager.MODE_NORMAL
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                audioManager.clearCommunicationDevice()
+            } else {
+                @Suppress("DEPRECATION")
+                audioManager.isSpeakerphoneOn = false
             }
+
+            val outputs = audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
+
+            val budsDevice = outputs.find {
+                it.type == AudioDeviceInfo.TYPE_WIRED_HEADSET ||
+                it.type == AudioDeviceInfo.TYPE_WIRED_HEADPHONES ||
+                it.type == AudioDeviceInfo.TYPE_BLE_HEADSET ||
+                it.type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP ||
+                (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && it.type == AudioDeviceInfo.TYPE_USB_HEADSET)
+            }
+
+            val speakerDevice = outputs.find {
+                it.type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP ||
+                it.type == AudioDeviceInfo.TYPE_LINE_ANALOG ||
+                it.type == AudioDeviceInfo.TYPE_LINE_DIGITAL ||
+                it.type == AudioDeviceInfo.TYPE_USB_DEVICE
+            }
+
+            val builtInSpeaker = outputs.find { it.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER }
+
+            when (userSelectedAudioOutput) {
+                "Phone" -> {
+                    // Manual Override: Force Melovish to the phone speaker while other apps stay in earphones
+                    effectiveAudioOutput = "Phone"
+                    
+                    // Decouple audio usage attribute so the OS gives Melovish an independent speaker output route
+                    player.setAudioAttributes(
+                        AudioAttributes.Builder()
+                            .setContentType(C.AUDIO_CONTENT_TYPE_SONIFICATION)
+                            .setUsage(C.USAGE_ALARM)
+                            .build(),
+                        false
+                    )
+                    player.setPreferredAudioDevice(builtInSpeaker)
+                }
+                "Speaker" -> {
+                    effectiveAudioOutput = "Speaker"
+                    player.setAudioAttributes(
+                        AudioAttributes.Builder()
+                            .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
+                            .setUsage(C.USAGE_MEDIA)
+                            .build(),
+                        !isAlwaysPlay
+                    )
+                    player.setPreferredAudioDevice(speakerDevice)
+                }
+                "Buds" -> {
+                    effectiveAudioOutput = "Buds"
+                    player.setAudioAttributes(
+                        AudioAttributes.Builder()
+                            .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
+                            .setUsage(C.USAGE_MEDIA)
+                            .build(),
+                        !isAlwaysPlay
+                    )
+                    player.setPreferredAudioDevice(budsDevice)
+                    if (budsDevice == null && player.isPlaying) {
+                        player.pause()
+                        Toast.makeText(context, "Headphones/Buds not detected.", Toast.LENGTH_SHORT).show()
+                    }
+                }
+                else -> {
+                    // "Auto" Default Mode: Naturally prioritize Buds > Speaker > Phone Speaker
+                    player.setAudioAttributes(
+                        AudioAttributes.Builder()
+                            .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
+                            .setUsage(C.USAGE_MEDIA)
+                            .build(),
+                        !isAlwaysPlay
+                    )
+                    player.setPreferredAudioDevice(null)
+
+                    effectiveAudioOutput = when {
+                        budsDevice != null -> "Buds"
+                        speakerDevice != null -> "Speaker"
+                        else -> "Phone"
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
         }
     }
 
