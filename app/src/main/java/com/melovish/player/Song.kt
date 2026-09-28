@@ -139,10 +139,28 @@ fun formatTime(ms: Long): String {
 }
 
 /**
- * Primitive-optimized file size formatter.
+ * Adaptive file size formatter.
+ * Automatically displays in GB for sizes >= 1024 MB, in MB for sizes >= 1 MB, and in KB for smaller files.
  */
 fun formatFileSize(bytes: Long): String {
     if (bytes <= 0L) return "0.0 MB"
-    val mb = bytes.toDouble() / (1024.0 * 1024.0)
-    return String.format(Locale.US, "%.1f MB", mb)
+    val kilo = 1024.0
+    val mega = kilo * 1024.0
+    val giga = mega * 1024.0
+
+    return when {
+        bytes >= giga -> {
+            val gb = bytes / giga
+            String.format(Locale.US, "%.2f GB", gb)
+        }
+        bytes >= mega -> {
+            val mb = bytes / mega
+            String.format(Locale.US, "%.1f MB", mb)
+        }
+        bytes >= kilo -> {
+            val kb = bytes / kilo
+            String.format(Locale.US, "%.1f KB", kb)
+        }
+        else -> "$bytes B"
+    }
 }
