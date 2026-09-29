@@ -403,7 +403,7 @@ fun SettingsScreen(
                                 }
                             },
                             valueRange = 1f..12f,
-                            steps = 12,
+                            steps = 14,
                             modifier = Modifier.fillMaxWidth(),
                             colors = SliderDefaults.colors(thumbColor = accent, activeTrackColor = accent)
                         )
