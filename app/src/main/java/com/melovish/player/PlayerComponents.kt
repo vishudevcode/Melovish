@@ -110,6 +110,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import java.util.Locale
 import kotlin.math.abs
+import kotlin.math.roundToInt
 
 // Live Animated 4-Bar Equalizer
 @Composable
@@ -364,10 +365,16 @@ fun DefaultProfileAvatar(modifier: Modifier = Modifier, backgroundColor: Color =
     )
 }
 
-/**
- * Enhanced Material You Dynamic Palette Extractor
- * Accurately extracts dominant color frequencies while preserving vibrant saturation
- */
+@Immutable
+data class MaterialYouPalette(
+    val bgTop: Color,
+    val bgBottom: Color,
+    val primaryAccent: Color,
+    val surface: Color,
+    val textPrimary: Color,
+    val textSecondary: Color
+)
+
 suspend fun extractMaterialYouPaletteAsync(bitmap: Bitmap?, isDarkMode: Boolean, fallbackAccent: Color): MaterialYouPalette = withContext(Dispatchers.Default) {
     if (bitmap == null) {
         return@withContext if (isDarkMode) {
@@ -377,60 +384,40 @@ suspend fun extractMaterialYouPaletteAsync(bitmap: Bitmap?, isDarkMode: Boolean,
         }
     }
     try {
-        val scaled = Bitmap.createScaledBitmap(bitmap, 48, 48, false)
+        val scaled = Bitmap.createScaledBitmap(bitmap, 16, 16, false)
         var totalR = 0L; var totalG = 0L; var totalB = 0L; var count = 0
         var maxSat = -1f; var vibrantColor = android.graphics.Color.WHITE
         val hsv = FloatArray(3)
 
-        for (x in 0 until scaled.width step 2) {
-            for (y in 0 until scaled.height step 2) {
+        for (x in 0 until scaled.width) {
+            for (y in 0 until scaled.height) {
                 val p = scaled.getPixel(x, y)
-                val alpha = android.graphics.Color.alpha(p)
-                if (alpha < 128) continue
-
-                val r = android.graphics.Color.red(p)
-                val g = android.graphics.Color.green(p)
-                val b = android.graphics.Color.blue(p)
-                
-                totalR += r
-                totalG += g
-                totalB += b
+                totalR += android.graphics.Color.red(p)
+                totalG += android.graphics.Color.green(p)
+                totalB += android.graphics.Color.blue(p)
                 count++
-
                 android.graphics.Color.colorToHSV(p, hsv)
-                val sat = hsv[1]
-                val value = hsv[2]
-                
-                // Prioritize vibrant non-extreme hues
-                if (sat > maxSat && value in 0.15f..0.95f) {
-                    maxSat = sat
+                if (hsv[1] > maxSat && hsv[2] > 0.22f && hsv[2] < 0.95f) {
+                    maxSat = hsv[1]
                     vibrantColor = p
                 }
             }
         }
-
-        val dom = if (maxSat > 0.18f) {
-            vibrantColor
-        } else if (count > 0) {
-            android.graphics.Color.rgb((totalR / count).toInt(), (totalG / count).toInt(), (totalB / count).toInt())
-        } else {
-            android.graphics.Color.DKGRAY
-        }
-
+        val dom = if (maxSat > 0.28f) vibrantColor else android.graphics.Color.rgb((totalR / count).toInt(), (totalG / count).toInt(), (totalB / count).toInt())
         android.graphics.Color.colorToHSV(dom, hsv)
         val hue = hsv[0]
-        val sat = hsv[1].coerceIn(0.35f, 0.90f)
+        val sat = hsv[1].coerceIn(0.35f, 0.85f)
 
         if (isDarkMode) {
-            val top = Color(android.graphics.Color.HSVToColor(floatArrayOf(hue, sat * 0.65f, 0.22f)))
-            val bot = Color(android.graphics.Color.HSVToColor(floatArrayOf((hue + 20f) % 360f, sat * 0.85f, 0.08f)))
-            val acc = Color(android.graphics.Color.HSVToColor(floatArrayOf(hue, sat, 0.95f)))
-            val surf = Color(android.graphics.Color.HSVToColor(floatArrayOf(hue, sat * 0.35f, 0.26f))).copy(alpha = 0.55f)
+            val top = Color(android.graphics.Color.HSVToColor(floatArrayOf(hue, sat * 0.65f, 0.20f)))
+            val bot = Color(android.graphics.Color.HSVToColor(floatArrayOf((hue + 18f) % 360f, sat * 0.8f, 0.08f)))
+            val acc = Color(android.graphics.Color.HSVToColor(floatArrayOf(hue, sat * 0.9f, 0.90f)))
+            val surf = Color(android.graphics.Color.HSVToColor(floatArrayOf(hue, sat * 0.35f, 0.28f))).copy(alpha = 0.55f)
             MaterialYouPalette(top, bot, acc, surf, Color(0xFFF8FAFC), Color(0xFFCBD5E1))
         } else {
-            val top = Color(android.graphics.Color.HSVToColor(floatArrayOf(hue, sat * 0.25f, 0.98f)))
-            val bot = Color(android.graphics.Color.HSVToColor(floatArrayOf((hue + 16f) % 360f, sat * 0.45f, 0.88f)))
-            val acc = Color(android.graphics.Color.HSVToColor(floatArrayOf(hue, sat * 0.95f, 0.60f)))
+            val top = Color(android.graphics.Color.HSVToColor(floatArrayOf(hue, sat * 0.25f, 0.97f)))
+            val bot = Color(android.graphics.Color.HSVToColor(floatArrayOf((hue + 16f) % 360f, sat * 0.40f, 0.88f)))
+            val acc = Color(android.graphics.Color.HSVToColor(floatArrayOf(hue, sat, 0.55f)))
             val surf = Color(android.graphics.Color.HSVToColor(floatArrayOf(hue, sat * 0.12f, 0.99f))).copy(alpha = 0.75f)
             MaterialYouPalette(top, bot, acc, surf, Color(0xFF0F172A), Color(0xFF334155))
         }
@@ -779,10 +766,8 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
 
     val activeSong = manager.currentSong ?: currentQueue[pagerState.currentPage]
     var albumArtBitmap by remember(activeSong.id) { mutableStateOf(manager.getCachedAlbumArt(activeSong.id)) }
-    
-    // Explicitly update albumArtBitmap when the active song changes or finishes background decoding
     LaunchedEffect(activeSong.id) {
-        albumArtBitmap = manager.loadAlbumArtAsync(activeSong)
+        if (albumArtBitmap == null) albumArtBitmap = manager.loadAlbumArtAsync(activeSong)
     }
 
     val defaultDarkPalette = MaterialYouPalette(
@@ -807,20 +792,19 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
         mutableStateOf(if (isDark) defaultDarkPalette else defaultLightPalette)
     }
 
-    // Material You Palette update that guarantees reactivity on bitmap or setting toggle
     LaunchedEffect(activeSong.id, albumArtBitmap, isDark, userAccent, manager.isColorfulPlayer) {
-        targetPalette = if (manager.isColorfulPlayer && albumArtBitmap != null) {
+        targetPalette = if (manager.isColorfulPlayer) {
             extractMaterialYouPaletteAsync(albumArtBitmap, isDark, userAccent)
         } else {
             if (isDark) defaultDarkPalette else defaultLightPalette
         }
     }
 
-    val animBgTop by animateColorAsState(targetPalette.bgTop, tween(400, easing = FastOutSlowInEasing), label = "bgTop")
-    val animBgBottom by animateColorAsState(targetPalette.bgBottom, tween(400, easing = FastOutSlowInEasing), label = "bgBottom")
-    val animSurface by animateColorAsState(targetPalette.surface, tween(400, easing = FastOutSlowInEasing), label = "surface")
-    val animTextPrimary by animateColorAsState(targetPalette.textPrimary, tween(400, easing = FastOutSlowInEasing), label = "textPrimary")
-    val animTextSecondary by animateColorAsState(targetPalette.textSecondary, tween(400, easing = FastOutSlowInEasing), label = "textSecondary")
+    val animBgTop by animateColorAsState(targetPalette.bgTop, tween(350, easing = FastOutSlowInEasing), label = "bgTop")
+    val animBgBottom by animateColorAsState(targetPalette.bgBottom, tween(350, easing = FastOutSlowInEasing), label = "bgBottom")
+    val animSurface by animateColorAsState(targetPalette.surface, tween(350, easing = FastOutSlowInEasing), label = "surface")
+    val animTextPrimary by animateColorAsState(targetPalette.textPrimary, tween(350, easing = FastOutSlowInEasing), label = "textPrimary")
+    val animTextSecondary by animateColorAsState(targetPalette.textSecondary, tween(350, easing = FastOutSlowInEasing), label = "textSecondary")
 
     BackHandler(enabled = showQueueSheet || showMenuModal || showSpeedDialog || showSleepDialog || showEqualizerSheet || showTagEditorDialog || showLyricsDialog || showAddToPlaylistDialog) {
         when {
@@ -1553,7 +1537,7 @@ fun QueueSheet(
                                                 manager.triggerHapticFeedback(false)
                                                 manager.moveQueueItem(currentActualIndex, currentActualIndex - 1)
                                                 draggingIndex = currentActualIndex - 1
-                                                draggingOffsetPx -= itemHeightPx
+                                                draggingOffsetPx += itemHeightPx
                                             }
                                         },
                                         onDragEnd = {
@@ -2372,6 +2356,7 @@ fun MagneticSpeedDialog(manager: MusicManager, onDismiss: () -> Unit) {
                     Slider(
                         value = speed,
                         onValueChange = { raw ->
+                            // Check if close to any prominent step
                             var snappedVal = raw
                             for (st in prominentSteps) {
                                 if (abs(raw - st) <= 0.05f) {
@@ -2564,109 +2549,3 @@ fun ShuffleControlIcon(isShuffleOn: Boolean, tint: Color, modifier: Modifier = M
     )
 }
 
-// Tag Editor Dialog
-@Composable
-fun TagEditorDialog(
-    manager: MusicManager,
-    song: Song,
-    onDismiss: () -> Unit
-) {
-    val isDark = manager.isDarkMode
-    val textColor = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A)
-    val accent = manager.accentColor
-
-    var titleText by remember(song.id) { mutableStateOf(song.title) }
-    var artistText by remember(song.id) { mutableStateOf(song.artist) }
-    var albumText by remember(song.id) { mutableStateOf(song.album) }
-    var dateText by remember(song.id) { mutableStateOf(song.releaseDate) }
-
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color.Transparent)
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null
-            ) { onDismiss() },
-        contentAlignment = Alignment.BottomCenter
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
-                .background(if (isDark) Color(0xFF1E293B) else Color.White)
-                .clickable(enabled = false) {}
-                .padding(22.dp)
-        ) {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text(
-                    text = "Edit Song Tags",
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = textColor
-                )
-
-                OutlinedTextField(
-                    value = titleText,
-                    onValueChange = { titleText = it },
-                    label = { Text("Title") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-
-                OutlinedTextField(
-                    value = artistText,
-                    onValueChange = { artistText = it },
-                    label = { Text("Artist") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-
-                OutlinedTextField(
-                    value = albumText,
-                    onValueChange = { albumText = it },
-                    label = { Text("Album") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    Button(
-                        onClick = onDismiss,
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(48.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = if (isDark) Color(0x22FFFFFF) else Color(0xFFF1F5F9)),
-                        shape = RoundedCornerShape(12.dp)
-                    ) {
-                        Text("Cancel", color = textColor, fontWeight = FontWeight.Bold)
-                    }
-
-                    Button(
-                        onClick = {
-                            manager.requestFileWritePermissionAndSave(
-                                song = song,
-                                newTitle = titleText.trim(),
-                                newArtist = artistText.trim(),
-                                newAlbum = albumText.trim(),
-                                newDate = dateText.trim(),
-                                customCoverUri = null
-                            )
-                            onDismiss()
-                        },
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(48.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = accent),
-                        shape = RoundedCornerShape(12.dp)
-                    ) {
-                        Text("Save", color = Color.White, fontWeight = FontWeight.Bold)
-                    }
-                }
-            }
-        }
-    }
-}

@@ -1,6 +1,11 @@
 package com.melovish.player
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -57,6 +62,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.media3.common.util.UnstableApi
 import coil.compose.AsyncImage
+import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.toImmutableList
 import java.io.File
 import kotlin.math.atan2
@@ -79,6 +85,21 @@ fun SettingsScreen(
 
     var showCircularPicker by remember { mutableStateOf(false) }
     var activeSubScreen by remember { mutableStateOf<String?>(null) }
+
+    // Persistent transition animation switch state & remembered custom effect
+    var isTransitionEnabled by remember {
+        mutableStateOf(manager.prefs.getBoolean("pager_transition_enabled", true))
+    }
+    var rememberedCustomTransition by remember {
+        mutableStateOf(
+            try {
+                val saved = manager.prefs.getString("pager_transition_custom_saved", PagerTransitionEffect.CASCADE.name)
+                PagerTransitionEffect.valueOf(saved ?: PagerTransitionEffect.CASCADE.name)
+            } catch (_: Exception) {
+                PagerTransitionEffect.CASCADE
+            }
+        )
+    }
 
     BackHandler(enabled = activeSubScreen != null) {
         activeSubScreen = null
@@ -381,36 +402,75 @@ fun SettingsScreen(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                Text("Swipe Transition Effect", color = textColor, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                Text("Select full-screen horizontal track change animation.", color = Color(0xFF64748B), fontSize = 11.sp)
-                Spacer(modifier = Modifier.height(10.dp))
+                // Swipe Transition Effect with matching icon, updated subtitle, and On/Off toggle
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                        Text("📲", fontSize = 20.sp)
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column {
+                            Text("Swipe Transition Effect", color = textColor, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                            Text("Select track change animation", color = Color(0xFF64748B), fontSize = 12.sp)
+                        }
+                    }
+                    Switch(
+                        checked = isTransitionEnabled,
+                        onCheckedChange = { isEnabled ->
+                            manager.triggerHapticFeedback(false)
+                            isTransitionEnabled = isEnabled
+                            manager.prefs.edit().putBoolean("pager_transition_enabled", isEnabled).apply()
 
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(PagerTransitionEffect.values()) { effect ->
-                        val isSel = manager.pagerTransitionEffect == effect
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(if (isSel) accent else if (isDark) Color(0x22FFFFFF) else Color(0xFFF1F5F9))
-                                .clickable {
-                                    manager.triggerHapticFeedback(false)
-                                    manager.setPagerTransition(effect)
+                            if (isEnabled) {
+                                // Restore remembered custom effect
+                                manager.setPagerTransition(rememberedCustomTransition)
+                            } else {
+                                // Default to standard Slide transition when disabled
+                                manager.setPagerTransition(PagerTransitionEffect.SLIDE)
+                            }
+                        }
+                    )
+                }
+
+                AnimatedVisibility(
+                    visible = isTransitionEnabled,
+                    enter = expandVertically() + fadeIn(),
+                    exit = shrinkVertically() + fadeOut()
+                ) {
+                    Column {
+                        Spacer(modifier = Modifier.height(12.dp))
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            items(PagerTransitionEffect.values()) { effect ->
+                                val isSel = manager.pagerTransitionEffect == effect
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .background(if (isSel) accent else if (isDark) Color(0x22FFFFFF) else Color(0xFFF1F5F9))
+                                        .clickable {
+                                            manager.triggerHapticFeedback(false)
+                                            rememberedCustomTransition = effect
+                                            manager.prefs.edit().putString("pager_transition_custom_saved", effect.name).apply()
+                                            manager.setPagerTransition(effect)
+                                        }
+                                        .padding(horizontal = 14.dp, vertical = 8.dp)
+                                ) {
+                                    Text(
+                                        text = effect.name.lowercase().replaceFirstChar { it.uppercase() },
+                                        color = if (isSel) Color.White else textColor,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
                                 }
-                                .padding(horizontal = 14.dp, vertical = 8.dp)
-                        ) {
-                            Text(
-                                text = effect.name.lowercase().replaceFirstChar { it.uppercase() },
-                                color = if (isSel) Color.White else textColor,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold
-                            )
+                            }
                         }
                     }
                 }
             }
         }
 
-        // 4. Audio Section (Mono Audio placed above Volume Boost, Volume Boost above Audio Output)
+        // 4. Audio Section Directly On Page (Reordered: Normalization -> Mono Audio -> Volume Boost -> Audio Output -> Equalizer)
         item(key = "audio_section_direct", contentType = "audio_card") {
             Column(
                 modifier = Modifier
@@ -424,6 +484,7 @@ fun SettingsScreen(
                 Text("Adjust audio playback settings.", color = Color(0xFF64748B), fontSize = 12.sp)
                 Spacer(modifier = Modifier.height(16.dp))
 
+                // 1. Lossless Audio
                 SettingSwitchRow(
                     icon = "📶",
                     title = "Lossless Audio",
@@ -438,6 +499,7 @@ fun SettingsScreen(
 
                 Spacer(modifier = Modifier.height(14.dp))
 
+                // 2. Volume Normalization
                 SettingSwitchRow(
                     icon = "🔉",
                     title = "Volume Normalization",
@@ -451,7 +513,7 @@ fun SettingsScreen(
 
                 Spacer(modifier = Modifier.height(14.dp))
 
-                // Shifted Up: Mono Audio directly above Volume Boost
+                // 3. Mono Audio (Moved UP: directly below Volume Normalization and above Volume Boost)
                 SettingSwitchRow(
                     icon = "🎚️",
                     title = "Mono Audio",
@@ -465,9 +527,9 @@ fun SettingsScreen(
 
                 Spacer(modifier = Modifier.height(14.dp))
 
-                // Shifted Down: Volume Boost directly above Audio Output
+                // 4. Volume Boost (Moved DOWN: directly below Mono Audio and above Audio Output)
                 Text("Volume Boost", color = textColor, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                Text("Increase maximum volume without muffled clipping (${manager.volumeBoostLevel.toInt()}%).", color = Color(0xFF64748B), fontSize = 12.sp)
+                Text("Increase the maximum volume without muffled clipping (${manager.volumeBoostLevel.toInt()}%).", color = Color(0xFF64748B), fontSize = 12.sp)
 
                 Slider(
                     value = manager.volumeBoostLevel,
@@ -483,8 +545,9 @@ fun SettingsScreen(
                     colors = SliderDefaults.colors(thumbColor = accent, activeTrackColor = accent)
                 )
 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(14.dp))
 
+                // 5. Audio Output
                 Text("Audio Output", color = textColor, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                 Spacer(modifier = Modifier.height(8.dp))
                 Row(
@@ -526,6 +589,7 @@ fun SettingsScreen(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
+                // 6. Equalizer
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -691,6 +755,7 @@ fun SettingSwitchRow(
     }
 }
 
+// Full Screen Manage Folders with matching GlassmorphicFolderIcon and row heights
 @UnstableApi
 @Composable
 fun ManageHiddenFoldersFullScreen(
@@ -700,20 +765,12 @@ fun ManageHiddenFoldersFullScreen(
 ) {
     val textColor = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A)
     val cardBg = if (isDark) Color(0xFF131B2E) else Color.White
-    
-    // Stable memoization to avoid allocations on rapid fling scroll
     val allFolders = remember(manager.rawStorageSongs.size) {
         manager.rawStorageSongs.map { it.folderName }.distinct().sorted()
     }
 
-    val hiddenList = remember(allFolders, manager.hiddenFolders.size) {
-        val set = manager.hiddenFolders.toSet()
-        allFolders.filter { it in set }
-    }
-    val visibleList = remember(allFolders, manager.hiddenFolders.size) {
-        val set = manager.hiddenFolders.toSet()
-        allFolders.filter { it !in set }
-    }
+    val hiddenList = allFolders.filter { it in manager.hiddenFolders }
+    val visibleList = allFolders.filter { it !in manager.hiddenFolders }
 
     Column(modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
         Row(
@@ -734,7 +791,7 @@ fun ManageHiddenFoldersFullScreen(
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             if (hiddenList.isNotEmpty()) {
-                item(key = "header_hidden_folders") {
+                item {
                     Text(
                         text = "Hidden Folders (${hiddenList.size}) — Tap to Restore",
                         color = Color(0xFFE53935),
@@ -773,7 +830,7 @@ fun ManageHiddenFoldersFullScreen(
                 }
             }
 
-            item(key = "header_visible_folders") {
+            item {
                 Text(
                     text = "Visible Folders (${visibleList.size}) — Tap to Exclude",
                     color = textColor,
@@ -814,6 +871,7 @@ fun ManageHiddenFoldersFullScreen(
     }
 }
 
+// Full Screen Manage Audio Files with matching card aesthetics
 @UnstableApi
 @Composable
 fun ManageHiddenAudioFullScreen(
@@ -826,14 +884,8 @@ fun ManageHiddenAudioFullScreen(
     var query by remember { mutableStateOf("") }
 
     val rawSongs = manager.rawStorageSongs
-    val hiddenSongs = remember(rawSongs.size, manager.hiddenAudioIds.size) {
-        val set = manager.hiddenAudioIds.toSet()
-        rawSongs.filter { it.id in set }
-    }
-    val visibleSongs = remember(rawSongs.size, manager.hiddenAudioIds.size) {
-        val set = manager.hiddenAudioIds.toSet()
-        rawSongs.filter { it.id !in set }
-    }
+    val hiddenSongs = rawSongs.filter { it.id in manager.hiddenAudioIds }
+    val visibleSongs = rawSongs.filter { it.id !in manager.hiddenAudioIds }
 
     val filteredHidden = remember(query, hiddenSongs) {
         val q = query.trim()
@@ -881,7 +933,7 @@ fun ManageHiddenAudioFullScreen(
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             if (filteredHidden.isNotEmpty()) {
-                item(key = "header_hidden_audio") {
+                item {
                     Text(
                         text = "Hidden Audio (${filteredHidden.size}) — Tap to Restore",
                         color = Color(0xFFE53935),
@@ -911,7 +963,7 @@ fun ManageHiddenAudioFullScreen(
                             Spacer(modifier = Modifier.width(14.dp))
                             Column {
                                 Text(song.title, color = textColor, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                Text("${song.formattedSize} • ${song.displayArtist} • Hidden", color = Color(0xFFE57373), fontSize = 12.sp, maxLines = 1)
+                                Text("${formatFileSize(song.size)} • ${if (song.artist.isNotBlank()) song.artist else "Unknown"} • Hidden", color = Color(0xFFE57373), fontSize = 12.sp, maxLines = 1)
                             }
                         }
                         Text("👁️", fontSize = 18.sp)
@@ -919,7 +971,7 @@ fun ManageHiddenAudioFullScreen(
                 }
             }
 
-            item(key = "header_visible_audio") {
+            item {
                 Text(
                     text = "Visible Audio (${filteredVisible.size}) — Tap to Exclude",
                     color = textColor,
@@ -949,7 +1001,7 @@ fun ManageHiddenAudioFullScreen(
                         Spacer(modifier = Modifier.width(14.dp))
                         Column {
                             Text(song.title, color = textColor, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            Text("${song.formattedSize} • ${song.displayArtist}", color = Color(0xFF64748B), fontSize = 12.sp, maxLines = 1)
+                            Text("${formatFileSize(song.size)} • ${if (song.artist.isNotBlank()) song.artist else "Unknown"}", color = Color(0xFF64748B), fontSize = 12.sp, maxLines = 1)
                         }
                     }
                     Text("✓", color = Color(0xFFE91E63), fontSize = 18.sp, fontWeight = FontWeight.Bold)
