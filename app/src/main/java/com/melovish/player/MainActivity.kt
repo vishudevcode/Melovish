@@ -22,11 +22,14 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.Canvas
@@ -100,7 +103,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
@@ -271,7 +273,6 @@ fun MelovishRootApp(manager: MusicManager) {
     val searchListState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
 
-    // Smooth auto-collapsing TopBar state & nested scroll
     var isTopBarVisible by remember { mutableStateOf(true) }
     val isMainTabScreen = activeScreen in listOf("home", "library", "artists", "search") &&
             selectedFolder == null && selectedPlaylist == null && selectedArtist == null && selectedAlbum == null
@@ -280,29 +281,24 @@ fun MelovishRootApp(manager: MusicManager) {
         object : NestedScrollConnection {
             override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
                 if (!isMainTabScreen) return Offset.Zero
-                val delta = available.y
-                if (delta < -8f && isTopBarVisible) {
-                    isTopBarVisible = false
-                } else if (delta > 8f && !isTopBarVisible) {
-                    isTopBarVisible = true
+                if (source == NestedScrollSource.UserInput) {
+                    val delta = available.y
+                    if (delta < -14f && isTopBarVisible) {
+                        isTopBarVisible = false
+                    } else if (delta > 14f && !isTopBarVisible) {
+                        isTopBarVisible = true
+                    }
                 }
                 return Offset.Zero
             }
         }
     }
 
-    // Force top bar visible when scrolled to the top
     LaunchedEffect(homeListState.firstVisibleItemIndex, homeListState.firstVisibleItemScrollOffset) {
-        if (homeListState.firstVisibleItemIndex == 0 && homeListState.firstVisibleItemScrollOffset < 15) {
+        if (homeListState.firstVisibleItemIndex == 0 && homeListState.firstVisibleItemScrollOffset == 0) {
             isTopBarVisible = true
         }
     }
-
-    val animatedTopBarFraction by animateFloatAsState(
-        targetValue = if (isTopBarVisible || !isMainTabScreen) 1f else 0f,
-        animationSpec = spring(stiffness = 600f, dampingRatio = 0.82f),
-        label = "topBarAnim"
-    )
 
     BackHandler(enabled = isSettingsEqOpen || isPlayerExpanded || activeScreen == "settings" || activeScreen == "profile" || selectedArtist != null || selectedAlbum != null || selectedPlaylist != null || selectedFolder != null || activeScreen != "home") {
         when {
@@ -320,7 +316,12 @@ fun MelovishRootApp(manager: MusicManager) {
 
     val bg = if (isDark) Color(0xFF0A0F1D) else Color(0xFFF8F9FA)
 
-    Surface(modifier = Modifier.fillMaxSize(), color = bg) {
+    Surface(
+        modifier = Modifier
+            .fillMaxSize()
+            .statusBarsPadding(),
+        color = bg
+    ) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -329,14 +330,14 @@ fun MelovishRootApp(manager: MusicManager) {
         ) {
             Column(modifier = Modifier.fillMaxSize()) {
                 if (isMainTabScreen) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .graphicsLayer {
-                                translationY = -size.height * (1f - animatedTopBarFraction)
-                                alpha = animatedTopBarFraction.coerceIn(0f, 1f)
-                            }
-                            .height((64 * animatedTopBarFraction).dp)
+                    AnimatedVisibility(
+                        visible = isTopBarVisible,
+                        enter = expandVertically(
+                            animationSpec = spring(stiffness = 550f, dampingRatio = 0.85f)
+                        ) + fadeIn(animationSpec = tween(180)),
+                        exit = shrinkVertically(
+                            animationSpec = spring(stiffness = 550f, dampingRatio = 0.85f)
+                        ) + fadeOut(animationSpec = tween(140))
                     ) {
                         TopBar(
                             manager = manager,
@@ -1762,7 +1763,7 @@ fun FolderColourPickerDialog(
                                     val dx = (touch.x - center.x).toDouble()
                                     val dy = (touch.y - center.y).toDouble()
                                     val dist = sqrt(dx * dx + dy * dy)
-                                    val radius = (size.width / 2f).toDouble()
+                                    val radius = (size.width.toFloat() / 2f).toDouble()
                                     if (dist >= radius * 0.65) {
                                         var angle = Math.toDegrees(atan2(dy, dx)).toFloat()
                                         if (angle < 0f) angle += 360f
@@ -3127,8 +3128,7 @@ fun TopBar(manager: MusicManager, onProfileClick: () -> Unit, onSettingsClick: (
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .statusBarsPadding()
-            .padding(horizontal = 20.dp, vertical = 10.dp),
+            .padding(horizontal = 20.dp, vertical = 8.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
