@@ -689,7 +689,7 @@ fun ReorderDragHandle(tint: Color, modifier: Modifier = Modifier) {
     }
 }
 
-// Full Player Sheet with Integrated Material You Status Bar Tint
+// Full Player Sheet with Smooth 120 FPS Pager & Responsive Track Switch
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @UnstableApi
 @Composable
@@ -725,12 +725,14 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
         }
     }
 
-    // Instant proactive switch on page change
-    LaunchedEffect(pagerState.currentPage) {
-        if (!isProgrammaticScroll && pagerState.currentPage in currentQueue.indices) {
-            val targetSong = currentQueue[pagerState.currentPage]
-            if (targetSong.id != manager.currentSong?.id) {
-                manager.playSong(targetSong, currentQueue, manager.currentSectionName)
+    // High performance swipe listener: executes seamlessly without locking the carousel
+    LaunchedEffect(pagerState) {
+        snapshotFlow { pagerState.settledPage }.collect { settledPage ->
+            if (!isProgrammaticScroll && settledPage in currentQueue.indices) {
+                val targetSong = currentQueue[settledPage]
+                if (targetSong.id != manager.currentSong?.id) {
+                    manager.playSong(targetSong, currentQueue, manager.currentSectionName)
+                }
             }
         }
     }
@@ -763,7 +765,9 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
     val leftSeekAlpha by animateFloatAsState(if (showSeekLeftAnim) 1f else 0f, tween(if (showSeekLeftAnim) 80 else 350), label = "leftAlpha")
     val rightSeekAlpha by animateFloatAsState(if (showSeekRightAnim) 1f else 0f, tween(if (showSeekRightAnim) 80 else 350), label = "rightAlpha")
 
-    val activeSong = manager.currentSong ?: currentQueue[pagerState.currentPage]
+    // The display track always stays in sync with current settled page for instant visual feedback
+    val safeIndex = pagerState.settledPage.coerceIn(0, currentQueue.size - 1)
+    val activeSong = currentQueue[safeIndex]
     var albumArtBitmap by remember(activeSong.id) { mutableStateOf(manager.getCachedAlbumArt(activeSong.id)) }
     LaunchedEffect(activeSong.id) {
         if (albumArtBitmap == null) albumArtBitmap = manager.loadAlbumArtAsync(activeSong)
@@ -799,11 +803,11 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
         }
     }
 
-    val animBgTop by animateColorAsState(targetPalette.bgTop, tween(350, easing = FastOutSlowInEasing), label = "bgTop")
-    val animBgBottom by animateColorAsState(targetPalette.bgBottom, tween(350, easing = FastOutSlowInEasing), label = "bgBottom")
-    val animSurface by animateColorAsState(targetPalette.surface, tween(350, easing = FastOutSlowInEasing), label = "surface")
-    val animTextPrimary by animateColorAsState(targetPalette.textPrimary, tween(350, easing = FastOutSlowInEasing), label = "textPrimary")
-    val animTextSecondary by animateColorAsState(targetPalette.textSecondary, tween(350, easing = FastOutSlowInEasing), label = "textSecondary")
+    val animBgTop by animateColorAsState(targetPalette.bgTop, tween(300, easing = FastOutSlowInEasing), label = "bgTop")
+    val animBgBottom by animateColorAsState(targetPalette.bgBottom, tween(300, easing = FastOutSlowInEasing), label = "bgBottom")
+    val animSurface by animateColorAsState(targetPalette.surface, tween(300, easing = FastOutSlowInEasing), label = "surface")
+    val animTextPrimary by animateColorAsState(targetPalette.textPrimary, tween(300, easing = FastOutSlowInEasing), label = "textPrimary")
+    val animTextSecondary by animateColorAsState(targetPalette.textSecondary, tween(300, easing = FastOutSlowInEasing), label = "textSecondary")
 
     BackHandler(enabled = showQueueSheet || showMenuModal || showSpeedDialog || showSleepDialog || showEqualizerSheet || showTagEditorDialog || showLyricsDialog || showAddToPlaylistDialog) {
         when {
@@ -844,9 +848,10 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
             HorizontalPager(
                 state = pagerState,
                 pageSpacing = 16.dp,
+                beyondViewportPageCount = 1,
                 flingBehavior = PagerDefaults.flingBehavior(
                     state = pagerState,
-                    snapAnimationSpec = spring(stiffness = 550f, dampingRatio = 0.82f)
+                    snapAnimationSpec = spring(stiffness = 650f, dampingRatio = 0.88f)
                 ),
                 modifier = Modifier.weight(1f).fillMaxWidth()
             ) { pageIndex ->
@@ -1025,7 +1030,7 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                             )
                         }
 
-                        // Independent zero-lag scrubber: strictly bound to pageSong
+                        // Instantaneous Zero-Lag Scrubber: Strictly bound to pageSong id
                         val isCurrentActiveTrack = pageSong.id == manager.currentSong?.id
                         val displayedPos = if (isCurrentActiveTrack) manager.currentPosition else 0L
                         val displayedDuration = pageSong.duration.coerceAtLeast(1L)
