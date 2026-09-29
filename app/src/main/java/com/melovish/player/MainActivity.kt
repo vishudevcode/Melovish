@@ -9,6 +9,7 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.view.Display
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
@@ -174,10 +175,24 @@ class MainActivity : ComponentActivity() {
         
         viewModel.manager.attachActivity(this)
 
-        try {
-            val serviceIntent = Intent(this, MediaPlaybackService::class.java)
-            ContextCompat.startForegroundService(this, serviceIntent)
-        } catch (_: Exception) {}
+        // Request hardware 120Hz/high refresh rate mode on supporting displays
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            try {
+                val display = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    display
+                } else {
+                    @Suppress("DEPRECATION")
+                    windowManager.defaultDisplay
+                }
+                val modes = display?.supportedModes
+                val maxRefreshMode = modes?.maxByOrNull { it.refreshRate }
+                if (maxRefreshMode != null && maxRefreshMode.refreshRate >= 90f) {
+                    val params = window.attributes
+                    params.preferredDisplayModeId = maxRefreshMode.modeId
+                    window.attributes = params
+                }
+            } catch (_: Exception) {}
+        }
 
         requestRequiredPermissions()
 
@@ -270,7 +285,6 @@ fun MelovishRootApp(manager: MusicManager) {
     var isSettingsEqOpen by remember { mutableStateOf(false) }
 
     // Automatic Status Bar Icon Color Synchronization
-    // In light mode -> icons turn crisp BLACK. In dark mode or player -> icons turn WHITE.
     SideEffect {
         if (activity != null) {
             val windowInsetsController = WindowCompat.getInsetsController(activity.window, activity.window.decorView)
@@ -316,12 +330,20 @@ fun MelovishRootApp(manager: MusicManager) {
         }
     }
 
-    BackHandler(enabled = isSettingsEqOpen || isPlayerExpanded || activeScreen == "settings" || activeScreen == "profile" || selectedArtist != null || selectedAlbum != null || selectedPlaylist != null || selectedFolder != null || activeScreen != "home") {
+    val canGoBack = isSettingsEqOpen || isPlayerExpanded || activeScreen == "settings" ||
+            activeScreen == "profile" || selectedArtist != null || selectedAlbum != null ||
+            selectedPlaylist != null || selectedFolder != null || activeScreen != "home"
+
+    BackHandler(enabled = canGoBack) {
         when {
             isSettingsEqOpen -> isSettingsEqOpen = false
             isPlayerExpanded -> isPlayerExpanded = false
-            activeScreen == "settings" -> activeScreen = previousActiveScreen
-            activeScreen == "profile" -> activeScreen = previousActiveScreen
+            activeScreen == "settings" -> {
+                activeScreen = if (previousActiveScreen != "settings") previousActiveScreen else "home"
+            }
+            activeScreen == "profile" -> {
+                activeScreen = if (previousActiveScreen != "profile") previousActiveScreen else "home"
+            }
             selectedArtist != null -> selectedArtist = null
             selectedAlbum != null -> selectedAlbum = null
             selectedPlaylist != null -> selectedPlaylist = null
@@ -361,11 +383,11 @@ fun MelovishRootApp(manager: MusicManager) {
                         TopBar(
                             manager = manager,
                             onProfileClick = {
-                                previousActiveScreen = activeScreen
+                                if (activeScreen != "profile") previousActiveScreen = activeScreen
                                 activeScreen = "profile"
                             },
                             onSettingsClick = {
-                                previousActiveScreen = activeScreen
+                                if (activeScreen != "settings") previousActiveScreen = activeScreen
                                 activeScreen = "settings"
                             }
                         )
@@ -376,16 +398,20 @@ fun MelovishRootApp(manager: MusicManager) {
                     when {
                         activeScreen == "settings" -> SettingsScreen(
                             manager = manager,
-                            onBackClick = { activeScreen = previousActiveScreen },
+                            onBackClick = {
+                                activeScreen = if (previousActiveScreen != "settings") previousActiveScreen else "home"
+                            },
                             onOpenProfile = {
-                                previousActiveScreen = activeScreen
+                                if (activeScreen != "profile") previousActiveScreen = activeScreen
                                 activeScreen = "profile"
                             },
                             onOpenEqualizer = { isSettingsEqOpen = true }
                         )
                         activeScreen == "profile" -> ProfileScreen(
                             manager = manager,
-                            onBackClick = { activeScreen = previousActiveScreen }
+                            onBackClick = {
+                                activeScreen = if (previousActiveScreen != "profile") previousActiveScreen else "home"
+                            }
                         )
                         selectedArtist != null -> {
                             ArtistDetailScreen(
@@ -478,8 +504,7 @@ fun MelovishRootApp(manager: MusicManager) {
                 }
             }
 
-            // Feathered Gradient Scrim at the top:
-            // Extends slightly past status bar height and fades into transparency without a hard cut line.
+            // Feathered Gradient Scrim at the top
             Box(
                 modifier = Modifier
                     .fillMaxWidth()

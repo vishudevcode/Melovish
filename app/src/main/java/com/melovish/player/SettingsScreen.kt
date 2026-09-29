@@ -412,7 +412,7 @@ fun SettingsScreen(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // Swipe Transition Effect with matching icon, updated subtitle, and On/Off toggle
+                // Swipe Transition Effect
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -479,7 +479,6 @@ fun SettingsScreen(
         }
 
         // 4. Audio Section Directly On Page
-        // Ordered: Lossless -> Normalization -> Mono Audio -> Volume Boost (with 📢 & On/Off) -> Audio Output -> Equalizer
         item(key = "audio_section_direct", contentType = "audio_card") {
             Column(
                 modifier = Modifier
@@ -522,7 +521,7 @@ fun SettingsScreen(
 
                 Spacer(modifier = Modifier.height(14.dp))
 
-                // 3. Mono Audio (Moved UP: directly below Volume Normalization)
+                // 3. Mono Audio
                 SettingSwitchRow(
                     icon = "🎚️",
                     title = "Mono Audio",
@@ -536,7 +535,7 @@ fun SettingsScreen(
 
                 Spacer(modifier = Modifier.height(14.dp))
 
-                // 4. Volume Boost (Moved DOWN: directly above Audio Output, with 📢 icon and On/Off toggle)
+                // 4. Volume Boost
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
