@@ -69,6 +69,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
@@ -81,6 +82,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
@@ -113,7 +115,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import java.util.Locale
 import kotlin.math.abs
-import kotlin.math.roundToInt
 
 // Live Animated 4-Bar Equalizer
 @Composable
@@ -196,7 +197,7 @@ fun GlassmorphicFolderIcon(folderColor: Color, modifier: Modifier = Modifier) {
                 quadraticBezierTo(w * 0.48f, h * 0.14f, w * 0.52f, h * 0.22f)
                 lineTo(w * 0.56f, h * 0.28f)
                 lineTo(w * 0.82f, h * 0.28f)
-                quadraticBezierTo(w * 0.88f, h * 0.28f, w * 0.88f, h * 0.35f)
+                quadraticBezierTo(w * 0.88f, h * 0.88f, w * 0.88f, h * 0.35f)
                 lineTo(w * 0.88f, h * 0.82f)
                 quadraticBezierTo(w * 0.88f, h * 0.88f, w * 0.80f, h * 0.88f)
                 lineTo(w * 0.18f, h * 0.88f)
@@ -689,7 +690,7 @@ fun ReorderDragHandle(tint: Color, modifier: Modifier = Modifier) {
     }
 }
 
-// Full Player Sheet with Smooth 120 FPS Pager & Responsive Track Switch
+// Full Player Sheet with 120Hz Fling Support and Zero Recomposition Lag
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @UnstableApi
 @Composable
@@ -725,10 +726,10 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
         }
     }
 
-    // High performance swipe listener: executes seamlessly without locking the carousel
+    // High performance multi-swipe debounce: Only play once the user finishes flinging/swiping
     LaunchedEffect(pagerState) {
-        snapshotFlow { pagerState.settledPage }.collect { settledPage ->
-            if (!isProgrammaticScroll && settledPage in currentQueue.indices) {
+        snapshotFlow { pagerState.isScrollInProgress to pagerState.settledPage }.collect { (inProgress, settledPage) ->
+            if (!inProgress && !isProgrammaticScroll && settledPage in currentQueue.indices) {
                 val targetSong = currentQueue[settledPage]
                 if (targetSong.id != manager.currentSong?.id) {
                     manager.playSong(targetSong, currentQueue, manager.currentSectionName)
@@ -765,7 +766,6 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
     val leftSeekAlpha by animateFloatAsState(if (showSeekLeftAnim) 1f else 0f, tween(if (showSeekLeftAnim) 80 else 350), label = "leftAlpha")
     val rightSeekAlpha by animateFloatAsState(if (showSeekRightAnim) 1f else 0f, tween(if (showSeekRightAnim) 80 else 350), label = "rightAlpha")
 
-    // The display track always stays in sync with current settled page for instant visual feedback
     val safeIndex = pagerState.settledPage.coerceIn(0, currentQueue.size - 1)
     val activeSong = currentQueue[safeIndex]
     var albumArtBitmap by remember(activeSong.id) { mutableStateOf(manager.getCachedAlbumArt(activeSong.id)) }
@@ -851,7 +851,7 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                 beyondViewportPageCount = 1,
                 flingBehavior = PagerDefaults.flingBehavior(
                     state = pagerState,
-                    snapAnimationSpec = spring(stiffness = 650f, dampingRatio = 0.88f)
+                    snapAnimationSpec = spring(stiffness = 700f, dampingRatio = 0.90f)
                 ),
                 modifier = Modifier.weight(1f).fillMaxWidth()
             ) { pageIndex ->
@@ -862,11 +862,18 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                     if (pageBmp == null) pageBmp = manager.loadAlbumArtAsync(pageSong)
                 }
 
+                // Compute high-performance hardware transformations on graphicsLayer
+                val pageOffset by remember(pageIndex) {
+                    derivedStateOf {
+                        (pagerState.currentPage - pageIndex) + pagerState.currentPageOffsetFraction
+                    }
+                }
+
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
                         .graphicsLayer {
-                            val offset = (pagerState.currentPage - pageIndex) + pagerState.currentPageOffsetFraction
+                            val offset = pageOffset
                             when (manager.pagerTransitionEffect) {
                                 PagerTransitionEffect.SLIDE -> {
                                     alpha = 1f
@@ -1030,7 +1037,6 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                             )
                         }
 
-                        // Instantaneous Zero-Lag Scrubber: Strictly bound to pageSong id
                         val isCurrentActiveTrack = pageSong.id == manager.currentSong?.id
                         val displayedPos = if (isCurrentActiveTrack) manager.currentPosition else 0L
                         val displayedDuration = pageSong.duration.coerceAtLeast(1L)
@@ -2323,14 +2329,14 @@ fun AddToPlaylistDialog(manager: MusicManager, song: Song, onDismiss: () -> Unit
     }
 }
 
-// Magnetic Speed Dialog with Prominent Dots & Tactile Notches
+// Magnetic Speed Dialog with 0.75x & Centered Indicator
 @Composable
 fun MagneticSpeedDialog(manager: MusicManager, onDismiss: () -> Unit) {
     var speed by remember { mutableFloatStateOf(manager.playbackSpeed) }
     val isDark = manager.isDarkMode
     val accent = manager.accentColor
     val prominentSteps = remember {
-        listOf(0.25f, 0.5f, 1.0f, 1.25f, 1.5f, 1.75f, 2.0f, 2.25f, 2.5f, 2.75f, 3.0f)
+        listOf(0.25f, 0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 1.75f, 2.0f, 2.25f, 2.5f, 2.75f, 3.0f)
     }
 
     Box(
@@ -2351,64 +2357,115 @@ fun MagneticSpeedDialog(manager: MusicManager, onDismiss: () -> Unit) {
                     fontSize = 18.sp,
                     fontWeight = FontWeight.Bold
                 )
-                Spacer(modifier = Modifier.height(20.dp))
+                Spacer(modifier = Modifier.height(24.dp))
 
+                // Custom Mathematical Speed Slider with perfectly aligned dots and indicator
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 6.dp),
+                        .height(36.dp)
+                        .pointerInput(prominentSteps) {
+                            awaitEachGesture {
+                                val down = awaitFirstDown(requireUnconsumed = false)
+                                val horizontalPaddingPx = 16.dp.toPx()
+                                val usableWidth = (size.width - (horizontalPaddingPx * 2)).coerceAtLeast(1f)
+
+                                fun updateFromX(touchX: Float) {
+                                    val frac = ((touchX - horizontalPaddingPx) / usableWidth).coerceIn(0f, 1f)
+                                    val rawVal = 0.25f + (frac * (3.0f - 0.25f))
+                                    var closest = prominentSteps.first()
+                                    var minDiff = Float.MAX_VALUE
+                                    for (st in prominentSteps) {
+                                        val diff = abs(rawVal - st)
+                                        if (diff < minDiff) {
+                                            minDiff = diff
+                                            closest = st
+                                        }
+                                    }
+                                    if (closest != speed) {
+                                        manager.triggerHapticFeedback(closest == 1.0f)
+                                        speed = manager.setMagneticSpeed(closest)
+                                    }
+                                }
+
+                                updateFromX(down.position.x)
+                                while (true) {
+                                    val event = awaitPointerEvent()
+                                    val change = event.changes.firstOrNull() ?: break
+                                    if (change.pressed) {
+                                        change.consume()
+                                        updateFromX(change.position.x)
+                                    } else {
+                                        break
+                                    }
+                                }
+                            }
+                        },
                     contentAlignment = Alignment.Center
                 ) {
                     Canvas(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(24.dp)
+                            .height(36.dp)
                     ) {
                         val centerY = size.height / 2f
-                        val trackStart = 10.dp.toPx()
-                        val trackEnd = size.width - 10.dp.toPx()
-                        val trackWidth = trackEnd - trackStart
+                        val horizontalPaddingPx = 16.dp.toPx()
+                        val usableWidth = size.width - (horizontalPaddingPx * 2)
 
+                        // Calculate current speed position on the rail
+                        val currentFraction = ((speed - 0.25f) / (3.0f - 0.25f)).coerceIn(0f, 1f)
+                        val activeX = horizontalPaddingPx + (currentFraction * usableWidth)
+
+                        // Draw background rail
+                        drawRoundRect(
+                            color = if (isDark) Color(0xFF334155) else Color(0xFFE2E8F0),
+                            topLeft = Offset(horizontalPaddingPx, centerY - 2.5.dp.toPx()),
+                            size = Size(usableWidth, 5.dp.toPx()),
+                            cornerRadius = CornerRadius(2.5.dp.toPx(), 2.5.dp.toPx())
+                        )
+
+                        // Draw active progress rail
+                        if (activeX > horizontalPaddingPx) {
+                            drawRoundRect(
+                                color = accent.copy(alpha = 0.5f),
+                                topLeft = Offset(horizontalPaddingPx, centerY - 2.5.dp.toPx()),
+                                size = Size(activeX - horizontalPaddingPx, 5.dp.toPx()),
+                                cornerRadius = CornerRadius(2.5.dp.toPx(), 2.5.dp.toPx())
+                            )
+                        }
+
+                        // Draw all step dots
                         prominentSteps.forEach { step ->
                             val stepFraction = (step - 0.25f) / (3.0f - 0.25f)
-                            val dotX = trackStart + (stepFraction * trackWidth)
+                            val dotX = horizontalPaddingPx + (stepFraction * usableWidth)
                             val is1X = (step == 1.0f)
+                            val isSelected = (step == speed)
 
                             drawCircle(
-                                color = if (is1X) accent else if (isDark) Color(0xFF64748B) else Color(0xFFCBD5E1),
-                                radius = if (is1X) 4.5.dp.toPx() else 3.dp.toPx(),
+                                color = when {
+                                    isSelected -> accent
+                                    is1X -> accent.copy(alpha = 0.85f)
+                                    isDark -> Color(0xFF64748B)
+                                    else -> Color(0xFF94A3B8)
+                                },
+                                radius = if (is1X || isSelected) 4.5.dp.toPx() else 3.dp.toPx(),
                                 center = Offset(dotX, centerY)
                             )
                         }
-                    }
 
-                    Slider(
-                        value = speed,
-                        onValueChange = { raw ->
-                            var snappedVal = raw
-                            for (st in prominentSteps) {
-                                if (abs(raw - st) <= 0.05f) {
-                                    snappedVal = st
-                                    break
-                                }
-                            }
-                            if (snappedVal != speed) {
-                                if (snappedVal in prominentSteps) {
-                                    manager.triggerHapticFeedback(snappedVal == 1.0f)
-                                }
-                                speed = manager.setMagneticSpeed(snappedVal)
-                            }
-                        },
-                        valueRange = 0.25f..3.0f,
-                        colors = SliderDefaults.colors(
-                            thumbColor = accent,
-                            activeTrackColor = accent.copy(alpha = 0.7f),
-                            inactiveTrackColor = Color.Transparent
+                        // Draw the vertical indicator pill centered on top of the dot
+                        val indicatorWidth = 5.dp.toPx()
+                        val indicatorHeight = 26.dp.toPx()
+                        drawRoundRect(
+                            color = accent,
+                            topLeft = Offset(activeX - (indicatorWidth / 2f), centerY - (indicatorHeight / 2f)),
+                            size = Size(indicatorWidth, indicatorHeight),
+                            cornerRadius = CornerRadius(indicatorWidth / 2f, indicatorWidth / 2f)
                         )
-                    )
+                    }
                 }
 
-                Spacer(modifier = Modifier.height(6.dp))
+                Spacer(modifier = Modifier.height(10.dp))
 
                 Row(
                     modifier = Modifier
@@ -2421,7 +2478,7 @@ fun MagneticSpeedDialog(manager: MusicManager, onDismiss: () -> Unit) {
                     Text("3.0x", color = Color(0xFF64748B), fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 }
 
-                Spacer(modifier = Modifier.height(20.dp))
+                Spacer(modifier = Modifier.height(24.dp))
                 Button(
                     onClick = {
                         manager.triggerHapticFeedback(true)
