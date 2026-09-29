@@ -60,6 +60,7 @@ import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.audio.AudioSink
 import androidx.media3.exoplayer.audio.DefaultAudioSink
+import androidx.media3.exoplayer.audio.SilenceSkippingAudioProcessor
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaStyleNotificationHelper
 import kotlinx.collections.immutable.toImmutableList
@@ -184,8 +185,16 @@ class MusicManager(private val context: Context) {
     }
 
     private val channelMixingAudioProcessor = ChannelMixingAudioProcessor()
+    
+    // Silence Trimming audio processor with minimum silence threshold
+    private val silenceSkippingProcessor = SilenceSkippingAudioProcessor(
+        /* minimumSilenceDurationUs = */ 1_000_000L, // 1 second minimum silence threshold
+        /* silenceThresholdLevel = */ SilenceSkippingAudioProcessor.DEFAULT_SILENCE_THRESHOLD_LEVEL,
+        /* maxSilenceToKeepDurationUs = */ 100_000L
+    )
 
     var isLosslessEnabled by mutableStateOf(prefs.getBoolean("lossless", true))
+    var isSilenceTrimmingEnabled by mutableStateOf(prefs.getBoolean("silence_trimming", false))
 
     private val renderersFactory = object : DefaultRenderersFactory(context) {
         override fun buildAudioSink(
@@ -194,8 +203,8 @@ class MusicManager(private val context: Context) {
             enableAudioTrackPlaybackParams: Boolean
         ): AudioSink {
             return DefaultAudioSink.Builder(context)
-                .setAudioProcessors(arrayOf(channelMixingAudioProcessor))
-                .setEnableFloatOutput(true) // 32-bit float PCM for high dynamic range lossless
+                .setAudioProcessors(arrayOf(channelMixingAudioProcessor, silenceSkippingProcessor))
+                .setEnableFloatOutput(true)
                 .setEnableAudioTrackPlaybackParams(true)
                 .build()
         }
@@ -340,10 +349,10 @@ class MusicManager(private val context: Context) {
     var isColorfulPlayer by mutableStateOf(prefs.getBoolean("colorful_player", true))
     var isResumeFirstOnly by mutableStateOf(prefs.getBoolean("resume_first", false))
     var isFadeOnStart by mutableStateOf(prefs.getBoolean("fade_start", false))
-    var isSilenceTrimmingEnabled by mutableStateOf(prefs.getBoolean("silence_trimming", true))
     var isCrossfadeEnabled by mutableStateOf(prefs.getBoolean("crossfade_enabled", false))
     var crossfadeDuration by mutableFloatStateOf(prefs.getFloat("crossfade_duration", 2.0f))
 
+    // Defaults to false as requested
     var isVolumeNormalized by mutableStateOf(prefs.getBoolean("vol_norm", false))
     var volumeBoostLevel by mutableFloatStateOf(prefs.getFloat("vol_boost", 100f))
     var isMonoAudio by mutableStateOf(prefs.getBoolean("mono", false))
@@ -412,12 +421,27 @@ class MusicManager(private val context: Context) {
         startPositionTracker()
         syncDeviceVolume()
         applyChannelMixing()
+        applySilenceTrimmingState()
         registerAudioDeviceCallback()
         updateDeviceRoutingAndHighlight()
 
         managerScope.launch(Dispatchers.IO) {
             loadInstantCacheAsync()
         }
+    }
+
+    private fun applySilenceTrimmingState() {
+        try {
+            silenceSkippingProcessor.setEnabled(isSilenceTrimmingEnabled)
+        } catch (_: Exception) {}
+    }
+
+    fun toggleSilenceTrimming(enabled: Boolean) {
+        isSilenceTrimmingEnabled = enabled
+        managerScope.launch(Dispatchers.IO) {
+            prefs.edit().putBoolean("silence_trimming", enabled).apply()
+        }
+        applySilenceTrimmingState()
     }
 
     private fun initDefaultEqualizerState() {
@@ -870,7 +894,6 @@ class MusicManager(private val context: Context) {
         managerScope.launch(Dispatchers.IO) {
             prefs.edit().putBoolean("lossless", enabled).apply()
         }
-        // Direct hardware spatialization and multi-channel Atmos output configuration
         val spatialization = if (enabled) {
             C.SPATIALIZATION_BEHAVIOR_AUTO
         } else {
@@ -901,7 +924,7 @@ class MusicManager(private val context: Context) {
                     ChannelMixingMatrix(2, 2, floatArrayOf(0.707f, -0.707f, -0.707f, 0.707f))
                 }
                 isMonoAudio -> {
-                    // True summing mono matrix: both channels receive equal (L + R) / 2
+                    // True summing mono matrix: both ears receive (L + R) / 2
                     ChannelMixingMatrix(2, 2, floatArrayOf(0.5f, 0.5f, 0.5f, 0.5f))
                 }
                 else -> {
@@ -1200,7 +1223,7 @@ class MusicManager(private val context: Context) {
                     if (duration > 0L) {
                         val remainingMs = duration - p
 
-                        // 1. Crossfade Logic: Fade smoothly out in the last X seconds
+                        // 1. Crossfade Logic
                         if (isCrossfadeEnabled) {
                             val fadeWindowMs = (crossfadeDuration * 1000).toLong().coerceIn(1000L, 12000L)
                             if (remainingMs in 1..fadeWindowMs && !isFadingOutForCrossfade) {
@@ -1212,9 +1235,15 @@ class MusicManager(private val context: Context) {
                             }
                         }
 
-                        // 2. Silence Trimming Logic: Skip trailing silent gap without waiting for duration to hit zero
+                        // 2. Silence Trimming Logic
+                        // When enabled, if remaining duration has entered trailing tail (last 10 seconds)
+                        // and SilenceSkippingProcessor has eliminated the audio buffers or trailing zero PCM is encountered,
+                        // transition directly to next track without waiting for empty timeline.
                         if (isSilenceTrimmingEnabled && !isCrossfadeEnabled) {
-                            if (remainingMs in 1..800L && player.hasNextMediaItem()) {
+                            val skippedFrames = silenceSkippingProcessor.skippedFramesCount
+                            if (remainingMs in 1..10_000L && skippedFrames > 44100L && player.hasNextMediaItem()) {
+                                playNext()
+                            } else if (remainingMs in 1..700L && player.hasNextMediaItem()) {
                                 playNext()
                             }
                         }
@@ -1484,7 +1513,6 @@ class MusicManager(private val context: Context) {
         }
     }
 
-    // Instant zero-lag track playback
     fun playSong(song: Song, queue: List<Song>, section: String, initialPositionMs: Long = 0L) {
         val targetIndex = queue.indexOfFirst { it.id == song.id }.coerceAtLeast(0)
 
@@ -1756,7 +1784,6 @@ class MusicManager(private val context: Context) {
         val lastSavedId = prefs.getLong("last_active_song_id", -1L)
         val candidate = allSongs.find { it.id == lastSavedId } ?: historySongs.firstOrNull() ?: allSongs.firstOrNull() ?: return
 
-        // Accurately resume from last saved position when toggle is ON
         val startPosition = if (isResumeFirstOnly) {
             getSavedPosition(candidate.id)
         } else {

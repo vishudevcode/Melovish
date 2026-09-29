@@ -89,7 +89,6 @@ fun SettingsScreen(
     var showCircularPicker by remember { mutableStateOf(false) }
     var activeSubScreen by remember { mutableStateOf<String?>(null) }
 
-    // Persistent transition animation switch state & remembered custom effect
     var isTransitionEnabled by remember {
         mutableStateOf(manager.prefs.getBoolean("pager_transition_enabled", true))
     }
@@ -104,7 +103,6 @@ fun SettingsScreen(
         )
     }
 
-    // Volume Boost On/Off toggle state (Off by default)
     var isVolumeBoostEnabled by remember {
         mutableStateOf(manager.prefs.getBoolean("vol_boost_enabled", false))
     }
@@ -345,7 +343,7 @@ fun SettingsScreen(
 
                 Spacer(modifier = Modifier.height(14.dp))
 
-                // 4. Silence Trimming (Shifted directly above Fade on start)
+                // 4. Silence Trimming (Directly above Fade on start, off by default)
                 SettingSwitchRow(
                     icon = "♾️",
                     title = "Silence Trimming",
@@ -354,10 +352,7 @@ fun SettingsScreen(
                     textColor = textColor
                 ) {
                     manager.triggerHapticFeedback(false)
-                    manager.isSilenceTrimmingEnabled = it
-                    manager.managerScope.launch(Dispatchers.IO) {
-                        manager.prefs.edit().putBoolean("silence_trimming", it).apply()
-                    }
+                    manager.toggleSilenceTrimming(it)
                 }
 
                 Spacer(modifier = Modifier.height(14.dp))
@@ -381,7 +376,7 @@ fun SettingsScreen(
 
                 // 6. Crossfade
                 SettingSwitchRow(
-                    icon = "↔️",
+                    icon = "↔️️",
                     title = "Crossfade",
                     subtitle = "Adjust the fade duration between tracks.",
                     checked = manager.isCrossfadeEnabled,
@@ -532,7 +527,7 @@ fun SettingsScreen(
 
                 Spacer(modifier = Modifier.height(14.dp))
 
-                // 2. Volume Normalization
+                // 2. Volume Normalization (Off by default)
                 SettingSwitchRow(
                     icon = "🔉",
                     title = "Volume Normalization",
