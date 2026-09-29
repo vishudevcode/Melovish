@@ -1,7 +1,6 @@
 package com.melovish.player
 
 import android.app.Activity
-import android.app.Application
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -186,6 +185,8 @@ class MusicManager(private val context: Context) {
 
     private val channelMixingAudioProcessor = ChannelMixingAudioProcessor()
 
+    var isLosslessEnabled by mutableStateOf(prefs.getBoolean("lossless", true))
+
     private val renderersFactory = object : DefaultRenderersFactory(context) {
         override fun buildAudioSink(
             context: Context,
@@ -194,6 +195,8 @@ class MusicManager(private val context: Context) {
         ): AudioSink {
             return DefaultAudioSink.Builder(context)
                 .setAudioProcessors(arrayOf(channelMixingAudioProcessor))
+                .setEnableFloatOutput(true) // 32-bit float PCM for high dynamic range lossless
+                .setEnableAudioTrackPlaybackParams(true)
                 .build()
         }
     }
@@ -205,6 +208,7 @@ class MusicManager(private val context: Context) {
             AudioAttributes.Builder()
                 .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
                 .setUsage(C.USAGE_MEDIA)
+                .setSpatializationBehavior(C.SPATIALIZATION_BEHAVIOR_AUTO)
                 .build(),
             !isAlwaysPlay
         )
@@ -340,7 +344,6 @@ class MusicManager(private val context: Context) {
     var isCrossfadeEnabled by mutableStateOf(prefs.getBoolean("crossfade_enabled", false))
     var crossfadeDuration by mutableFloatStateOf(prefs.getFloat("crossfade_duration", 2.0f))
 
-    var isLosslessEnabled by mutableStateOf(prefs.getBoolean("lossless", true))
     var isVolumeNormalized by mutableStateOf(prefs.getBoolean("vol_norm", false))
     var volumeBoostLevel by mutableFloatStateOf(prefs.getFloat("vol_boost", 100f))
     var isMonoAudio by mutableStateOf(prefs.getBoolean("mono", false))
@@ -412,7 +415,6 @@ class MusicManager(private val context: Context) {
         registerAudioDeviceCallback()
         updateDeviceRoutingAndHighlight()
 
-        // Background asynchronous instant cache loading for zero startup delay
         managerScope.launch(Dispatchers.IO) {
             loadInstantCacheAsync()
         }
@@ -863,6 +865,27 @@ class MusicManager(private val context: Context) {
         }
     }
 
+    fun toggleLosslessAudio(enabled: Boolean) {
+        isLosslessEnabled = enabled
+        managerScope.launch(Dispatchers.IO) {
+            prefs.edit().putBoolean("lossless", enabled).apply()
+        }
+        // Direct hardware spatialization and multi-channel Atmos output configuration
+        val spatialization = if (enabled) {
+            C.SPATIALIZATION_BEHAVIOR_AUTO
+        } else {
+            C.SPATIALIZATION_BEHAVIOR_NEVER
+        }
+        player.setAudioAttributes(
+            AudioAttributes.Builder()
+                .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
+                .setUsage(C.USAGE_MEDIA)
+                .setSpatializationBehavior(spatialization)
+                .build(),
+            !isAlwaysPlay
+        )
+    }
+
     fun toggleMonoAudio(enabled: Boolean) {
         isMonoAudio = enabled
         managerScope.launch(Dispatchers.IO) {
@@ -878,6 +901,7 @@ class MusicManager(private val context: Context) {
                     ChannelMixingMatrix(2, 2, floatArrayOf(0.707f, -0.707f, -0.707f, 0.707f))
                 }
                 isMonoAudio -> {
+                    // True summing mono matrix: both channels receive equal (L + R) / 2
                     ChannelMixingMatrix(2, 2, floatArrayOf(0.5f, 0.5f, 0.5f, 0.5f))
                 }
                 else -> {
@@ -1190,7 +1214,6 @@ class MusicManager(private val context: Context) {
 
                         // 2. Silence Trimming Logic: Skip trailing silent gap without waiting for duration to hit zero
                         if (isSilenceTrimmingEnabled && !isCrossfadeEnabled) {
-                            // If approaching the end of track (last 2 seconds) and player is still active, transition instantly
                             if (remainingMs in 1..800L && player.hasNextMediaItem()) {
                                 playNext()
                             }
@@ -1733,6 +1756,7 @@ class MusicManager(private val context: Context) {
         val lastSavedId = prefs.getLong("last_active_song_id", -1L)
         val candidate = allSongs.find { it.id == lastSavedId } ?: historySongs.firstOrNull() ?: allSongs.firstOrNull() ?: return
 
+        // Accurately resume from last saved position when toggle is ON
         val startPosition = if (isResumeFirstOnly) {
             getSavedPosition(candidate.id)
         } else {

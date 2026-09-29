@@ -328,7 +328,7 @@ fun SettingsScreen(
 
                 Spacer(modifier = Modifier.height(14.dp))
 
-                // 3. Resume the First File (Formerly "Resume only the first file")
+                // 3. Resume the First File
                 SettingSwitchRow(
                     icon = "⏯️",
                     title = "Resume the First File",
@@ -345,7 +345,7 @@ fun SettingsScreen(
 
                 Spacer(modifier = Modifier.height(14.dp))
 
-                // 4. Silence Trimming (Shifted above Fade on start)
+                // 4. Silence Trimming (Shifted directly above Fade on start)
                 SettingSwitchRow(
                     icon = "♾️",
                     title = "Silence Trimming",
@@ -527,10 +527,7 @@ fun SettingsScreen(
                     textColor = textColor
                 ) {
                     manager.triggerHapticFeedback(false)
-                    manager.isLosslessEnabled = it
-                    manager.managerScope.launch(Dispatchers.IO) {
-                        manager.prefs.edit().putBoolean("lossless", it).apply()
-                    }
+                    manager.toggleLosslessAudio(it)
                 }
 
                 Spacer(modifier = Modifier.height(14.dp))
@@ -1145,7 +1142,7 @@ fun CircularColorPickerDialog(
                                     val dx = (touch.x - center.x).toDouble()
                                     val dy = (touch.y - center.y).toDouble()
                                     val dist = sqrt(dx * dx + dy * dy)
-                                    val radius = (size.width.toFloat() / 2f).toDouble()
+                                    val radius = (size.width / 2f).toDouble()
                                     if (dist >= radius * 0.65) {
                                         var angle = Math.toDegrees(atan2(dy, dx)).toFloat()
                                         if (angle < 0f) angle += 360f
