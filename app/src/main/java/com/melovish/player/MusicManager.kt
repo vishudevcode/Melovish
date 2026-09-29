@@ -1,6 +1,7 @@
 package com.melovish.player
 
 import android.app.Activity
+import android.app.Application
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -63,6 +64,7 @@ import androidx.media3.exoplayer.audio.DefaultAudioSink
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaStyleNotificationHelper
 import kotlinx.collections.immutable.toImmutableList
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -118,7 +120,9 @@ class MusicManager(private val context: Context) {
     }
 
     private val exceptionHandler = CoroutineExceptionHandler { _, throwable ->
-        throwable.printStackTrace()
+        if (throwable !is CancellationException) {
+            throwable.printStackTrace()
+        }
     }
 
     val managerScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate + exceptionHandler)
@@ -678,7 +682,9 @@ class MusicManager(private val context: Context) {
         selectedEqPreset = "Custom"
         if (!isEqEnabled) {
             isEqEnabled = true
-            prefs.edit().putBoolean("eq_enabled", true).apply()
+            managerScope.launch(Dispatchers.IO) {
+                prefs.edit().putBoolean("eq_enabled", true).apply()
+            }
         }
         managerScope.launch(Dispatchers.IO) {
             prefs.edit().putInt("eq_band_$band", level).putString("selected_eq_preset", "Custom").apply()
@@ -693,21 +699,26 @@ class MusicManager(private val context: Context) {
         selectedEqPreset = presetName
         if (!isEqEnabled) {
             isEqEnabled = true
-            prefs.edit().putBoolean("eq_enabled", true).apply()
+            managerScope.launch(Dispatchers.IO) {
+                prefs.edit().putBoolean("eq_enabled", true).apply()
+            }
         }
-        managerScope.launch(Dispatchers.IO) {
-            prefs.edit().putString("selected_eq_preset", presetName).apply()
-        }
-
         val curve = standardPresetCurves[presetName] ?: standardPresetCurves["Flat"] ?: listOf(0, 0, 0, 0, 0)
         for (i in 0 until eqBandsCount) {
             val lvl = if (i < curve.size) curve[i] else 0
             eqBandLevels[i] = lvl
-            prefs.edit().putInt("eq_band_$i", lvl).apply()
             try {
                 equalizer?.enabled = true
                 equalizer?.setBandLevel(i.toShort(), lvl.coerceIn(eqMinLevel, eqMaxLevel).toShort())
             } catch (_: Exception) {}
+        }
+        managerScope.launch(Dispatchers.IO) {
+            val editor = prefs.edit().putString("selected_eq_preset", presetName)
+            for (i in 0 until eqBandsCount) {
+                val lvl = if (i < curve.size) curve[i] else 0
+                editor.putInt("eq_band_$i", lvl)
+            }
+            editor.apply()
         }
     }
 
@@ -727,7 +738,9 @@ class MusicManager(private val context: Context) {
         bassBoostPercent = percent
         if (!isEqEnabled) {
             isEqEnabled = true
-            prefs.edit().putBoolean("eq_enabled", true).apply()
+            managerScope.launch(Dispatchers.IO) {
+                prefs.edit().putBoolean("eq_enabled", true).apply()
+            }
         }
         managerScope.launch(Dispatchers.IO) {
             prefs.edit().putInt("bass_boost", percent).apply()
@@ -742,7 +755,9 @@ class MusicManager(private val context: Context) {
         virtualizerPercent = percent
         if (!isEqEnabled) {
             isEqEnabled = true
-            prefs.edit().putBoolean("eq_enabled", true).apply()
+            managerScope.launch(Dispatchers.IO) {
+                prefs.edit().putBoolean("eq_enabled", true).apply()
+            }
         }
         managerScope.launch(Dispatchers.IO) {
             prefs.edit().putInt("virtualizer", percent).apply()
@@ -1450,7 +1465,7 @@ class MusicManager(private val context: Context) {
         }
     }
 
-    // Instant zero-lag track playback
+    // Instant zero-lag track playback (with strict order-matching check to prevent sorting glitches)
     fun playSong(song: Song, queue: List<Song>, section: String, initialPositionMs: Long = 0L) {
         val targetIndex = queue.indexOfFirst { it.id == song.id }.coerceAtLeast(0)
 
@@ -1459,9 +1474,11 @@ class MusicManager(private val context: Context) {
         duration = song.duration
         isPlaying = true
 
+        // Strict order equality check: Only reuse queue if section name, item count, AND song IDs in exact sequence match
         val isSameQueue = currentSectionName == section &&
                 playbackQueue.size == queue.size &&
-                player.mediaItemCount == queue.size
+                player.mediaItemCount == queue.size &&
+                playbackQueue.indices.all { i -> playbackQueue[i].id == queue[i].id }
 
         currentSectionName = section
 
@@ -1708,7 +1725,9 @@ class MusicManager(private val context: Context) {
     }
 
     fun saveSongPosition(songId: Long, positionMs: Long) {
-        prefs.edit().putLong("last_pos_$songId", positionMs).putLong("last_active_song_id", songId).apply()
+        managerScope.launch(Dispatchers.IO) {
+            prefs.edit().putLong("last_pos_$songId", positionMs).putLong("last_active_song_id", songId).apply()
+        }
     }
 
     fun getSavedPosition(songId: Long): Long {

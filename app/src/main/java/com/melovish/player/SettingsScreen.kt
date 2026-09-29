@@ -64,9 +64,12 @@ import androidx.media3.common.util.UnstableApi
 import coil.compose.AsyncImage
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.toImmutableList
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import java.io.File
 import kotlin.math.atan2
 import kotlin.math.cos
+import kotlin.math.roundToInt
 import kotlin.math.sin
 import kotlin.math.sqrt
 
@@ -316,7 +319,9 @@ fun SettingsScreen(
                 ) {
                     manager.triggerHapticFeedback(false)
                     manager.isColorfulPlayer = it
-                    manager.prefs.edit().putBoolean("colorful_player", it).apply()
+                    manager.managerScope.launch(Dispatchers.IO) {
+                        manager.prefs.edit().putBoolean("colorful_player", it).apply()
+                    }
                 }
 
                 Spacer(modifier = Modifier.height(14.dp))
@@ -330,7 +335,9 @@ fun SettingsScreen(
                 ) {
                     manager.triggerHapticFeedback(false)
                     manager.isResumeFirstOnly = it
-                    manager.prefs.edit().putBoolean("resume_first", it).apply()
+                    manager.managerScope.launch(Dispatchers.IO) {
+                        manager.prefs.edit().putBoolean("resume_first", it).apply()
+                    }
                 }
 
                 Spacer(modifier = Modifier.height(14.dp))
@@ -344,7 +351,9 @@ fun SettingsScreen(
                 ) {
                     manager.triggerHapticFeedback(false)
                     manager.isFadeOnStart = it
-                    manager.prefs.edit().putBoolean("fade_start", it).apply()
+                    manager.managerScope.launch(Dispatchers.IO) {
+                        manager.prefs.edit().putBoolean("fade_start", it).apply()
+                    }
                 }
 
                 Spacer(modifier = Modifier.height(14.dp))
@@ -358,7 +367,9 @@ fun SettingsScreen(
                 ) {
                     manager.triggerHapticFeedback(false)
                     manager.isGaplessEnabled = it
-                    manager.prefs.edit().putBoolean("gapless", it).apply()
+                    manager.managerScope.launch(Dispatchers.IO) {
+                        manager.prefs.edit().putBoolean("gapless", it).apply()
+                    }
                 }
 
                 Spacer(modifier = Modifier.height(14.dp))
@@ -372,7 +383,9 @@ fun SettingsScreen(
                 ) {
                     manager.triggerHapticFeedback(false)
                     manager.isCrossfadeEnabled = it
-                    manager.prefs.edit().putBoolean("crossfade_enabled", it).apply()
+                    manager.managerScope.launch(Dispatchers.IO) {
+                        manager.prefs.edit().putBoolean("crossfade_enabled", it).apply()
+                    }
                 }
 
                 if (manager.isCrossfadeEnabled) {
@@ -394,12 +407,15 @@ fun SettingsScreen(
                         }
                         Slider(
                             value = manager.crossfadeDuration,
-                            onValueChange = {
-                                val rounded = it.toInt()
-                                if (rounded.toFloat() != manager.crossfadeDuration) {
+                            onValueChange = { newValue ->
+                                val targetInt = newValue.roundToInt().coerceIn(1, 12)
+                                val targetFloat = targetInt.toFloat()
+                                if (targetFloat != manager.crossfadeDuration) {
                                     manager.triggerHapticFeedback(false)
-                                    manager.crossfadeDuration = rounded.toFloat()
-                                    manager.prefs.edit().putFloat("crossfade_duration", rounded.toFloat()).apply()
+                                    manager.crossfadeDuration = targetFloat
+                                    manager.managerScope.launch(Dispatchers.IO) {
+                                        manager.prefs.edit().putFloat("crossfade_duration", targetFloat).apply()
+                                    }
                                 }
                             },
                             valueRange = 1f..12f,
@@ -431,7 +447,9 @@ fun SettingsScreen(
                         onCheckedChange = { isEnabled ->
                             manager.triggerHapticFeedback(false)
                             isTransitionEnabled = isEnabled
-                            manager.prefs.edit().putBoolean("pager_transition_enabled", isEnabled).apply()
+                            manager.managerScope.launch(Dispatchers.IO) {
+                                manager.prefs.edit().putBoolean("pager_transition_enabled", isEnabled).apply()
+                            }
 
                             if (isEnabled) {
                                 manager.setPagerTransition(rememberedCustomTransition)
@@ -459,7 +477,9 @@ fun SettingsScreen(
                                         .clickable {
                                             manager.triggerHapticFeedback(false)
                                             rememberedCustomTransition = effect
-                                            manager.prefs.edit().putString("pager_transition_custom_saved", effect.name).apply()
+                                            manager.managerScope.launch(Dispatchers.IO) {
+                                                manager.prefs.edit().putString("pager_transition_custom_saved", effect.name).apply()
+                                            }
                                             manager.setPagerTransition(effect)
                                         }
                                         .padding(horizontal = 14.dp, vertical = 8.dp)
@@ -502,7 +522,9 @@ fun SettingsScreen(
                 ) {
                     manager.triggerHapticFeedback(false)
                     manager.isLosslessEnabled = it
-                    manager.prefs.edit().putBoolean("lossless", it).apply()
+                    manager.managerScope.launch(Dispatchers.IO) {
+                        manager.prefs.edit().putBoolean("lossless", it).apply()
+                    }
                 }
 
                 Spacer(modifier = Modifier.height(14.dp))
@@ -562,7 +584,9 @@ fun SettingsScreen(
                         onCheckedChange = { isEnabled ->
                             manager.triggerHapticFeedback(false)
                             isVolumeBoostEnabled = isEnabled
-                            manager.prefs.edit().putBoolean("vol_boost_enabled", isEnabled).apply()
+                            manager.managerScope.launch(Dispatchers.IO) {
+                                manager.prefs.edit().putBoolean("vol_boost_enabled", isEnabled).apply()
+                            }
 
                             if (isEnabled) {
                                 manager.setVolumeBoost(rememberedVolumeBoostLevel)
@@ -587,7 +611,9 @@ fun SettingsScreen(
                                 if (rounded != manager.volumeBoostLevel.toInt()) {
                                     if (rounded % 10 == 0) manager.triggerHapticFeedback(false)
                                     rememberedVolumeBoostLevel = liveLevel
-                                    manager.prefs.edit().putFloat("saved_vol_boost_level", liveLevel).apply()
+                                    manager.managerScope.launch(Dispatchers.IO) {
+                                        manager.prefs.edit().putFloat("saved_vol_boost_level", liveLevel).apply()
+                                    }
                                     manager.setVolumeBoost(liveLevel)
                                 }
                             },
@@ -878,7 +904,7 @@ fun ManageHiddenFoldersFullScreen(
                                 Text("Excluded • Tap to unhide", color = Color(0xFFE57373), fontSize = 12.sp)
                             }
                         }
-                        Text("👁️", fontSize = 18.sp)
+                        Text("👁", fontSize = 18.sp)
                     }
                 }
             }
