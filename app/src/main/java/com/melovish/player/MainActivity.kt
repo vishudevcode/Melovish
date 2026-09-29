@@ -101,6 +101,8 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.drawscope.Fill
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.PointerInputChange
@@ -1713,7 +1715,7 @@ fun FolderColourPickerDialog(
                                     val dx = (touch.x - center.x).toDouble()
                                     val dy = (touch.y - center.y).toDouble()
                                     val dist = sqrt(dx * dx + dy * dy)
-                                    val radius = (size.width / 2f).toDouble()
+                                    val radius = (size.width.toFloat() / 2f).toDouble()
                                     if (dist >= radius * 0.65) {
                                         var angle = Math.toDegrees(atan2(dy, dx)).toFloat()
                                         if (angle < 0f) angle += 360f
@@ -1732,12 +1734,12 @@ fun FolderColourPickerDialog(
                         val radius = size.width / 2f
                         val ringThickness = radius * 0.28f
                         val sweepColors = (0..360 step 30).map { Color(android.graphics.Color.HSVToColor(floatArrayOf(it.toFloat(), 1f, 1f))) }
-                        drawCircle(brush = Brush.sweepGradient(sweepColors, center), radius = radius - (ringThickness / 2f), style = Stroke(width = ringThickness))
+                        drawCircle(brush = Brush.sweepGradient(sweepColors, center), radius = radius - (ringThickness / 2f), style = androidx.compose.ui.graphics.drawscope.Stroke(width = ringThickness))
 
                         val thumbRad = Math.toRadians(hue.toDouble())
                         val thumbDist = (radius - (ringThickness / 2f)).toDouble()
                         val thumbPos = Offset((center.x.toDouble() + (thumbDist * cos(thumbRad))).toFloat(), (center.y.toDouble() + (thumbDist * sin(thumbRad))).toFloat())
-                        drawCircle(Color.White, radius = 12.dp.toPx(), center = thumbPos, style = Stroke(3.dp.toPx()))
+                        drawCircle(Color.White, radius = 12.dp.toPx(), center = thumbPos, style = androidx.compose.ui.graphics.drawscope.Stroke(3.dp.toPx()))
                         drawCircle(Color(android.graphics.Color.HSVToColor(floatArrayOf(hue, 1f, 1f))), radius = 9.dp.toPx(), center = thumbPos)
 
                         val halfBox = (radius * 0.55f)
@@ -1746,7 +1748,7 @@ fun FolderColourPickerDialog(
                         drawRect(brush = Brush.horizontalGradient(listOf(Color.White, Color(android.graphics.Color.HSVToColor(floatArrayOf(hue, 1f, 1f))))), topLeft = boxTopLeft, size = boxSize)
                         drawRect(brush = Brush.verticalGradient(listOf(Color.Transparent, Color.Black)), topLeft = boxTopLeft, size = boxSize)
                         val targetPos = Offset(boxTopLeft.x + (sat * boxSize.width), boxTopLeft.y + ((1f - value) * boxSize.height))
-                        drawCircle(Color.White, radius = 8.dp.toPx(), center = targetPos, style = Stroke(2.5f.dp.toPx()))
+                        drawCircle(Color.White, radius = 8.dp.toPx(), center = targetPos, style = androidx.compose.ui.graphics.drawscope.Stroke(2.5f.dp.toPx()))
                     }
                 }
                 Spacer(modifier = Modifier.height(18.dp))
