@@ -303,7 +303,8 @@ fun SettingsScreen(
                     title = "Always play",
                     subtitle = "Always play audio in background",
                     checked = manager.isAlwaysPlay,
-                    textColor = textColor
+                    textColor = textColor,
+                    accentColor = accent
                 ) {
                     manager.triggerHapticFeedback(false)
                     manager.toggleAlwaysPlay(it)
@@ -317,7 +318,8 @@ fun SettingsScreen(
                     title = "Colourful Player",
                     subtitle = "Player background adapts to album art.",
                     checked = manager.isColorfulPlayer,
-                    textColor = textColor
+                    textColor = textColor,
+                    accentColor = accent
                 ) {
                     manager.triggerHapticFeedback(false)
                     manager.isColorfulPlayer = it
@@ -334,7 +336,8 @@ fun SettingsScreen(
                     title = "Resume the First File",
                     subtitle = "Playback will only resume for the first track.",
                     checked = manager.isResumeFirstOnly,
-                    textColor = textColor
+                    textColor = textColor,
+                    accentColor = accent
                 ) {
                     manager.triggerHapticFeedback(false)
                     manager.isResumeFirstOnly = it
@@ -345,13 +348,14 @@ fun SettingsScreen(
 
                 Spacer(modifier = Modifier.height(14.dp))
 
-                // 4. Silence Trimming (Shifted directly above Fade on start)
+                // 4. Silence Trimming
                 SettingSwitchRow(
                     icon = "♾️",
                     title = "Silence Trimming",
                     subtitle = "Skips silent gaps at the end of tracks",
                     checked = manager.isSilenceTrimmingEnabled,
-                    textColor = textColor
+                    textColor = textColor,
+                    accentColor = accent
                 ) {
                     manager.triggerHapticFeedback(false)
                     manager.isSilenceTrimmingEnabled = it
@@ -368,7 +372,8 @@ fun SettingsScreen(
                     title = "Fade on start",
                     subtitle = "Gently fades in audio when playback begins.",
                     checked = manager.isFadeOnStart,
-                    textColor = textColor
+                    textColor = textColor,
+                    accentColor = accent
                 ) {
                     manager.triggerHapticFeedback(false)
                     manager.isFadeOnStart = it
@@ -385,7 +390,8 @@ fun SettingsScreen(
                     title = "Crossfade",
                     subtitle = "Adjust the fade duration between tracks.",
                     checked = manager.isCrossfadeEnabled,
-                    textColor = textColor
+                    textColor = textColor,
+                    accentColor = accent
                 ) {
                     manager.triggerHapticFeedback(false)
                     manager.isCrossfadeEnabled = it
@@ -462,7 +468,11 @@ fun SettingsScreen(
                             } else {
                                 manager.setPagerTransition(PagerTransitionEffect.SLIDE)
                             }
-                        }
+                        },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = Color.White,
+                            checkedTrackColor = accent
+                        )
                     )
                 }
 
@@ -524,7 +534,8 @@ fun SettingsScreen(
                     title = "Lossless Audio",
                     subtitle = "Use Dolby Atmos and Hi-Res Audio.",
                     checked = manager.isLosslessEnabled,
-                    textColor = textColor
+                    textColor = textColor,
+                    accentColor = accent
                 ) {
                     manager.triggerHapticFeedback(false)
                     manager.toggleLosslessAudio(it)
@@ -538,7 +549,8 @@ fun SettingsScreen(
                     title = "Volume Normalization",
                     subtitle = "Set the same loudness level for all tracks.",
                     checked = manager.isVolumeNormalized,
-                    textColor = textColor
+                    textColor = textColor,
+                    accentColor = accent
                 ) {
                     manager.triggerHapticFeedback(false)
                     manager.toggleVolumeNormalization(it)
@@ -552,7 +564,8 @@ fun SettingsScreen(
                     title = "Mono Audio",
                     subtitle = "Combine left and right channels.",
                     checked = manager.isMonoAudio,
-                    textColor = textColor
+                    textColor = textColor,
+                    accentColor = accent
                 ) {
                     manager.triggerHapticFeedback(false)
                     manager.toggleMonoAudio(it)
@@ -596,7 +609,11 @@ fun SettingsScreen(
                             } else {
                                 manager.setVolumeBoost(100f)
                             }
-                        }
+                        },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = Color.White,
+                            checkedTrackColor = accent
+                        )
                     )
                 }
 
@@ -700,7 +717,10 @@ fun SettingsScreen(
                                 manager.triggerHapticFeedback(false)
                                 manager.toggleEqualizer(it)
                             },
-                            colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = accent)
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = Color.White,
+                                checkedTrackColor = accent
+                            )
                         )
                     }
                 }
@@ -786,7 +806,8 @@ fun SettingsScreen(
                     title = "Haptic Feedback",
                     subtitle = "Vibrate when adjusting sliders, switches, and scrubbers",
                     checked = manager.isHapticsEnabled,
-                    textColor = textColor
+                    textColor = textColor,
+                    accentColor = accent
                 ) {
                     manager.toggleHaptics(it)
                 }
@@ -815,6 +836,7 @@ fun SettingSwitchRow(
     subtitle: String,
     checked: Boolean,
     textColor: Color,
+    accentColor: Color,
     onCheckedChange: (Boolean) -> Unit
 ) {
     Row(
@@ -832,7 +854,11 @@ fun SettingSwitchRow(
         }
         Switch(
             checked = checked,
-            onCheckedChange = onCheckedChange
+            onCheckedChange = onCheckedChange,
+            colors = SwitchDefaults.colors(
+                checkedThumbColor = Color.White,
+                checkedTrackColor = accentColor
+            )
         )
     }
 }
