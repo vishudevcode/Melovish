@@ -49,6 +49,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
@@ -56,6 +58,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -316,225 +319,239 @@ fun MelovishRootApp(manager: MusicManager) {
     }
 
     val bg = if (isDark) Color(0xFF0A0F1D) else Color(0xFFF8F9FA)
+    val statusBarScrim = if (isDark) Color(0xCC0A0F1D) else Color(0xEEEDF2F7)
 
     Surface(
-        modifier = Modifier
-            .fillMaxSize()
-            .statusBarsPadding(),
+        modifier = Modifier.fillMaxSize(),
         color = bg
     ) {
-        Box(
+        Column(
             modifier = Modifier
                 .fillMaxSize()
                 .background(bg)
-                .nestedScroll(topBarNestedScrollConnection)
         ) {
-            Column(modifier = Modifier.fillMaxSize()) {
-                if (isMainTabScreen) {
-                    AnimatedVisibility(
-                        visible = isTopBarVisible,
-                        enter = expandVertically(
-                            animationSpec = spring(stiffness = 550f, dampingRatio = 0.85f)
-                        ) + fadeIn(animationSpec = tween(180)),
-                        exit = shrinkVertically(
-                            animationSpec = spring(stiffness = 550f, dampingRatio = 0.85f)
-                        ) + fadeOut(animationSpec = tween(140))
-                    ) {
-                        TopBar(
-                            manager = manager,
-                            onProfileClick = {
-                                previousActiveScreen = activeScreen
-                                activeScreen = "profile"
-                            },
-                            onSettingsClick = {
-                                previousActiveScreen = activeScreen
-                                activeScreen = "settings"
-                            }
-                        )
-                    }
-                }
+            // Dedicated status bar protection strip: prevents system clock & battery from washing out
+            val statusBarTopPadding = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(statusBarTopPadding)
+                    .background(statusBarScrim)
+            )
 
-                Box(modifier = Modifier.weight(1f)) {
-                    when {
-                        activeScreen == "settings" -> SettingsScreen(
-                            manager = manager,
-                            onBackClick = { activeScreen = previousActiveScreen },
-                            onOpenProfile = {
-                                previousActiveScreen = activeScreen
-                                activeScreen = "profile"
-                            },
-                            onOpenEqualizer = { isSettingsEqOpen = true }
-                        )
-                        activeScreen == "profile" -> ProfileScreen(
-                            manager = manager,
-                            onBackClick = { activeScreen = previousActiveScreen }
-                        )
-                        selectedArtist != null -> {
-                            ArtistDetailScreen(
-                                artistItem = selectedArtist!!,
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .nestedScroll(topBarNestedScrollConnection)
+            ) {
+                Column(modifier = Modifier.fillMaxSize()) {
+                    if (isMainTabScreen) {
+                        AnimatedVisibility(
+                            visible = isTopBarVisible,
+                            enter = expandVertically(
+                                animationSpec = spring(stiffness = 550f, dampingRatio = 0.85f)
+                            ) + fadeIn(animationSpec = tween(180)),
+                            exit = shrinkVertically(
+                                animationSpec = spring(stiffness = 550f, dampingRatio = 0.85f)
+                            ) + fadeOut(animationSpec = tween(140))
+                        ) {
+                            TopBar(
                                 manager = manager,
-                                isDark = isDark,
-                                onBack = { selectedArtist = null },
-                                onSongMenuClick = { activeSongForMenu = it }
+                                onProfileClick = {
+                                    previousActiveScreen = activeScreen
+                                    activeScreen = "profile"
+                                },
+                                onSettingsClick = {
+                                    previousActiveScreen = activeScreen
+                                    activeScreen = "settings"
+                                }
                             )
                         }
-                        selectedAlbum != null -> {
-                            FilteredSongsScreen(
-                                title = "Album: ${selectedAlbum!!}",
-                                songs = manager.allSongs.filter { it.album.equals(selectedAlbum, ignoreCase = true) }.toImmutableList(),
+                    }
+
+                    Box(modifier = Modifier.weight(1f)) {
+                        when {
+                            activeScreen == "settings" -> SettingsScreen(
                                 manager = manager,
-                                isDark = isDark,
-                                onBack = { selectedAlbum = null },
+                                onBackClick = { activeScreen = previousActiveScreen },
+                                onOpenProfile = {
+                                    previousActiveScreen = activeScreen
+                                    activeScreen = "profile"
+                                },
+                                onOpenEqualizer = { isSettingsEqOpen = true }
+                            )
+                            activeScreen == "profile" -> ProfileScreen(
+                                manager = manager,
+                                onBackClick = { activeScreen = previousActiveScreen }
+                            )
+                            selectedArtist != null -> {
+                                ArtistDetailScreen(
+                                    artistItem = selectedArtist!!,
+                                    manager = manager,
+                                    isDark = isDark,
+                                    onBack = { selectedArtist = null },
+                                    onSongMenuClick = { activeSongForMenu = it }
+                                )
+                            }
+                            selectedAlbum != null -> {
+                                FilteredSongsScreen(
+                                    title = "Album: ${selectedAlbum!!}",
+                                    songs = manager.allSongs.filter { it.album.equals(selectedAlbum, ignoreCase = true) }.toImmutableList(),
+                                    manager = manager,
+                                    isDark = isDark,
+                                    onBack = { selectedAlbum = null },
+                                    onSongMenuClick = { activeSongForMenu = it }
+                                )
+                            }
+                            selectedPlaylist != null -> {
+                                PlaylistDetailScreen(
+                                    playlist = selectedPlaylist!!,
+                                    manager = manager,
+                                    isDark = isDark,
+                                    onBack = { selectedPlaylist = null },
+                                    onSongMenuClick = { activeSongForMenu = it },
+                                    onFolderClick = { folder -> selectedFolder = folder }
+                                )
+                            }
+                            selectedFolder != null -> {
+                                FolderSongsScreen(
+                                    folderName = selectedFolder!!,
+                                    manager = manager,
+                                    isDark = isDark,
+                                    onBack = { selectedFolder = null },
+                                    onSongMenuClick = { activeSongForMenu = it }
+                                )
+                            }
+                            activeScreen == "artists" -> ArtistsScreen(
+                                manager = manager,
+                                listState = artistsListState,
+                                onArtistClick = { artist -> selectedArtist = artist }
+                            )
+                            activeScreen == "search" -> SearchScreen(
+                                manager = manager,
+                                listState = searchListState,
                                 onSongMenuClick = { activeSongForMenu = it }
                             )
-                        }
-                        selectedPlaylist != null -> {
-                            PlaylistDetailScreen(
-                                playlist = selectedPlaylist!!,
+                            activeScreen == "library" -> LibraryScreen(
                                 manager = manager,
-                                isDark = isDark,
-                                onBack = { selectedPlaylist = null },
-                                onSongMenuClick = { activeSongForMenu = it },
+                                listState = libraryListState,
                                 onFolderClick = { folder -> selectedFolder = folder }
                             )
-                        }
-                        selectedFolder != null -> {
-                            FolderSongsScreen(
-                                folderName = selectedFolder!!,
+                            else -> HomeScreen(
                                 manager = manager,
-                                isDark = isDark,
-                                onBack = { selectedFolder = null },
+                                listState = homeListState,
+                                onPlaylistClick = { pl -> selectedPlaylist = pl },
+                                onResumeClick = { manager.resumeLastPlayed() },
                                 onSongMenuClick = { activeSongForMenu = it }
                             )
                         }
-                        activeScreen == "artists" -> ArtistsScreen(
-                            manager = manager,
-                            listState = artistsListState,
-                            onArtistClick = { artist -> selectedArtist = artist }
-                        )
-                        activeScreen == "search" -> SearchScreen(
-                            manager = manager,
-                            listState = searchListState,
-                            onSongMenuClick = { activeSongForMenu = it }
-                        )
-                        activeScreen == "library" -> LibraryScreen(
-                            manager = manager,
-                            listState = libraryListState,
-                            onFolderClick = { folder -> selectedFolder = folder }
-                        )
-                        else -> HomeScreen(
-                            manager = manager,
-                            listState = homeListState,
-                            onPlaylistClick = { pl -> selectedPlaylist = pl },
-                            onResumeClick = { manager.resumeLastPlayed() },
-                            onSongMenuClick = { activeSongForMenu = it }
-                        )
                     }
-                }
 
-                if (manager.currentSong != null && !isPlayerExpanded) {
-                    MiniPlayerDock(manager = manager, onClick = { isPlayerExpanded = true })
-                }
+                    if (manager.currentSong != null && !isPlayerExpanded) {
+                        MiniPlayerDock(manager = manager, onClick = { isPlayerExpanded = true })
+                    }
 
-                if (isMainTabScreen) {
-                    BottomNavBar(
-                        manager = manager,
-                        activeTab = activeScreen,
-                        onTabSelected = { tab ->
-                            if (activeScreen == tab) {
-                                coroutineScope.launch {
-                                    isTopBarVisible = true
-                                    when (tab) {
-                                        "home" -> homeListState.animateScrollToItem(0)
-                                        "library" -> libraryListState.animateScrollToItem(0)
-                                        "artists" -> artistsListState.animateScrollToItem(0)
-                                        "search" -> searchListState.animateScrollToItem(0)
+                    if (isMainTabScreen) {
+                        BottomNavBar(
+                            manager = manager,
+                            activeTab = activeScreen,
+                            onTabSelected = { tab ->
+                                if (activeScreen == tab) {
+                                    coroutineScope.launch {
+                                        isTopBarVisible = true
+                                        when (tab) {
+                                            "home" -> homeListState.animateScrollToItem(0)
+                                            "library" -> libraryListState.animateScrollToItem(0)
+                                            "artists" -> artistsListState.animateScrollToItem(0)
+                                            "search" -> searchListState.animateScrollToItem(0)
+                                        }
                                     }
+                                } else {
+                                    isTopBarVisible = true
+                                    activeScreen = tab
                                 }
-                            } else {
-                                isTopBarVisible = true
-                                activeScreen = tab
                             }
-                        }
-                    )
+                        )
+                    }
                 }
             }
+        }
 
-            AnimatedVisibility(
-                visible = isPlayerExpanded,
-                enter = slideInVertically(initialOffsetY = { it }),
-                exit = slideOutVertically(targetOffsetY = { it })
-            ) {
-                FullPlayerSheet(manager = manager, onDismiss = { isPlayerExpanded = false })
-            }
+        AnimatedVisibility(
+            visible = isPlayerExpanded,
+            enter = slideInVertically(initialOffsetY = { it }),
+            exit = slideOutVertically(targetOffsetY = { it })
+        ) {
+            FullPlayerSheet(manager = manager, onDismiss = { isPlayerExpanded = false })
+        }
 
-            if (isSettingsEqOpen) {
-                EqualizerSheet(manager = manager, onDismiss = { isSettingsEqOpen = false })
-            }
+        if (isSettingsEqOpen) {
+            EqualizerSheet(manager = manager, onDismiss = { isSettingsEqOpen = false })
+        }
 
-            if (activeSongForMenu != null) {
-                val s = activeSongForMenu!!
-                SongItemActionModal(
-                    song = s,
-                    isDark = isDark,
-                    onDismiss = { activeSongForMenu = null },
-                    onPlayNext = {
-                        manager.playNextInQueue(s)
-                        activeSongForMenu = null
-                    },
-                    onAddToPlaylist = {
-                        activeAddToPlaylistSong = s
-                        activeSongForMenu = null
-                    },
-                    onGoToAlbum = {
-                        selectedAlbum = s.album
-                        activeSongForMenu = null
-                    },
-                    onGoToArtist = {
-                        val matchingArtist = manager.parsedArtistsList.find { it.name.equals(s.artist, ignoreCase = true) }
-                            ?: ArtistItem(name = s.artist, songs = listOf(s).toImmutableList())
-                        selectedArtist = matchingArtist
-                        activeSongForMenu = null
-                    },
-                    onShare = {
-                        val shareIntent = Intent(Intent.ACTION_SEND).apply {
-                            type = "audio/*"
-                            putExtra(Intent.EXTRA_STREAM, s.uri)
-                        }
-                        context.startActivity(Intent.createChooser(shareIntent, "Share ${s.title}"))
-                        activeSongForMenu = null
-                    },
-                    onTagEditor = {
-                        activeTagEditSong = s
-                        activeSongForMenu = null
-                    },
-                    onDetails = {
-                        activeSongInfo = s
-                        activeSongForMenu = null
-                    },
-                    onSetRingtone = {
-                        manager.setAsRingtone(s)
-                        activeSongForMenu = null
-                    },
-                    onDelete = {
-                        manager.deleteSongFromDevice(s)
-                        activeSongForMenu = null
+        if (activeSongForMenu != null) {
+            val s = activeSongForMenu!!
+            SongItemActionModal(
+                song = s,
+                isDark = isDark,
+                onDismiss = { activeSongForMenu = null },
+                onPlayNext = {
+                    manager.playNextInQueue(s)
+                    activeSongForMenu = null
+                },
+                onAddToPlaylist = {
+                    activeAddToPlaylistSong = s
+                    activeSongForMenu = null
+                },
+                onGoToAlbum = {
+                    selectedAlbum = s.album
+                    activeSongForMenu = null
+                },
+                onGoToArtist = {
+                    val matchingArtist = manager.parsedArtistsList.find { it.name.equals(s.artist, ignoreCase = true) }
+                        ?: ArtistItem(name = s.artist, songs = listOf(s).toImmutableList())
+                    selectedArtist = matchingArtist
+                    activeSongForMenu = null
+                },
+                onShare = {
+                    val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                        type = "audio/*"
+                        putExtra(Intent.EXTRA_STREAM, s.uri)
                     }
-                )
-            }
+                    context.startActivity(Intent.createChooser(shareIntent, "Share ${s.title}"))
+                    activeSongForMenu = null
+                },
+                onTagEditor = {
+                    activeTagEditSong = s
+                    activeSongForMenu = null
+                },
+                onDetails = {
+                    activeSongInfo = s
+                    activeSongForMenu = null
+                },
+                onSetRingtone = {
+                    manager.setAsRingtone(s)
+                    activeSongForMenu = null
+                },
+                onDelete = {
+                    manager.deleteSongFromDevice(s)
+                    activeSongForMenu = null
+                }
+            )
+        }
 
-            if (activeTagEditSong != null) {
-                TagEditorDialog(manager = manager, song = activeTagEditSong!!, onDismiss = { activeTagEditSong = null })
-            }
+        if (activeTagEditSong != null) {
+            TagEditorDialog(manager = manager, song = activeTagEditSong!!, onDismiss = { activeTagEditSong = null })
+        }
 
-            if (activeAddToPlaylistSong != null) {
-                AddToPlaylistDialog(manager = manager, song = activeAddToPlaylistSong!!, onDismiss = { activeAddToPlaylistSong = null })
-            }
+        if (activeAddToPlaylistSong != null) {
+            AddToPlaylistDialog(manager = manager, song = activeAddToPlaylistSong!!, onDismiss = { activeAddToPlaylistSong = null })
+        }
 
-            if (activeSongInfo != null) {
-                val s = activeSongInfo!!
-                SongInfoDialog(song = s, isDark = isDark, onDismiss = { activeSongInfo = null })
-            }
+        if (activeSongInfo != null) {
+            val s = activeSongInfo!!
+            SongInfoDialog(song = s, isDark = isDark, onDismiss = { activeSongInfo = null })
         }
     }
 }
@@ -1072,13 +1089,11 @@ fun ArrangePlaylistsDialog(
                                 .fillMaxWidth()
                                 .animateItemPlacement(spring(stiffness = 550f, dampingRatio = 0.85f))
                                 .zIndex(if (isDragging) 10f else 1f)
-                                .graphicsLayer {
-                                    if (isDragging) {
-                                        translationY = draggingOffsetPx
-                                        scaleX = 1.03f
-                                        scaleY = 1.03f
-                                    }
-                                }
+                                .graphicsLayer(
+                                    translationY = if (isDragging) draggingOffsetPx else 0f,
+                                    scaleX = if (isDragging) 1.03f else 1f,
+                                    scaleY = if (isDragging) 1.03f else 1f
+                                )
                                 .clip(RoundedCornerShape(14.dp))
                                 .background(if (isDragging) accent.copy(alpha = 0.2f) else if (isDark) Color(0x1AFFFFFF) else Color(0xFFF1F5F9))
                                 .padding(horizontal = 14.dp, vertical = 10.dp),

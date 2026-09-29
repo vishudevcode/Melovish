@@ -35,6 +35,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
@@ -42,6 +44,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -686,7 +689,7 @@ fun ReorderDragHandle(tint: Color, modifier: Modifier = Modifier) {
     }
 }
 
-// Full Player Sheet
+// Full Player Sheet with Integrated Material You Status Bar Tint
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @UnstableApi
 @Composable
@@ -823,7 +826,6 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
         modifier = Modifier
             .fillMaxSize()
             .background(Brush.verticalGradient(listOf(animBgTop, animBgBottom)))
-            .statusBarsPadding()
             .pointerInput(Unit) {
                 detectVerticalDragGestures { _, dragAmount ->
                     if (dragAmount > 38f) {
@@ -834,345 +836,356 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                 }
             }
     ) {
-        HorizontalPager(
-            state = pagerState,
-            pageSpacing = 16.dp,
-            flingBehavior = PagerDefaults.flingBehavior(
-                state = pagerState,
-                snapAnimationSpec = spring(stiffness = 550f, dampingRatio = 0.82f)
-            ),
-            modifier = Modifier.fillMaxSize()
-        ) { pageIndex ->
-            val pageSong = currentQueue[pageIndex]
-
-            var pageBmp by remember(pageSong.id) { mutableStateOf(manager.getCachedAlbumArt(pageSong.id)) }
-            LaunchedEffect(pageSong.id) {
-                if (pageBmp == null) pageBmp = manager.loadAlbumArtAsync(pageSong)
-            }
-
-            Column(
+        Column(modifier = Modifier.fillMaxSize()) {
+            // Material You Dynamic Status Bar Padding - seamless color with zero gap
+            val statusBarTopPadding = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+            Box(
                 modifier = Modifier
-                    .fillMaxSize()
-                    .graphicsLayer {
-                        val offset = (pagerState.currentPage - pageIndex) + pagerState.currentPageOffsetFraction
-                        when (manager.pagerTransitionEffect) {
-                            PagerTransitionEffect.SLIDE -> {
-                                alpha = 1f
-                                translationX = 0f
-                            }
-                            PagerTransitionEffect.CASCADE -> {
-                                val scale = (1f - (abs(offset) * 0.08f)).coerceIn(0.92f, 1f)
-                                scaleX = scale
-                                scaleY = scale
-                                alpha = (1f - (abs(offset) * 0.35f)).coerceIn(0.65f, 1f)
-                                translationX = offset * -size.width * 0.12f
-                            }
-                            PagerTransitionEffect.CROSSFADE -> {
-                                alpha = (1f - abs(offset)).coerceIn(0f, 1f)
-                            }
-                            PagerTransitionEffect.ROTATE -> {
-                                rotationY = (offset * 18f).coerceIn(-30f, 30f)
-                                cameraDistance = 14f * density
-                                alpha = (1f - (abs(offset) * 0.3f)).coerceIn(0.7f, 1f)
-                            }
-                            PagerTransitionEffect.TUMBLE -> {
-                                rotationZ = (offset * -12f).coerceIn(-18f, 18f)
-                                val scale = (1f - (abs(offset) * 0.10f)).coerceIn(0.90f, 1f)
-                                scaleX = scale
-                                scaleY = scale
-                            }
-                            PagerTransitionEffect.PAGE -> {
-                                if (offset < 0) {
-                                    translationX = -offset * size.width * 0.45f
-                                    val scale = (1f + offset * 0.12f).coerceIn(0.88f, 1f)
-                                    scaleX = scale
-                                    scaleY = scale
-                                }
-                            }
-                        }
-                    }
-                    .padding(horizontal = 24.dp)
-                    .padding(top = 8.dp, bottom = 12.dp)
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    CurvedBackArrowIcon(
-                        tint = animTextPrimary,
-                        modifier = Modifier.size(24.dp).clickable { onDismiss() }
-                    )
-                    Box(
-                        modifier = Modifier
-                            .width(42.dp)
-                            .height(5.dp)
-                            .clip(RoundedCornerShape(3.dp))
-                            .background(animTextSecondary.copy(alpha = 0.4f))
-                            .clickable { onDismiss() }
-                    )
-                    Text(
-                        text = "•••",
-                        fontSize = 20.sp,
-                        fontWeight = FontWeight.Black,
-                        color = animTextPrimary,
-                        modifier = Modifier.clickable { showMenuModal = true }
-                    )
-                }
+                    .fillMaxWidth()
+                    .height(statusBarTopPadding)
+                    .background(animBgTop)
+            )
 
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1.15f)
-                        .padding(vertical = 4.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxHeight()
-                            .aspectRatio(1f)
-                            .shadow(20.dp, RoundedCornerShape(32.dp), spotColor = userAccent)
-                            .clip(RoundedCornerShape(32.dp))
-                            .background(animSurface)
-                            .border(1.5.dp, Color(0x33FFFFFF), RoundedCornerShape(32.dp))
-                            .pointerInput(pageSong.id) {
-                                detectTapGestures(
-                                    onDoubleTap = { tapOffset ->
-                                        manager.triggerHapticFeedback(true)
-                                        if (tapOffset.x < size.width / 2f) {
-                                            showSeekLeftAnim = true
-                                            manager.seekTo((manager.currentPosition - 10000L).coerceAtLeast(0L))
-                                        } else {
-                                            showSeekRightAnim = true
-                                            manager.seekTo((manager.currentPosition + 10000L).coerceAtMost(manager.duration))
-                                        }
-                                    }
-                                )
-                            },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        if (pageBmp != null) {
-                            Image(
-                                bitmap = pageBmp!!.asImageBitmap(),
-                                contentDescription = "Art",
-                                contentScale = ContentScale.Crop,
-                                modifier = Modifier.fillMaxSize()
-                            )
-                        } else {
-                            Text("🎵", fontSize = 110.sp)
-                        }
+            HorizontalPager(
+                state = pagerState,
+                pageSpacing = 16.dp,
+                flingBehavior = PagerDefaults.flingBehavior(
+                    state = pagerState,
+                    snapAnimationSpec = spring(stiffness = 550f, dampingRatio = 0.82f)
+                ),
+                modifier = Modifier.weight(1f).fillMaxWidth()
+            ) { pageIndex ->
+                val pageSong = currentQueue[pageIndex]
 
-                        if (leftSeekAlpha > 0.01f) {
-                            Box(
-                                modifier = Modifier.fillMaxHeight().fillMaxWidth(0.5f).align(Alignment.CenterStart).background(Color(0x66000000).copy(alpha = 0.45f * leftSeekAlpha)),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.graphicsLayer { alpha = leftSeekAlpha }) {
-                                    Text("«", fontSize = 36.sp, color = Color.White, fontWeight = FontWeight.Black)
-                                    Text("10s", fontSize = 16.sp, color = Color.White, fontWeight = FontWeight.Bold)
-                                }
-                            }
-                        }
-
-                        if (rightSeekAlpha > 0.01f) {
-                            Box(
-                                modifier = Modifier.fillMaxHeight().fillMaxWidth(0.5f).align(Alignment.CenterEnd).background(Color(0x66000000).copy(alpha = 0.45f * rightSeekAlpha)),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.graphicsLayer { alpha = rightSeekAlpha }) {
-                                    Text("»", fontSize = 36.sp, color = Color.White, fontWeight = FontWeight.Black)
-                                    Text("10s", fontSize = 16.sp, color = Color.White, fontWeight = FontWeight.Bold)
-                                }
-                            }
-                        }
-                    }
+                var pageBmp by remember(pageSong.id) { mutableStateOf(manager.getCachedAlbumArt(pageSong.id)) }
+                LaunchedEffect(pageSong.id) {
+                    if (pageBmp == null) pageBmp = manager.loadAlbumArtAsync(pageSong)
                 }
 
                 Column(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f)
-                        .padding(horizontal = 4.dp),
-                    verticalArrangement = Arrangement.SpaceEvenly,
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
-                        Text(
-                            text = pageSong.title,
-                            color = animTextPrimary,
-                            fontSize = 22.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            textAlign = TextAlign.Center
-                        )
-                        Spacer(modifier = Modifier.height(3.dp))
-                        Text(
-                            text = "${formatFileSize(pageSong.size)} • ${if (pageSong.artist.isNotBlank()) pageSong.artist else "Unknown Artist"}",
-                            color = animTextSecondary,
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Medium,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            textAlign = TextAlign.Center
-                        )
-                    }
-
-                    val isCurrentActiveTrack = pageSong.id == manager.currentSong?.id
-                    IsolatedScrubberLeaf(
-                        currentPositionMs = if (isCurrentActiveTrack) manager.currentPosition else 0L,
-                        durationMs = if (isCurrentActiveTrack) manager.duration else pageSong.duration,
-                        accentColor = userAccent,
-                        textColor = animTextSecondary,
-                        isDark = isDark,
-                        onSeek = {
-                            manager.triggerHapticFeedback(false)
-                            manager.seekTo(it)
+                        .fillMaxSize()
+                        .graphicsLayer {
+                            val offset = (pagerState.currentPage - pageIndex) + pagerState.currentPageOffsetFraction
+                            when (manager.pagerTransitionEffect) {
+                                PagerTransitionEffect.SLIDE -> {
+                                    alpha = 1f
+                                    translationX = 0f
+                                }
+                                PagerTransitionEffect.CASCADE -> {
+                                    val scale = (1f - (abs(offset) * 0.08f)).coerceIn(0.92f, 1f)
+                                    scaleX = scale
+                                    scaleY = scale
+                                    alpha = (1f - (abs(offset) * 0.35f)).coerceIn(0.65f, 1f)
+                                    translationX = offset * -size.width * 0.12f
+                                }
+                                PagerTransitionEffect.CROSSFADE -> {
+                                    alpha = (1f - abs(offset)).coerceIn(0f, 1f)
+                                }
+                                PagerTransitionEffect.ROTATE -> {
+                                    rotationY = (offset * 18f).coerceIn(-30f, 30f)
+                                    cameraDistance = 14f * density
+                                    alpha = (1f - (abs(offset) * 0.3f)).coerceIn(0.7f, 1f)
+                                }
+                                PagerTransitionEffect.TUMBLE -> {
+                                    rotationZ = (offset * -12f).coerceIn(-18f, 18f)
+                                    val scale = (1f - (abs(offset) * 0.10f)).coerceIn(0.90f, 1f)
+                                    scaleX = scale
+                                    scaleY = scale
+                                }
+                                PagerTransitionEffect.PAGE -> {
+                                    if (offset < 0) {
+                                        translationX = -offset * size.width * 0.45f
+                                        val scale = (1f + offset * 0.12f).coerceIn(0.88f, 1f)
+                                        scaleX = scale
+                                        scaleY = scale
+                                    }
+                                }
+                            }
                         }
-                    )
-
+                        .padding(horizontal = 24.dp)
+                        .padding(top = 4.dp, bottom = 12.dp)
+                ) {
                     Row(
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
+                        modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        RepeatControlIcon(
-                            repeatMode = manager.repeatModeState,
-                            tint = monoColor,
-                            modifier = Modifier.clickable {
-                                manager.triggerHapticFeedback(false)
-                                manager.toggleRepeat()
-                            }.padding(8.dp)
+                        CurvedBackArrowIcon(
+                            tint = animTextPrimary,
+                            modifier = Modifier.size(24.dp).clickable { onDismiss() }
                         )
-
-                        PreviousControlIcon(
-                            tint = monoColor,
-                            modifier = Modifier.clickable {
-                                manager.triggerHapticFeedback(false)
-                                manager.playPrevious()
-                            }.padding(8.dp)
-                        )
-
                         Box(
                             modifier = Modifier
-                                .size(68.dp)
-                                .shadow(8.dp, CircleShape)
-                                .clip(CircleShape)
-                                .background(if (isDark) Color.White else Color(0xFF0F172A))
-                                .clickable {
-                                    manager.triggerHapticFeedback(true)
-                                    if (pageSong.id != manager.currentSong?.id) {
-                                        manager.playSong(pageSong, currentQueue, manager.currentSectionName)
-                                    } else {
-                                        manager.togglePlayPause()
-                                    }
+                                .width(42.dp)
+                                .height(5.dp)
+                                .clip(RoundedCornerShape(3.dp))
+                                .background(animTextSecondary.copy(alpha = 0.4f))
+                                .clickable { onDismiss() }
+                        )
+                        Text(
+                            text = "•••",
+                            fontSize = 20.sp,
+                            fontWeight = FontWeight.Black,
+                            color = animTextPrimary,
+                            modifier = Modifier.clickable { showMenuModal = true }
+                        )
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1.15f)
+                            .padding(vertical = 4.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxHeight()
+                                .aspectRatio(1f)
+                                .shadow(20.dp, RoundedCornerShape(32.dp), spotColor = userAccent)
+                                .clip(RoundedCornerShape(32.dp))
+                                .background(animSurface)
+                                .border(1.5.dp, Color(0x33FFFFFF), RoundedCornerShape(32.dp))
+                                .pointerInput(pageSong.id) {
+                                    detectTapGestures(
+                                        onDoubleTap = { tapOffset ->
+                                            manager.triggerHapticFeedback(true)
+                                            if (tapOffset.x < size.width / 2f) {
+                                                showSeekLeftAnim = true
+                                                manager.seekTo((manager.currentPosition - 10000L).coerceAtLeast(0L))
+                                            } else {
+                                                showSeekRightAnim = true
+                                                manager.seekTo((manager.currentPosition + 10000L).coerceAtMost(manager.duration))
+                                            }
+                                        }
+                                    )
                                 },
                             contentAlignment = Alignment.Center
                         ) {
-                            val isThisSongPlaying = manager.isPlaying && (pageSong.id == manager.currentSong?.id)
-                            val iconTint = if (isDark) Color(0xFF0F172A) else Color.White
-                            if (isThisSongPlaying) {
-                                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                    Box(modifier = Modifier.size(6.dp, 22.dp).clip(RoundedCornerShape(3.dp)).background(iconTint))
-                                    Box(modifier = Modifier.size(6.dp, 22.dp).clip(RoundedCornerShape(3.dp)).background(iconTint))
-                                }
+                            if (pageBmp != null) {
+                                Image(
+                                    bitmap = pageBmp!!.asImageBitmap(),
+                                    contentDescription = "Art",
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier.fillMaxSize()
+                                )
                             } else {
-                                Canvas(modifier = Modifier.size(24.dp).padding(start = 3.dp)) {
-                                    val path = Path().apply {
-                                        moveTo(size.width * 0.15f, size.height * 0.10f)
-                                        lineTo(size.width * 0.90f, size.height * 0.50f)
-                                        lineTo(size.width * 0.15f, size.height * 0.90f)
-                                        close()
+                                Text("🎵", fontSize = 110.sp)
+                            }
+
+                            if (leftSeekAlpha > 0.01f) {
+                                Box(
+                                    modifier = Modifier.fillMaxHeight().fillMaxWidth(0.5f).align(Alignment.CenterStart).background(Color(0x66000000).copy(alpha = 0.45f * leftSeekAlpha)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.graphicsLayer { alpha = leftSeekAlpha }) {
+                                        Text("«", fontSize = 36.sp, color = Color.White, fontWeight = FontWeight.Black)
+                                        Text("10s", fontSize = 16.sp, color = Color.White, fontWeight = FontWeight.Bold)
                                     }
-                                    drawPath(path, color = iconTint)
+                                }
+                            }
+
+                            if (rightSeekAlpha > 0.01f) {
+                                Box(
+                                    modifier = Modifier.fillMaxHeight().fillMaxWidth(0.5f).align(Alignment.CenterEnd).background(Color(0x66000000).copy(alpha = 0.45f * rightSeekAlpha)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.graphicsLayer { alpha = rightSeekAlpha }) {
+                                        Text("»", fontSize = 36.sp, color = Color.White, fontWeight = FontWeight.Black)
+                                        Text("10s", fontSize = 16.sp, color = Color.White, fontWeight = FontWeight.Bold)
+                                    }
                                 }
                             }
                         }
-
-                        NextControlIcon(
-                            tint = monoColor,
-                            modifier = Modifier.clickable {
-                                manager.triggerHapticFeedback(false)
-                                manager.playNext()
-                            }.padding(8.dp)
-                        )
-
-                        ShuffleControlIcon(
-                            isShuffleOn = manager.isShuffleOn,
-                            tint = monoColor,
-                            modifier = Modifier.clickable {
-                                manager.triggerHapticFeedback(false)
-                                manager.toggleShuffle()
-                            }.padding(8.dp)
-                        )
                     }
 
-                    Row(
+                    Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clip(RoundedCornerShape(26.dp))
-                            .background(animSurface)
-                            .border(1.dp, Color(0x22FFFFFF), RoundedCornerShape(26.dp))
-                            .padding(vertical = 12.dp, horizontal = 24.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                            .weight(1f)
+                            .padding(horizontal = 4.dp),
+                        verticalArrangement = Arrangement.SpaceEvenly,
+                        horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        EqualizerSlidersIcon(
-                            tint = animTextPrimary,
-                            modifier = Modifier.clickable {
-                                manager.triggerHapticFeedback(false)
-                                showEqualizerSheet = true
-                            }
-                        )
-
-                        val isTimerActive = manager.sleepTimerRemainingSeconds > 0
-                        val timerTint = if (isTimerActive) userAccent else animTextPrimary
-
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(4.dp),
-                            modifier = Modifier.clickable {
-                                manager.triggerHapticFeedback(false)
-                                showSleepDialog = true
-                            }
-                        ) {
-                            SleepTimerClockIcon(
-                                isActive = isTimerActive,
-                                tint = timerTint,
-                                modifier = Modifier.size(24.dp)
+                        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
+                            Text(
+                                text = pageSong.title,
+                                color = animTextPrimary,
+                                fontSize = 22.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                textAlign = TextAlign.Center
                             )
-                            if (isTimerActive) {
-                                Text(
-                                    text = "${manager.sleepTimerRemainingSeconds / 60}m",
-                                    fontSize = 13.sp,
-                                    color = userAccent,
-                                    fontWeight = FontWeight.ExtraBold
-                                )
-                            }
+                            Spacer(modifier = Modifier.height(3.dp))
+                            Text(
+                                text = "${formatFileSize(pageSong.size)} • ${if (pageSong.artist.isNotBlank()) pageSong.artist else "Unknown Artist"}",
+                                color = animTextSecondary,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Medium,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                textAlign = TextAlign.Center
+                            )
                         }
 
-                        val isTrackFavorite = manager.allSongs.find { it.id == pageSong.id }?.isFavorite
-                            ?: (pageSong.id == manager.currentSong?.id && manager.currentSong?.isFavorite == true)
-
-                        HeartIconVector(
-                            isFavorite = isTrackFavorite,
-                            defaultTint = animTextPrimary,
-                            modifier = Modifier.clickable {
-                                manager.triggerHapticFeedback(true)
-                                val currentTrackInList = manager.allSongs.find { it.id == pageSong.id } ?: pageSong
-                                manager.toggleFavorite(currentTrackInList)
+                        val isCurrentActiveTrack = pageSong.id == manager.currentSong?.id
+                        IsolatedScrubberLeaf(
+                            currentPositionMs = if (isCurrentActiveTrack) manager.currentPosition else 0L,
+                            durationMs = if (isCurrentActiveTrack) manager.duration else pageSong.duration,
+                            accentColor = userAccent,
+                            textColor = animTextSecondary,
+                            isDark = isDark,
+                            onSeek = {
+                                manager.triggerHapticFeedback(false)
+                                manager.seekTo(it)
                             }
                         )
 
-                        Text("≡♪", fontSize = 24.sp, fontWeight = FontWeight.Black, color = animTextPrimary, modifier = Modifier.clickable {
-                            manager.triggerHapticFeedback(false)
-                            showQueueSheet = true
-                        })
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RepeatControlIcon(
+                                repeatMode = manager.repeatModeState,
+                                tint = monoColor,
+                                modifier = Modifier.clickable {
+                                    manager.triggerHapticFeedback(false)
+                                    manager.toggleRepeat()
+                                }.padding(8.dp)
+                            )
 
-                        Text("•••", fontSize = 24.sp, fontWeight = FontWeight.Black, color = animTextPrimary, modifier = Modifier.clickable {
-                            manager.triggerHapticFeedback(false)
-                            showMenuModal = true
-                        })
+                            PreviousControlIcon(
+                                tint = monoColor,
+                                modifier = Modifier.clickable {
+                                    manager.triggerHapticFeedback(false)
+                                    manager.playPrevious()
+                                }.padding(8.dp)
+                            )
+
+                            Box(
+                                modifier = Modifier
+                                    .size(68.dp)
+                                    .shadow(8.dp, CircleShape)
+                                    .clip(CircleShape)
+                                    .background(if (isDark) Color.White else Color(0xFF0F172A))
+                                    .clickable {
+                                        manager.triggerHapticFeedback(true)
+                                        if (pageSong.id != manager.currentSong?.id) {
+                                            manager.playSong(pageSong, currentQueue, manager.currentSectionName)
+                                        } else {
+                                            manager.togglePlayPause()
+                                        }
+                                    },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                val isThisSongPlaying = manager.isPlaying && (pageSong.id == manager.currentSong?.id)
+                                val iconTint = if (isDark) Color(0xFF0F172A) else Color.White
+                                if (isThisSongPlaying) {
+                                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        Box(modifier = Modifier.size(6.dp, 22.dp).clip(RoundedCornerShape(3.dp)).background(iconTint))
+                                        Box(modifier = Modifier.size(6.dp, 22.dp).clip(RoundedCornerShape(3.dp)).background(iconTint))
+                                    }
+                                } else {
+                                    Canvas(modifier = Modifier.size(24.dp).padding(start = 3.dp)) {
+                                        val path = Path().apply {
+                                            moveTo(size.width * 0.15f, size.height * 0.10f)
+                                            lineTo(size.width * 0.90f, size.height * 0.50f)
+                                            lineTo(size.width * 0.15f, size.height * 0.90f)
+                                            close()
+                                        }
+                                        drawPath(path, color = iconTint)
+                                    }
+                                }
+                            }
+
+                            NextControlIcon(
+                                tint = monoColor,
+                                modifier = Modifier.clickable {
+                                    manager.triggerHapticFeedback(false)
+                                    manager.playNext()
+                                }.padding(8.dp)
+                            )
+
+                            ShuffleControlIcon(
+                                isShuffleOn = manager.isShuffleOn,
+                                tint = monoColor,
+                                modifier = Modifier.clickable {
+                                    manager.triggerHapticFeedback(false)
+                                    manager.toggleShuffle()
+                                }.padding(8.dp)
+                            )
+                        }
+
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(26.dp))
+                                .background(animSurface)
+                                .border(1.dp, Color(0x22FFFFFF), RoundedCornerShape(26.dp))
+                                .padding(vertical = 12.dp, horizontal = 24.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            EqualizerSlidersIcon(
+                                tint = animTextPrimary,
+                                modifier = Modifier.clickable {
+                                    manager.triggerHapticFeedback(false)
+                                    showEqualizerSheet = true
+                                }
+                            )
+
+                            val isTimerActive = manager.sleepTimerRemainingSeconds > 0
+                            val timerTint = if (isTimerActive) userAccent else animTextPrimary
+
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                modifier = Modifier.clickable {
+                                    manager.triggerHapticFeedback(false)
+                                    showSleepDialog = true
+                                }
+                            ) {
+                                SleepTimerClockIcon(
+                                    isActive = isTimerActive,
+                                    tint = timerTint,
+                                    modifier = Modifier.size(24.dp)
+                                )
+                                if (isTimerActive) {
+                                    Text(
+                                        text = "${manager.sleepTimerRemainingSeconds / 60}m",
+                                        fontSize = 13.sp,
+                                        color = userAccent,
+                                        fontWeight = FontWeight.ExtraBold
+                                    )
+                                }
+                            }
+
+                            val isTrackFavorite = manager.allSongs.find { it.id == pageSong.id }?.isFavorite
+                                ?: (pageSong.id == manager.currentSong?.id && manager.currentSong?.isFavorite == true)
+
+                            HeartIconVector(
+                                isFavorite = isTrackFavorite,
+                                defaultTint = animTextPrimary,
+                                modifier = Modifier.clickable {
+                                    manager.triggerHapticFeedback(true)
+                                    val currentTrackInList = manager.allSongs.find { it.id == pageSong.id } ?: pageSong
+                                    manager.toggleFavorite(currentTrackInList)
+                                }
+                            )
+
+                            Text("≡♪", fontSize = 24.sp, fontWeight = FontWeight.Black, color = animTextPrimary, modifier = Modifier.clickable {
+                                manager.triggerHapticFeedback(false)
+                                showQueueSheet = true
+                            })
+
+                            Text("•••", fontSize = 24.sp, fontWeight = FontWeight.Black, color = animTextPrimary, modifier = Modifier.clickable {
+                                manager.triggerHapticFeedback(false)
+                                showMenuModal = true
+                            })
+                        }
                     }
                 }
             }
@@ -1274,7 +1287,7 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
     }
 }
 
-// Queue Sheet
+// Queue Sheet with Integrated Material You Status Bar Tint
 @OptIn(ExperimentalFoundationApi::class)
 @UnstableApi
 @Composable
@@ -1367,7 +1380,6 @@ fun QueueSheet(
         modifier = Modifier
             .fillMaxSize()
             .background(Brush.verticalGradient(listOf(bgTop, bgBottom)))
-            .statusBarsPadding()
             .nestedScroll(nestedScrollConnection)
             .pointerInput(Unit) {
                 detectVerticalDragGestures { _, dragAmount ->
@@ -1376,209 +1388,223 @@ fun QueueSheet(
                     }
                 }
             }
-            .padding(horizontal = 16.dp)
-            .padding(top = 8.dp, bottom = 14.dp)
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
-            Row(
+            val statusBarTopPadding = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(top = 4.dp, bottom = 12.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                    .height(statusBarTopPadding)
+                    .background(bgTop)
+            )
+
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp)
+                    .padding(top = 4.dp, bottom = 14.dp)
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    GlassBackButton(isDark = isDark, onClick = onDismiss)
-                    Spacer(modifier = Modifier.width(14.dp))
-                    Column {
-                        Text(
-                            text = "Playing Queue (${manager.playbackQueue.size})",
-                            fontSize = 20.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = textColor
-                        )
-                        Text(
-                            text = "Hold and drag bars to reorder tracks",
-                            fontSize = 12.sp,
-                            color = subTextColor
-                        )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 4.dp, bottom = 12.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        GlassBackButton(isDark = isDark, onClick = onDismiss)
+                        Spacer(modifier = Modifier.width(14.dp))
+                        Column {
+                            Text(
+                                text = "Playing Queue (${manager.playbackQueue.size})",
+                                fontSize = 20.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = textColor
+                            )
+                            Text(
+                                text = "Hold and drag bars to reorder tracks",
+                                fontSize = 12.sp,
+                                color = subTextColor
+                            )
+                        }
+                    }
+
+                    Button(
+                        onClick = onDismiss,
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = surfaceColor)
+                    ) {
+                        Text("Close", color = textColor, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                     }
                 }
+
+                LazyColumn(
+                    state = listState,
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    itemsIndexed(
+                        items = manager.playbackQueue,
+                        key = { _, song -> song.id },
+                        contentType = { _, _ -> "queue_item_row" }
+                    ) { index, song ->
+                        val isCur = song.id == manager.currentSong?.id
+                        val isDraggingThis = draggingSongId == song.id
+
+                        val itemElevation = if (isDraggingThis) 24.dp else 0.dp
+                        val itemScale = if (isDraggingThis) 1.04f else 1.0f
+
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .animateItemPlacement(
+                                    animationSpec = spring(
+                                        stiffness = 550f,
+                                        dampingRatio = 0.85f
+                                    )
+                                )
+                                .zIndex(if (isDraggingThis) 10f else 1f)
+                                .graphicsLayer {
+                                    scaleX = itemScale
+                                    scaleY = itemScale
+                                    if (isDraggingThis) {
+                                        translationY = draggingOffsetPx
+                                    }
+                                }
+                                .shadow(itemElevation, RoundedCornerShape(18.dp))
+                                .clip(RoundedCornerShape(18.dp))
+                                .background(
+                                    if (isCur) accent.copy(alpha = 0.20f)
+                                    else surfaceColor
+                                )
+                                .border(
+                                    width = if (isCur || isDraggingThis) 1.5.dp else 1.dp,
+                                    color = if (isCur || isDraggingThis) accent else Color(0x22FFFFFF),
+                                    shape = RoundedCornerShape(18.dp)
+                                )
+                                .clickable {
+                                    if (draggingSongId == null) {
+                                        manager.triggerHapticFeedback(false)
+                                        manager.playSong(song, manager.playbackQueue, manager.currentSectionName)
+                                    }
+                                }
+                                .padding(horizontal = 14.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(28.dp)
+                                    .clip(CircleShape)
+                                    .background(if (isCur) accent.copy(alpha = 0.25f) else Color.Transparent),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = if (isCur) "▶" else "•",
+                                    color = if (isCur) accent else subTextColor,
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.width(10.dp))
+
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = song.title,
+                                    color = textColor,
+                                    fontSize = 15.sp,
+                                    fontWeight = if (isCur) FontWeight.Bold else FontWeight.SemiBold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    text = "${formatFileSize(song.size)} • ${if (song.artist.isNotBlank()) song.artist else "Unknown Artist"}",
+                                    color = subTextColor,
+                                    fontSize = 12.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.width(12.dp))
+
+                            Box(
+                                modifier = Modifier
+                                    .size(48.dp)
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .pointerInput(song.id) {
+                                        detectDragGesturesAfterLongPress(
+                                            onDragStart = {
+                                                manager.triggerHapticFeedback(true)
+                                                draggingSongId = song.id
+                                                val currentActualIndex = manager.playbackQueue.indexOfFirst { it.id == song.id }
+                                                draggingIndex = if (currentActualIndex != -1) currentActualIndex else index
+                                                draggingOffsetPx = 0f
+                                            },
+                                            onDrag = { change, dragAmount ->
+                                                change.consume()
+                                                draggingOffsetPx += dragAmount.y
+
+                                                val currentActualIndex = manager.playbackQueue.indexOfFirst { it.id == song.id }
+                                                if (currentActualIndex == -1) return@detectDragGesturesAfterLongPress
+
+                                                val threshold = itemHeightPx * 0.65f
+
+                                                while (draggingOffsetPx > threshold && currentActualIndex < manager.playbackQueue.size - 1) {
+                                                    manager.triggerHapticFeedback(false)
+                                                    manager.moveQueueItem(currentActualIndex, currentActualIndex + 1)
+                                                    draggingIndex = currentActualIndex + 1
+                                                    draggingOffsetPx -= itemHeightPx
+                                                }
+                                                while (draggingOffsetPx < -threshold && currentActualIndex > 0) {
+                                                    manager.triggerHapticFeedback(false)
+                                                    manager.moveQueueItem(currentActualIndex, currentActualIndex - 1)
+                                                    draggingIndex = currentActualIndex - 1
+                                                    draggingOffsetPx += itemHeightPx
+                                                }
+                                            },
+                                            onDragEnd = {
+                                                draggingSongId = null
+                                                draggingIndex = null
+                                                draggingOffsetPx = 0f
+                                            },
+                                            onDragCancel = {
+                                                draggingSongId = null
+                                                draggingIndex = null
+                                                draggingOffsetPx = 0f
+                                            }
+                                        )
+                                    },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                ReorderDragHandle(
+                                    tint = if (isCur || isDraggingThis) accent else subTextColor,
+                                    modifier = Modifier.size(24.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
 
                 Button(
                     onClick = onDismiss,
-                    shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = surfaceColor)
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(50.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = surfaceColor),
+                    shape = RoundedCornerShape(14.dp)
                 ) {
-                    Text("Close", color = textColor, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                    Text(
+                        text = "Close",
+                        color = textColor,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Bold
+                    )
                 }
-            }
-
-            LazyColumn(
-                state = listState,
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                itemsIndexed(
-                    items = manager.playbackQueue,
-                    key = { _, song -> song.id },
-                    contentType = { _, _ -> "queue_item_row" }
-                ) { index, song ->
-                    val isCur = song.id == manager.currentSong?.id
-                    val isDraggingThis = draggingSongId == song.id
-
-                    val itemElevation = if (isDraggingThis) 24.dp else 0.dp
-                    val itemScale = if (isDraggingThis) 1.04f else 1.0f
-
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .animateItemPlacement(
-                                animationSpec = spring(
-                                    stiffness = 550f,
-                                    dampingRatio = 0.85f
-                                )
-                            )
-                            .zIndex(if (isDraggingThis) 10f else 1f)
-                            .graphicsLayer {
-                                scaleX = itemScale
-                                scaleY = itemScale
-                                if (isDraggingThis) {
-                                    translationY = draggingOffsetPx
-                                }
-                            }
-                            .shadow(itemElevation, RoundedCornerShape(18.dp))
-                            .clip(RoundedCornerShape(18.dp))
-                            .background(
-                                if (isCur) accent.copy(alpha = 0.20f)
-                                else surfaceColor
-                            )
-                            .border(
-                                width = if (isCur || isDraggingThis) 1.5.dp else 1.dp,
-                                color = if (isCur || isDraggingThis) accent else Color(0x22FFFFFF),
-                                shape = RoundedCornerShape(18.dp)
-                            )
-                            .clickable {
-                                if (draggingSongId == null) {
-                                    manager.triggerHapticFeedback(false)
-                                    manager.playSong(song, manager.playbackQueue, manager.currentSectionName)
-                                }
-                            }
-                            .padding(horizontal = 14.dp, vertical = 12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(28.dp)
-                                .clip(CircleShape)
-                                .background(if (isCur) accent.copy(alpha = 0.25f) else Color.Transparent),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = if (isCur) "▶" else "•",
-                                color = if (isCur) accent else subTextColor,
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.width(10.dp))
-
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = song.title,
-                                color = textColor,
-                                fontSize = 15.sp,
-                                fontWeight = if (isCur) FontWeight.Bold else FontWeight.SemiBold,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                            Spacer(modifier = Modifier.height(2.dp))
-                            Text(
-                                text = "${formatFileSize(song.size)} • ${if (song.artist.isNotBlank()) song.artist else "Unknown Artist"}",
-                                color = subTextColor,
-                                fontSize = 12.sp,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.width(12.dp))
-
-                        Box(
-                            modifier = Modifier
-                                .size(48.dp)
-                                .clip(RoundedCornerShape(12.dp))
-                                .pointerInput(song.id) {
-                                    detectDragGesturesAfterLongPress(
-                                        onDragStart = {
-                                            manager.triggerHapticFeedback(true)
-                                            draggingSongId = song.id
-                                            val currentActualIndex = manager.playbackQueue.indexOfFirst { it.id == song.id }
-                                            draggingIndex = if (currentActualIndex != -1) currentActualIndex else index
-                                            draggingOffsetPx = 0f
-                                        },
-                                        onDrag = { change, dragAmount ->
-                                            change.consume()
-                                            draggingOffsetPx += dragAmount.y
-
-                                            val currentActualIndex = manager.playbackQueue.indexOfFirst { it.id == song.id }
-                                            if (currentActualIndex == -1) return@detectDragGesturesAfterLongPress
-
-                                            val threshold = itemHeightPx * 0.65f
-
-                                            while (draggingOffsetPx > threshold && currentActualIndex < manager.playbackQueue.size - 1) {
-                                                manager.triggerHapticFeedback(false)
-                                                manager.moveQueueItem(currentActualIndex, currentActualIndex + 1)
-                                                draggingIndex = currentActualIndex + 1
-                                                draggingOffsetPx -= itemHeightPx
-                                            }
-                                            while (draggingOffsetPx < -threshold && currentActualIndex > 0) {
-                                                manager.triggerHapticFeedback(false)
-                                                manager.moveQueueItem(currentActualIndex, currentActualIndex - 1)
-                                                draggingIndex = currentActualIndex - 1
-                                                draggingOffsetPx += itemHeightPx
-                                            }
-                                        },
-                                        onDragEnd = {
-                                            draggingSongId = null
-                                            draggingIndex = null
-                                            draggingOffsetPx = 0f
-                                        },
-                                        onDragCancel = {
-                                            draggingSongId = null
-                                            draggingIndex = null
-                                            draggingOffsetPx = 0f
-                                        }
-                                    )
-                                },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            ReorderDragHandle(
-                                tint = if (isCur || isDraggingThis) accent else subTextColor,
-                                modifier = Modifier.size(24.dp)
-                            )
-                        }
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            Button(
-                onClick = onDismiss,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(50.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = surfaceColor),
-                shape = RoundedCornerShape(14.dp)
-            ) {
-                Text(
-                    text = "Close",
-                    color = textColor,
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.Bold
-                )
             }
         }
     }
@@ -2323,7 +2349,6 @@ fun MagneticSpeedDialog(manager: MusicManager, onDismiss: () -> Unit) {
                 )
                 Spacer(modifier = Modifier.height(20.dp))
 
-                // Track with Prominent Indicator Dots
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -2356,7 +2381,6 @@ fun MagneticSpeedDialog(manager: MusicManager, onDismiss: () -> Unit) {
                     Slider(
                         value = speed,
                         onValueChange = { raw ->
-                            // Check if close to any prominent step
                             var snappedVal = raw
                             for (st in prominentSteps) {
                                 if (abs(raw - st) <= 0.05f) {
@@ -2548,4 +2572,3 @@ fun ShuffleControlIcon(isShuffleOn: Boolean, tint: Color, modifier: Modifier = M
         }
     )
 }
-
