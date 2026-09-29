@@ -297,6 +297,7 @@ fun SettingsScreen(
                 Text("Configure playback behavior.", color = Color(0xFF64748B), fontSize = 12.sp)
                 Spacer(modifier = Modifier.height(16.dp))
 
+                // 1. Always play
                 SettingSwitchRow(
                     icon = "🔄",
                     title = "Always play",
@@ -310,6 +311,7 @@ fun SettingsScreen(
 
                 Spacer(modifier = Modifier.height(14.dp))
 
+                // 2. Colourful Player
                 SettingSwitchRow(
                     icon = "🎨",
                     title = "Colourful Player",
@@ -326,9 +328,10 @@ fun SettingsScreen(
 
                 Spacer(modifier = Modifier.height(14.dp))
 
+                // 3. Resume the First File (Formerly "Resume only the first file")
                 SettingSwitchRow(
                     icon = "⏯️",
-                    title = "Resume only the first file",
+                    title = "Resume the First File",
                     subtitle = "Playback will only resume for the first track.",
                     checked = manager.isResumeFirstOnly,
                     textColor = textColor
@@ -342,6 +345,24 @@ fun SettingsScreen(
 
                 Spacer(modifier = Modifier.height(14.dp))
 
+                // 4. Silence Trimming (Shifted above Fade on start)
+                SettingSwitchRow(
+                    icon = "♾️",
+                    title = "Silence Trimming",
+                    subtitle = "Skips silent gaps at the end of tracks",
+                    checked = manager.isSilenceTrimmingEnabled,
+                    textColor = textColor
+                ) {
+                    manager.triggerHapticFeedback(false)
+                    manager.isSilenceTrimmingEnabled = it
+                    manager.managerScope.launch(Dispatchers.IO) {
+                        manager.prefs.edit().putBoolean("silence_trimming", it).apply()
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // 5. Fade on start
                 SettingSwitchRow(
                     icon = "🔊",
                     title = "Fade on start",
@@ -358,22 +379,7 @@ fun SettingsScreen(
 
                 Spacer(modifier = Modifier.height(14.dp))
 
-                SettingSwitchRow(
-                    icon = "♾️",
-                    title = "Gapless Playback",
-                    subtitle = "Removes silent pauses between consecutive tracks.",
-                    checked = manager.isGaplessEnabled,
-                    textColor = textColor
-                ) {
-                    manager.triggerHapticFeedback(false)
-                    manager.isGaplessEnabled = it
-                    manager.managerScope.launch(Dispatchers.IO) {
-                        manager.prefs.edit().putBoolean("gapless", it).apply()
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(14.dp))
-
+                // 6. Crossfade
                 SettingSwitchRow(
                     icon = "↔️",
                     title = "Crossfade",
@@ -428,7 +434,7 @@ fun SettingsScreen(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // Swipe Transition Effect
+                // 7. Swipe Transition Effect
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,

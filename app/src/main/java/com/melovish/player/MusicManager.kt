@@ -336,7 +336,7 @@ class MusicManager(private val context: Context) {
     var isColorfulPlayer by mutableStateOf(prefs.getBoolean("colorful_player", true))
     var isResumeFirstOnly by mutableStateOf(prefs.getBoolean("resume_first", false))
     var isFadeOnStart by mutableStateOf(prefs.getBoolean("fade_start", false))
-    var isGaplessEnabled by mutableStateOf(prefs.getBoolean("gapless", true))
+    var isSilenceTrimmingEnabled by mutableStateOf(prefs.getBoolean("silence_trimming", true))
     var isCrossfadeEnabled by mutableStateOf(prefs.getBoolean("crossfade_enabled", false))
     var crossfadeDuration by mutableFloatStateOf(prefs.getFloat("crossfade_duration", 2.0f))
 
@@ -514,7 +514,7 @@ class MusicManager(private val context: Context) {
             override fun onIsPlayingChanged(playing: Boolean) {
                 isPlaying = playing
                 updateNotification()
-                if (playing && isFadeOnStart && !isCrossfadeEnabled) {
+                if (playing && isFadeOnStart && !isCrossfadeEnabled && player.currentPosition <= 1200L) {
                     triggerFadeIn(1000L)
                 }
             }
@@ -531,15 +531,7 @@ class MusicManager(private val context: Context) {
                     updateNotification()
                     updateDeviceRoutingAndHighlight()
                 } else if (state == Player.STATE_ENDED) {
-                    if (isGaplessEnabled) {
-                        playNext()
-                    } else {
-                        managerScope.launch {
-                            player.pause()
-                            delay(500)
-                            playNext()
-                        }
-                    }
+                    playNext()
                 }
             }
 
@@ -557,20 +549,12 @@ class MusicManager(private val context: Context) {
 
                     isFadingOutForCrossfade = false
                     if (isCrossfadeEnabled) {
-                        val fadeMs = (crossfadeDuration * 1000).toLong() / 2
-                        triggerFadeIn(fadeMs.coerceAtLeast(400L))
+                        val fadeMs = (crossfadeDuration * 1000).toLong().coerceIn(1000L, 12000L)
+                        triggerFadeIn(fadeMs)
                     } else if (isFadeOnStart) {
                         triggerFadeIn(1200L)
                     } else {
                         player.volume = 1.0f
-                    }
-
-                    if (!isGaplessEnabled && reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO) {
-                        managerScope.launch {
-                            player.pause()
-                            delay(500)
-                            player.play()
-                        }
                     }
                 }
             }
@@ -1189,15 +1173,27 @@ class MusicManager(private val context: Context) {
                         saveSongPosition(song.id, p)
                     }
 
-                    if (isCrossfadeEnabled && duration > 0L) {
+                    if (duration > 0L) {
                         val remainingMs = duration - p
-                        val fadeWindowMs = (crossfadeDuration * 1000).toLong().coerceIn(1000L, 12000L)
-                        if (remainingMs in 1..fadeWindowMs && !isFadingOutForCrossfade) {
-                            isFadingOutForCrossfade = true
-                            startCrossfadeOut(fadeWindowMs)
+
+                        // 1. Crossfade Logic: Fade smoothly out in the last X seconds
+                        if (isCrossfadeEnabled) {
+                            val fadeWindowMs = (crossfadeDuration * 1000).toLong().coerceIn(1000L, 12000L)
+                            if (remainingMs in 1..fadeWindowMs && !isFadingOutForCrossfade) {
+                                isFadingOutForCrossfade = true
+                                startCrossfadeOut(fadeWindowMs)
+                            }
+                            if (remainingMs <= 250L && player.hasNextMediaItem()) {
+                                playNext()
+                            }
                         }
-                        if (remainingMs <= 350L && player.hasNextMediaItem()) {
-                            playNext()
+
+                        // 2. Silence Trimming Logic: Skip trailing silent gap without waiting for duration to hit zero
+                        if (isSilenceTrimmingEnabled && !isCrossfadeEnabled) {
+                            // If approaching the end of track (last 2 seconds) and player is still active, transition instantly
+                            if (remainingMs in 1..800L && player.hasNextMediaItem()) {
+                                playNext()
+                            }
                         }
                     }
                 }
@@ -1465,7 +1461,7 @@ class MusicManager(private val context: Context) {
         }
     }
 
-    // Instant zero-lag track playback (with strict order-matching check to prevent sorting glitches)
+    // Instant zero-lag track playback
     fun playSong(song: Song, queue: List<Song>, section: String, initialPositionMs: Long = 0L) {
         val targetIndex = queue.indexOfFirst { it.id == song.id }.coerceAtLeast(0)
 
@@ -1474,7 +1470,6 @@ class MusicManager(private val context: Context) {
         duration = song.duration
         isPlaying = true
 
-        // Strict order equality check: Only reuse queue if section name, item count, AND song IDs in exact sequence match
         val isSameQueue = currentSectionName == section &&
                 playbackQueue.size == queue.size &&
                 player.mediaItemCount == queue.size &&
@@ -1514,7 +1509,7 @@ class MusicManager(private val context: Context) {
             withContext(Dispatchers.Main.immediate) {
                 player.setMediaItems(mediaItems, targetIndex, initialPositionMs)
                 player.prepare()
-                if (isFadeOnStart) {
+                if (isFadeOnStart && !isCrossfadeEnabled) {
                     triggerFadeIn(1000L)
                 } else {
                     player.volume = 1.0f
@@ -1577,7 +1572,7 @@ class MusicManager(private val context: Context) {
             player.pause()
             isPlaying = false
         } else {
-            if (isFadeOnStart) triggerFadeIn(1000L)
+            if (isFadeOnStart && player.currentPosition <= 1200L) triggerFadeIn(1000L)
             player.play()
             isPlaying = true
         }
