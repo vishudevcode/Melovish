@@ -22,6 +22,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
@@ -101,6 +102,9 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.PointerInputChange
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
@@ -267,6 +271,39 @@ fun MelovishRootApp(manager: MusicManager) {
     val searchListState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
 
+    // Smooth auto-collapsing TopBar state & nested scroll
+    var isTopBarVisible by remember { mutableStateOf(true) }
+    val isMainTabScreen = activeScreen in listOf("home", "library", "artists", "search") &&
+            selectedFolder == null && selectedPlaylist == null && selectedArtist == null && selectedAlbum == null
+
+    val topBarNestedScrollConnection = remember(isMainTabScreen) {
+        object : NestedScrollConnection {
+            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                if (!isMainTabScreen) return Offset.Zero
+                val delta = available.y
+                if (delta < -8f && isTopBarVisible) {
+                    isTopBarVisible = false
+                } else if (delta > 8f && !isTopBarVisible) {
+                    isTopBarVisible = true
+                }
+                return Offset.Zero
+            }
+        }
+    }
+
+    // Force top bar visible when scrolled to the top
+    LaunchedEffect(homeListState.firstVisibleItemIndex, homeListState.firstVisibleItemScrollOffset) {
+        if (homeListState.firstVisibleItemIndex == 0 && homeListState.firstVisibleItemScrollOffset < 15) {
+            isTopBarVisible = true
+        }
+    }
+
+    val animatedTopBarFraction by animateFloatAsState(
+        targetValue = if (isTopBarVisible || !isMainTabScreen) 1f else 0f,
+        animationSpec = spring(stiffness = 600f, dampingRatio = 0.82f),
+        label = "topBarAnim"
+    )
+
     BackHandler(enabled = isSettingsEqOpen || isPlayerExpanded || activeScreen == "settings" || activeScreen == "profile" || selectedArtist != null || selectedAlbum != null || selectedPlaylist != null || selectedFolder != null || activeScreen != "home") {
         when {
             isSettingsEqOpen -> isSettingsEqOpen = false
@@ -284,19 +321,36 @@ fun MelovishRootApp(manager: MusicManager) {
     val bg = if (isDark) Color(0xFF0A0F1D) else Color(0xFFF8F9FA)
 
     Surface(modifier = Modifier.fillMaxSize(), color = bg) {
-        Box(modifier = Modifier.fillMaxSize().background(bg)) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(bg)
+                .nestedScroll(topBarNestedScrollConnection)
+        ) {
             Column(modifier = Modifier.fillMaxSize()) {
-                TopBar(
-                    manager = manager,
-                    onProfileClick = {
-                        previousActiveScreen = activeScreen
-                        activeScreen = "profile"
-                    },
-                    onSettingsClick = {
-                        previousActiveScreen = activeScreen
-                        activeScreen = "settings"
+                if (isMainTabScreen) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .graphicsLayer {
+                                translationY = -size.height * (1f - animatedTopBarFraction)
+                                alpha = animatedTopBarFraction.coerceIn(0f, 1f)
+                            }
+                            .height((64 * animatedTopBarFraction).dp)
+                    ) {
+                        TopBar(
+                            manager = manager,
+                            onProfileClick = {
+                                previousActiveScreen = activeScreen
+                                activeScreen = "profile"
+                            },
+                            onSettingsClick = {
+                                previousActiveScreen = activeScreen
+                                activeScreen = "settings"
+                            }
+                        )
                     }
-                )
+                }
 
                 Box(modifier = Modifier.weight(1f)) {
                     when {
@@ -380,13 +434,14 @@ fun MelovishRootApp(manager: MusicManager) {
                     MiniPlayerDock(manager = manager, onClick = { isPlayerExpanded = true })
                 }
 
-                if (activeScreen in listOf("home", "library", "artists", "search") && selectedFolder == null && selectedPlaylist == null && selectedArtist == null && selectedAlbum == null) {
+                if (isMainTabScreen) {
                     BottomNavBar(
                         manager = manager,
                         activeTab = activeScreen,
                         onTabSelected = { tab ->
                             if (activeScreen == tab) {
                                 coroutineScope.launch {
+                                    isTopBarVisible = true
                                     when (tab) {
                                         "home" -> homeListState.animateScrollToItem(0)
                                         "library" -> libraryListState.animateScrollToItem(0)
@@ -395,6 +450,7 @@ fun MelovishRootApp(manager: MusicManager) {
                                     }
                                 }
                             } else {
+                                isTopBarVisible = true
                                 activeScreen = tab
                             }
                         }
@@ -1436,7 +1492,6 @@ fun HomeScreen(
             }
 
             if (showSkeleton) {
-                // Adaptive skeleton based on the user's saved view mode
                 when (manager.homeViewMode) {
                     GridViewMode.LIST -> {
                         items(8) {
@@ -1702,12 +1757,12 @@ fun FolderColourPickerDialog(
                             .fillMaxSize()
                             .pointerInput(Unit) {
                                 detectDragGestures { change: PointerInputChange, _ ->
-                                    val center = Offset(size.width.toFloat() / 2f, size.height.toFloat() / 2f)
+                                    val center = Offset(size.width / 2f, size.height / 2f)
                                     val touch = change.position
                                     val dx = (touch.x - center.x).toDouble()
                                     val dy = (touch.y - center.y).toDouble()
                                     val dist = sqrt(dx * dx + dy * dy)
-                                    val radius = (size.width.toFloat() / 2f).toDouble()
+                                    val radius = (size.width / 2f).toDouble()
                                     if (dist >= radius * 0.65) {
                                         var angle = Math.toDegrees(atan2(dy, dx)).toFloat()
                                         if (angle < 0f) angle += 360f
@@ -3208,4 +3263,3 @@ fun UniversalSongCard(song: Song, manager: MusicManager, isDark: Boolean, onPlay
         }
     }
 }
-
