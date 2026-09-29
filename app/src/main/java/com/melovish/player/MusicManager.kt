@@ -60,7 +60,6 @@ import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.audio.AudioSink
 import androidx.media3.exoplayer.audio.DefaultAudioSink
-import androidx.media3.exoplayer.audio.SilenceSkippingAudioProcessor
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaStyleNotificationHelper
 import kotlinx.collections.immutable.toImmutableList
@@ -185,12 +184,8 @@ class MusicManager(private val context: Context) {
     }
 
     private val channelMixingAudioProcessor = ChannelMixingAudioProcessor()
-    
-    // Parameter-less constructor compatible across all Media3 versions
-    private val silenceSkippingProcessor = SilenceSkippingAudioProcessor()
 
     var isLosslessEnabled by mutableStateOf(prefs.getBoolean("lossless", true))
-    var isSilenceTrimmingEnabled by mutableStateOf(prefs.getBoolean("silence_trimming", false))
 
     private val renderersFactory = object : DefaultRenderersFactory(context) {
         override fun buildAudioSink(
@@ -199,7 +194,7 @@ class MusicManager(private val context: Context) {
             enableAudioTrackPlaybackParams: Boolean
         ): AudioSink {
             return DefaultAudioSink.Builder(context)
-                .setAudioProcessors(arrayOf(channelMixingAudioProcessor, silenceSkippingProcessor))
+                .setAudioProcessors(arrayOf(channelMixingAudioProcessor))
                 .setEnableFloatOutput(true)
                 .setEnableAudioTrackPlaybackParams(true)
                 .build()
@@ -260,6 +255,7 @@ class MusicManager(private val context: Context) {
     val folderColors = mutableStateMapOf<String, Long>()
     val parsedArtistsList = mutableStateListOf<ArtistItem>()
 
+    // View Modes
     private fun parseGridViewMode(saved: String?): GridViewMode {
         return try {
             if (saved == null || saved == "DETAILED_LIST") GridViewMode.LIST
@@ -276,6 +272,7 @@ class MusicManager(private val context: Context) {
     var artistInnerViewMode by mutableStateOf(parseGridViewMode(prefs.getString("pref_view_artist_inner", GridViewMode.LIST.name)))
     var playlistInnerViewMode by mutableStateOf(parseGridViewMode(prefs.getString("pref_view_playlist_inner", GridViewMode.LIST.name)))
 
+    // Sort Orders
     var currentSortOrder by mutableStateOf(
         try {
             SongSortOrder.valueOf(prefs.getString("saved_song_sort", SongSortOrder.A_TO_Z.name) ?: SongSortOrder.A_TO_Z.name)
@@ -343,6 +340,10 @@ class MusicManager(private val context: Context) {
     var isColorfulPlayer by mutableStateOf(prefs.getBoolean("colorful_player", true))
     var isResumeFirstOnly by mutableStateOf(prefs.getBoolean("resume_first", false))
     var isFadeOnStart by mutableStateOf(prefs.getBoolean("fade_start", false))
+    
+    // Silence Trimming is OFF by default
+    var isSilenceTrimmingEnabled by mutableStateOf(prefs.getBoolean("silence_trimming", false))
+    
     var isCrossfadeEnabled by mutableStateOf(prefs.getBoolean("crossfade_enabled", false))
     var crossfadeDuration by mutableFloatStateOf(prefs.getFloat("crossfade_duration", 2.0f))
 
@@ -350,6 +351,7 @@ class MusicManager(private val context: Context) {
     var volumeBoostLevel by mutableFloatStateOf(prefs.getFloat("vol_boost", 100f))
     var isMonoAudio by mutableStateOf(prefs.getBoolean("mono", false))
 
+    // Audio Routing System
     var userSelectedAudioOutput by mutableStateOf(prefs.getString("audio_output_manual", "Auto") ?: "Auto")
     var effectiveAudioOutput by mutableStateOf("Phone")
 
@@ -413,27 +415,12 @@ class MusicManager(private val context: Context) {
         startPositionTracker()
         syncDeviceVolume()
         applyChannelMixing()
-        applySilenceTrimmingState()
         registerAudioDeviceCallback()
         updateDeviceRoutingAndHighlight()
 
         managerScope.launch(Dispatchers.IO) {
             loadInstantCacheAsync()
         }
-    }
-
-    private fun applySilenceTrimmingState() {
-        try {
-            silenceSkippingProcessor.setEnabled(isSilenceTrimmingEnabled)
-        } catch (_: Exception) {}
-    }
-
-    fun toggleSilenceTrimming(enabled: Boolean) {
-        isSilenceTrimmingEnabled = enabled
-        managerScope.launch(Dispatchers.IO) {
-            prefs.edit().putBoolean("silence_trimming", enabled).apply()
-        }
-        applySilenceTrimmingState()
     }
 
     private fun initDefaultEqualizerState() {
@@ -916,7 +903,6 @@ class MusicManager(private val context: Context) {
                     ChannelMixingMatrix(2, 2, floatArrayOf(0.707f, -0.707f, -0.707f, 0.707f))
                 }
                 isMonoAudio -> {
-                    // True summing mono matrix: both ears receive (L + R) / 2
                     ChannelMixingMatrix(2, 2, floatArrayOf(0.5f, 0.5f, 0.5f, 0.5f))
                 }
                 else -> {
@@ -1036,6 +1022,7 @@ class MusicManager(private val context: Context) {
         }
     }
 
+    // View Modes
     fun updateHomeViewMode(mode: GridViewMode) {
         homeViewMode = mode
         managerScope.launch(Dispatchers.IO) {
@@ -1114,6 +1101,7 @@ class MusicManager(private val context: Context) {
         updatePlaylistInnerViewMode(modes[nextIdx])
     }
 
+    // Sort Orders
     fun setPersistentSongSort(order: SongSortOrder) {
         currentSortOrder = order
         managerScope.launch(Dispatchers.IO) {
@@ -1213,7 +1201,7 @@ class MusicManager(private val context: Context) {
                     if (duration > 0L) {
                         val remainingMs = duration - p
 
-                        // 1. Crossfade Logic
+                        // 1. Crossfade Logic: Fade smoothly out in the last X seconds
                         if (isCrossfadeEnabled) {
                             val fadeWindowMs = (crossfadeDuration * 1000).toLong().coerceIn(1000L, 12000L)
                             if (remainingMs in 1..fadeWindowMs && !isFadingOutForCrossfade) {
@@ -1225,12 +1213,9 @@ class MusicManager(private val context: Context) {
                             }
                         }
 
-                        // 2. Silence Trimming Watchdog
-                        // When SilenceSkippingAudioProcessor discards the silent tail buffers,
-                        // ExoPlayer moves to the next track automatically. As a fallback watchdog,
-                        // if within the last 500ms, transition immediately.
+                        // 2. Silence Trimming Logic: Skip trailing silent gap without waiting for duration to hit zero
                         if (isSilenceTrimmingEnabled && !isCrossfadeEnabled) {
-                            if (remainingMs in 1..500L && player.hasNextMediaItem()) {
+                            if (remainingMs in 1..800L && player.hasNextMediaItem()) {
                                 playNext()
                             }
                         }
@@ -1500,6 +1485,7 @@ class MusicManager(private val context: Context) {
         }
     }
 
+    // Instant zero-lag track playback
     fun playSong(song: Song, queue: List<Song>, section: String, initialPositionMs: Long = 0L) {
         val targetIndex = queue.indexOfFirst { it.id == song.id }.coerceAtLeast(0)
 
@@ -2333,37 +2319,120 @@ class MusicManager(private val context: Context) {
 
     private fun calculateInSampleSize(options: BitmapFactory.Options, reqWidth: Int, reqHeight: Int): Int {
         val (height: Int, width: Int) = options.outHeight to options.outWidth
-        var inSampleSizeThe file has become unwieldy because it acts as a **monolithic controller** handling nearly every core responsibility in the application, rather than just playback or silence trimming. 
+        var inSampleSize = 1
+        if (height > reqHeight || width > reqWidth) {
+            val halfHeight: Int = height / 2
+            val halfWidth: Int = width / 2
+            while (halfHeight / inSampleSize >= reqHeight && halfWidth / inSampleSize >= reqWidth) {
+                inSampleSize *= 2
+            }
+        }
+        return inSampleSize
+    }
 
-The silence trimming functionality itself only takes about 15–20 lines of code: configuring `SilenceSkippingAudioProcessor`, enabling it on the sink, and adding a simple fallback watchdog in the position tracker. 
+    fun updateNotification() {
+        val song = currentSong ?: return
+        val session = mediaSession ?: return
+        val art = getCachedAlbumArt(song.id)
 
-The rest of the file’s excessive length is due to several unrelated systems packed into the same class:
+        try {
+            val serviceIntent = Intent(context, MediaPlaybackService::class.java)
+            ContextCompat.startForegroundService(context, serviceIntent)
+        } catch (_: Exception) {}
 
-1. **Storage & Content Provider Operations:**
-   * Querying MediaStore via content resolvers.
-   * Direct disk tag reading, editing, and ID3 tag rewriting via `jaudiotagger`.
-   * Scoped storage permission handshakes, bitmap decoding, and thumbnail caching.
+        val launchIntent = Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
+        val contentPendingIntent = PendingIntent.getActivity(
+            context, 0, launchIntent,
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
 
-2. **Hardware Audio Effects Management:**
-   * Manual binding, level-setting, and lifecycle management for Android’s native `Equalizer`, `BassBoost`, `Virtualizer`, and `LoudnessEnhancer`.
-   * Mathematical matrix calculations for mono summing and vocal attenuation via channel mixing.
+        val prevIntent = PendingIntent.getService(
+            context, 1, Intent(context, MediaPlaybackService::class.java).apply { action = MediaPlaybackService.ACTION_PREV },
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+        val playPauseIntent = PendingIntent.getService(
+            context, 2, Intent(context, MediaPlaybackService::class.java).apply {
+                action = if (isPlaying) MediaPlaybackService.ACTION_PAUSE else MediaPlaybackService.ACTION_PLAY
+            },
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+        val nextIntent = PendingIntent.getService(
+            context, 3, Intent(context, MediaPlaybackService::class.java).apply { action = MediaPlaybackService.ACTION_NEXT },
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
 
-3. **Complex UI & State Persistence:**
-   * Handlers for 5 different grid view modes, persistent sorting preferences across four separate screens, and theme customization.
-   * JSON serialization/deserialization for playlists, hidden directories, and custom folder colors.
+        val playPauseIcon = if (isPlaying) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play
+        val playPauseTitle = if (isPlaying) "Pause" else "Play"
 
-4. **Audio Routing & System Callbacks:**
-   * Headphone/Bluetooth discovery, device switching callbacks, system volume synchronization, and foreground notification management.
+        val mediaStyle = MediaStyleNotificationHelper.MediaStyle(session)
+            .setShowActionsInCompactView(0, 1, 2)
 
----
+        val builder = NotificationCompat.Builder(context, MediaPlaybackService.NOTIF_CHANNEL_ID)
+            .setSmallIcon(android.R.drawable.ic_media_play)
+            .setContentTitle(song.title)
+            .setContentText(if (song.artist.isNotBlank()) song.artist else "Unknown Artist")
+            .setSubText(song.album)
+            .setContentIntent(contentPendingIntent)
+            .setStyle(mediaStyle)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setOngoing(isPlaying)
+            .addAction(android.R.drawable.ic_media_previous, "Previous", prevIntent)
+            .addAction(playPauseIcon, playPauseTitle, playPauseIntent)
+            .addAction(android.R.drawable.ic_media_next, "Next", nextIntent)
 
-### How to Clean Up and Modularize It
+        if (art != null) {
+            builder.setLargeIcon(art)
+        }
 
-To reduce `MusicManager.kt` back to a clean, readable file (around 200–300 lines), the responsibilities should be split into dedicated helper classes:
+        try {
+            notificationManager.notify(MediaPlaybackService.NOTIF_ID, builder.build())
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
 
-* **`AudioEffectsEngine.kt`**: Extracts the equalizer, bass boost, volume enhancer, and channel mixing logic.
-* **`MediaStoreScanner.kt`**: Handles querying storage, audio metadata parsing, and tag updates.
-* **`PlaylistRepository.kt`**: Encapsulates playlist creation, persistence, and sorting.
-* **`AudioDeviceRouter.kt`**: Manages audio device callbacks and output routing.
+    private fun loadPreferences() {
+        hiddenFolders.clear()
+        hiddenFolders.addAll(prefs.getStringSet("hidden_folders", emptySet()) ?: emptySet())
+        hiddenAudioIds.clear()
+        hiddenAudioIds.addAll(
+            prefs.getStringSet("hidden_audio", emptySet())?.mapNotNull { it.toLongOrNull() } ?: emptyList()
+        )
 
-This separation keeps `MusicManager` focused solely on high-level transport controls (play, pause, seek, queue tracking, and silence trimming) while making future debugging and builds much faster.
+        val plJson = prefs.getString("custom_playlists", null)
+        customPlaylists.clear()
+        if (plJson != null) {
+            try {
+                val arr = JSONArray(plJson)
+                for (i in 0 until arr.length()) {
+                    val obj = arr.getJSONObject(i)
+                    val id = obj.getString("id")
+                    val name = obj.getString("name")
+                    val isFolder = obj.optBoolean("isFolder", false)
+                    val folderName = obj.optString("folderName", null)
+                    val icon = obj.optString("icon", "📁")
+                    val iconColorHex = obj.optLong("iconColorHex", 0xFFF59E0B)
+                    val idsArr = obj.getJSONArray("songIds")
+                    val songIds = ArrayList<Long>()
+                    for (j in 0 until idsArr.length()) {
+                        songIds.add(idsArr.getLong(j))
+                    }
+                    customPlaylists.add(
+                        Playlist(
+                            id = id,
+                            name = name,
+                            songIds = songIds.toImmutableList(),
+                            isFolderPinned = isFolder,
+                            folderName = folderName,
+                            icon = icon,
+                            iconColorHex = iconColorHex
+                        )
+                    )
+                }
+            } catch (_: Exception) {}
+        }
+    }
+}
