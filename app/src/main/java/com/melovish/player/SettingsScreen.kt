@@ -101,6 +101,16 @@ fun SettingsScreen(
         )
     }
 
+    // Volume Boost On/Off toggle state (Off by default)
+    var isVolumeBoostEnabled by remember {
+        mutableStateOf(manager.prefs.getBoolean("vol_boost_enabled", false))
+    }
+    var rememberedVolumeBoostLevel by remember {
+        mutableFloatStateOf(
+            manager.prefs.getFloat("saved_vol_boost_level", 120f).coerceIn(100f, 200f)
+        )
+    }
+
     BackHandler(enabled = activeSubScreen != null) {
         activeSubScreen = null
     }
@@ -424,10 +434,8 @@ fun SettingsScreen(
                             manager.prefs.edit().putBoolean("pager_transition_enabled", isEnabled).apply()
 
                             if (isEnabled) {
-                                // Restore remembered custom effect
                                 manager.setPagerTransition(rememberedCustomTransition)
                             } else {
-                                // Default to standard Slide transition when disabled
                                 manager.setPagerTransition(PagerTransitionEffect.SLIDE)
                             }
                         }
@@ -470,7 +478,8 @@ fun SettingsScreen(
             }
         }
 
-        // 4. Audio Section Directly On Page (Reordered: Normalization -> Mono Audio -> Volume Boost -> Audio Output -> Equalizer)
+        // 4. Audio Section Directly On Page
+        // Ordered: Lossless -> Normalization -> Mono Audio -> Volume Boost (with 📢 & On/Off) -> Audio Output -> Equalizer
         item(key = "audio_section_direct", contentType = "audio_card") {
             Column(
                 modifier = Modifier
@@ -513,7 +522,7 @@ fun SettingsScreen(
 
                 Spacer(modifier = Modifier.height(14.dp))
 
-                // 3. Mono Audio (Moved UP: directly below Volume Normalization and above Volume Boost)
+                // 3. Mono Audio (Moved UP: directly below Volume Normalization)
                 SettingSwitchRow(
                     icon = "🎚️",
                     title = "Mono Audio",
@@ -527,23 +536,68 @@ fun SettingsScreen(
 
                 Spacer(modifier = Modifier.height(14.dp))
 
-                // 4. Volume Boost (Moved DOWN: directly below Mono Audio and above Audio Output)
-                Text("Volume Boost", color = textColor, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                Text("Increase the maximum volume without muffled clipping (${manager.volumeBoostLevel.toInt()}%).", color = Color(0xFF64748B), fontSize = 12.sp)
-
-                Slider(
-                    value = manager.volumeBoostLevel,
-                    onValueChange = { liveLevel ->
-                        val rounded = liveLevel.toInt()
-                        if (rounded != manager.volumeBoostLevel.toInt()) {
-                            if (rounded % 10 == 0) manager.triggerHapticFeedback(false)
-                            manager.setVolumeBoost(liveLevel)
-                        }
-                    },
-                    valueRange = 100f..200f,
+                // 4. Volume Boost (Moved DOWN: directly above Audio Output, with 📢 icon and On/Off toggle)
+                Row(
                     modifier = Modifier.fillMaxWidth(),
-                    colors = SliderDefaults.colors(thumbColor = accent, activeTrackColor = accent)
-                )
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                        Text("📢", fontSize = 20.sp)
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column {
+                            Text("Volume Boost", color = textColor, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                            Text(
+                                text = if (isVolumeBoostEnabled) {
+                                    "Increase the maximum volume (${manager.volumeBoostLevel.toInt()}%)."
+                                } else {
+                                    "Increase the maximum volume beyond 100%."
+                                },
+                                color = Color(0xFF64748B),
+                                fontSize = 12.sp
+                            )
+                        }
+                    }
+                    Switch(
+                        checked = isVolumeBoostEnabled,
+                        onCheckedChange = { isEnabled ->
+                            manager.triggerHapticFeedback(false)
+                            isVolumeBoostEnabled = isEnabled
+                            manager.prefs.edit().putBoolean("vol_boost_enabled", isEnabled).apply()
+
+                            if (isEnabled) {
+                                manager.setVolumeBoost(rememberedVolumeBoostLevel)
+                            } else {
+                                manager.setVolumeBoost(100f)
+                            }
+                        }
+                    )
+                }
+
+                AnimatedVisibility(
+                    visible = isVolumeBoostEnabled,
+                    enter = expandVertically() + fadeIn(),
+                    exit = shrinkVertically() + fadeOut()
+                ) {
+                    Column {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Slider(
+                            value = manager.volumeBoostLevel,
+                            onValueChange = { liveLevel ->
+                                val rounded = liveLevel.toInt()
+                                if (rounded != manager.volumeBoostLevel.toInt()) {
+                                    if (rounded % 10 == 0) manager.triggerHapticFeedback(false)
+                                    rememberedVolumeBoostLevel = liveLevel
+                                    manager.prefs.edit().putFloat("saved_vol_boost_level", liveLevel).apply()
+                                    manager.setVolumeBoost(liveLevel)
+                                }
+                            },
+                            valueRange = 100f..200f,
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = SliderDefaults.colors(thumbColor = accent, activeTrackColor = accent)
+                        )
+                    }
+                }
 
                 Spacer(modifier = Modifier.height(14.dp))
 
