@@ -25,7 +25,6 @@ import android.media.audiofx.LoudnessEnhancer
 import android.media.audiofx.Virtualizer
 import android.net.Uri
 import android.os.Build
-import android.os.CombinedVibration
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
@@ -518,7 +517,9 @@ class MusicManager(private val context: Context) {
 
             override fun onPlaybackStateChanged(state: Int) {
                 if (state == Player.STATE_READY) {
-                    duration = player.duration.coerceAtLeast(0L)
+                    if (player.duration > 0L) {
+                        duration = player.duration
+                    }
                     val sessionId = player.audioSessionId
                     if (sessionId != C.AUDIO_SESSION_ID_UNSET && sessionId != 0) {
                         bindHardwareAudioEffects(sessionId)
@@ -543,6 +544,8 @@ class MusicManager(private val context: Context) {
                 val song = allSongs.find { it.uri == currentUri }
                 if (song != null) {
                     currentSong = song
+                    currentPosition = 0L
+                    duration = song.duration
                     recordSongPlayed(song)
                     updateNotification()
                     applyVolumeNormalization()
@@ -1165,13 +1168,14 @@ class MusicManager(private val context: Context) {
         managerScope.launch {
             while (true) {
                 if (isPlaying) {
-                    currentPosition = player.currentPosition.coerceAtLeast(0L)
+                    val p = player.currentPosition.coerceAtLeast(0L)
+                    currentPosition = p
                     currentSong?.let { song ->
-                        saveSongPosition(song.id, currentPosition)
+                        saveSongPosition(song.id, p)
                     }
 
                     if (isCrossfadeEnabled && duration > 0L) {
-                        val remainingMs = duration - currentPosition
+                        val remainingMs = duration - p
                         val fadeWindowMs = (crossfadeDuration * 1000).toLong().coerceIn(1000L, 12000L)
                         if (remainingMs in 1..fadeWindowMs && !isFadingOutForCrossfade) {
                             isFadingOutForCrossfade = true
@@ -1182,7 +1186,7 @@ class MusicManager(private val context: Context) {
                         }
                     }
                 }
-                delay(250)
+                delay(200)
             }
         }
     }
@@ -1446,22 +1450,23 @@ class MusicManager(private val context: Context) {
         }
     }
 
+    // Instant zero-lag track playback
     fun playSong(song: Song, queue: List<Song>, section: String, initialPositionMs: Long = 0L) {
+        val targetIndex = queue.indexOfFirst { it.id == song.id }.coerceAtLeast(0)
+
+        currentSong = song
+        currentPosition = initialPositionMs
+        duration = song.duration
+        isPlaying = true
+
         val isSameQueue = currentSectionName == section &&
                 playbackQueue.size == queue.size &&
                 player.mediaItemCount == queue.size
 
         currentSectionName = section
-        currentSong = song
-
-        val targetIndex = queue.indexOfFirst { it.id == song.id }.coerceAtLeast(0)
 
         if (isSameQueue && targetIndex in 0 until player.mediaItemCount) {
-            if (initialPositionMs > 0L) {
-                player.seekTo(targetIndex, initialPositionMs)
-            } else {
-                player.seekToDefaultPosition(targetIndex)
-            }
+            player.seekTo(targetIndex, initialPositionMs)
             if (!player.isPlaying) {
                 player.play()
             }
@@ -1493,7 +1498,7 @@ class MusicManager(private val context: Context) {
                 player.setMediaItems(mediaItems, targetIndex, initialPositionMs)
                 player.prepare()
                 if (isFadeOnStart) {
-                    triggerFadeIn(1200L)
+                    triggerFadeIn(1000L)
                 } else {
                     player.volume = 1.0f
                 }
@@ -1553,17 +1558,28 @@ class MusicManager(private val context: Context) {
         if (player.isPlaying) {
             currentSong?.let { saveSongPosition(it.id, player.currentPosition) }
             player.pause()
+            isPlaying = false
         } else {
             if (isFadeOnStart) triggerFadeIn(1000L)
             player.play()
+            isPlaying = true
         }
         updateNotification()
     }
 
     fun playNext() {
         if (player.hasNextMediaItem()) {
+            val nextIdx = player.nextMediaItemIndex
+            if (nextIdx in playbackQueue.indices) {
+                currentSong = playbackQueue[nextIdx]
+                currentPosition = 0L
+                duration = playbackQueue[nextIdx].duration
+            }
             player.seekToNextMediaItem()
         } else if (repeatModeState == Player.REPEAT_MODE_ALL && playbackQueue.isNotEmpty()) {
+            currentSong = playbackQueue.first()
+            currentPosition = 0L
+            duration = playbackQueue.first().duration
             player.seekTo(0, 0L)
         }
         updateNotification()
@@ -1571,8 +1587,15 @@ class MusicManager(private val context: Context) {
 
     fun playPrevious() {
         if (player.currentPosition > 3000L || !player.hasPreviousMediaItem()) {
+            currentPosition = 0L
             player.seekTo(0L)
         } else {
+            val prevIdx = player.previousMediaItemIndex
+            if (prevIdx in playbackQueue.indices) {
+                currentSong = playbackQueue[prevIdx]
+                currentPosition = 0L
+                duration = playbackQueue[prevIdx].duration
+            }
             player.seekToPreviousMediaItem()
         }
         updateNotification()
@@ -1821,10 +1844,6 @@ class MusicManager(private val context: Context) {
         customPlaylists.addAll(newList)
         savePlaylists()
     }
-
-    // =========================================================================
-    // NATIVE SYSTEM STORAGE WRITE CONFIRMATION & EXECUTION ENGINE
-    // =========================================================================
 
     fun requestFileWritePermissionAndSave(
         song: Song,
@@ -2379,4 +2398,3 @@ class MusicManager(private val context: Context) {
         }
     }
 }
-

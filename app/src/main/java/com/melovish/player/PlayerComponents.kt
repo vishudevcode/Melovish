@@ -725,16 +725,12 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
         }
     }
 
-    LaunchedEffect(pagerState) {
-        snapshotFlow { pagerState.isScrollInProgress }.collect { isScrolling ->
-            if (!isScrolling && !isProgrammaticScroll) {
-                val settledPage = pagerState.currentPage
-                if (settledPage in currentQueue.indices) {
-                    val targetSong = currentQueue[settledPage]
-                    if (targetSong.id != manager.currentSong?.id) {
-                        manager.playSong(targetSong, currentQueue, manager.currentSectionName)
-                    }
-                }
+    // Instant proactive switch on page change
+    LaunchedEffect(pagerState.currentPage) {
+        if (!isProgrammaticScroll && pagerState.currentPage in currentQueue.indices) {
+            val targetSong = currentQueue[pagerState.currentPage]
+            if (targetSong.id != manager.currentSong?.id) {
+                manager.playSong(targetSong, currentQueue, manager.currentSectionName)
             }
         }
     }
@@ -837,7 +833,6 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
             }
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
-            // Material You Dynamic Status Bar Padding - seamless color with zero gap
             val statusBarTopPadding = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
             Box(
                 modifier = Modifier
@@ -1030,10 +1025,14 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                             )
                         }
 
+                        // Independent zero-lag scrubber: strictly bound to pageSong
                         val isCurrentActiveTrack = pageSong.id == manager.currentSong?.id
+                        val displayedPos = if (isCurrentActiveTrack) manager.currentPosition else 0L
+                        val displayedDuration = pageSong.duration.coerceAtLeast(1L)
+
                         IsolatedScrubberLeaf(
-                            currentPositionMs = if (isCurrentActiveTrack) manager.currentPosition else 0L,
-                            durationMs = if (isCurrentActiveTrack) manager.duration else pageSong.duration,
+                            currentPositionMs = displayedPos,
+                            durationMs = displayedDuration,
                             accentColor = userAccent,
                             textColor = animTextSecondary,
                             isDark = isDark,
