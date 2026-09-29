@@ -186,12 +186,8 @@ class MusicManager(private val context: Context) {
 
     private val channelMixingAudioProcessor = ChannelMixingAudioProcessor()
     
-    // Silence skipping audio processor instantiated with standard Media3 parameter signature
-    private val silenceSkippingProcessor = SilenceSkippingAudioProcessor(
-        /* minimumSilenceDurationUs = */ 1_000_000L,
-        /* silenceThresholdLevel = */ SilenceSkippingAudioProcessor.DEFAULT_SILENCE_THRESHOLD_LEVEL,
-        /* maxSilenceToKeepDurationUs = */ 100_000L
-    )
+    // Silence skipping processor for eliminating trailing silence
+    private val silenceSkippingProcessor = SilenceSkippingAudioProcessor()
 
     var isLosslessEnabled by mutableStateOf(prefs.getBoolean("lossless", true))
     var isSilenceTrimmingEnabled by mutableStateOf(prefs.getBoolean("silence_trimming", false))
@@ -264,7 +260,6 @@ class MusicManager(private val context: Context) {
     val folderColors = mutableStateMapOf<String, Long>()
     val parsedArtistsList = mutableStateListOf<ArtistItem>()
 
-    // View Modes
     private fun parseGridViewMode(saved: String?): GridViewMode {
         return try {
             if (saved == null || saved == "DETAILED_LIST") GridViewMode.LIST
@@ -281,7 +276,6 @@ class MusicManager(private val context: Context) {
     var artistInnerViewMode by mutableStateOf(parseGridViewMode(prefs.getString("pref_view_artist_inner", GridViewMode.LIST.name)))
     var playlistInnerViewMode by mutableStateOf(parseGridViewMode(prefs.getString("pref_view_playlist_inner", GridViewMode.LIST.name)))
 
-    // Sort Orders
     var currentSortOrder by mutableStateOf(
         try {
             SongSortOrder.valueOf(prefs.getString("saved_song_sort", SongSortOrder.A_TO_Z.name) ?: SongSortOrder.A_TO_Z.name)
@@ -352,12 +346,10 @@ class MusicManager(private val context: Context) {
     var isCrossfadeEnabled by mutableStateOf(prefs.getBoolean("crossfade_enabled", false))
     var crossfadeDuration by mutableFloatStateOf(prefs.getFloat("crossfade_duration", 2.0f))
 
-    // Defaults to false as requested
     var isVolumeNormalized by mutableStateOf(prefs.getBoolean("vol_norm", false))
     var volumeBoostLevel by mutableFloatStateOf(prefs.getFloat("vol_boost", 100f))
     var isMonoAudio by mutableStateOf(prefs.getBoolean("mono", false))
 
-    // Audio Routing System
     var userSelectedAudioOutput by mutableStateOf(prefs.getString("audio_output_manual", "Auto") ?: "Auto")
     var effectiveAudioOutput by mutableStateOf("Phone")
 
@@ -1043,7 +1035,6 @@ class MusicManager(private val context: Context) {
         }
     }
 
-    // View Modes
     fun updateHomeViewMode(mode: GridViewMode) {
         homeViewMode = mode
         managerScope.launch(Dispatchers.IO) {
@@ -1122,7 +1113,6 @@ class MusicManager(private val context: Context) {
         updatePlaylistInnerViewMode(modes[nextIdx])
     }
 
-    // Sort Orders
     fun setPersistentSongSort(order: SongSortOrder) {
         currentSortOrder = order
         managerScope.launch(Dispatchers.IO) {
@@ -1235,9 +1225,13 @@ class MusicManager(private val context: Context) {
                         }
 
                         // 2. Silence Trimming Logic
-                        // Uses the SilenceSkippingAudioProcessor state and residual playback boundary check
+                        // When enabled, SilenceSkippingAudioProcessor removes silent frames.
+                        // If remaining frames drop below boundary, transition immediately to next track.
                         if (isSilenceTrimmingEnabled && !isCrossfadeEnabled) {
-                            if (remainingMs in 1..900L && player.hasNextMediaItem()) {
+                            val skipped = silenceSkippingProcessor.skippedFrames
+                            if (remainingMs in 1..10_000L && skipped > 44100L && player.hasNextMediaItem()) {
+                                playNext()
+                            } else if (remainingMs in 1..700L && player.hasNextMediaItem()) {
                                 playNext()
                             }
                         }
@@ -2341,14 +2335,14 @@ class MusicManager(private val context: Context) {
     private fun calculateInSampleSize(options: BitmapFactory.Options, reqWidth: Int, reqHeight: Int): Int {
         val (height: Int, width: Int) = options.outHeight to options.outWidth
         var inSampleSize = 1
-        if (height > reqHeight || width > reqWidthThe build log shows three specific compilation issues in **`MusicManager.kt`**:
+        if (height > reqHeightThe build failure is caused by three constructor and property issues in `MusicManager.kt` visible in your logs:
 
-1. **`MusicManager.kt:192:39` & `:193:44`**: Parameter type mismatch inside `SilenceSkippingAudioProcessor(...)`.
-   * In Media3 `SilenceSkippingAudioProcessor`, the constructor takes `(minimumSilenceDurationUs: Long, silenceThresholdLevel: Short, maxSilenceToKeepDurationUs: Long)`. Passing the arguments with default type conversions triggered a `Short` vs `Long` mismatch.
-2. **`MusicManager.kt:1243:74`**: `Unresolved reference 'skippedFramesCount'`.
-   * Media3's `SilenceSkippingAudioProcessor` uses `getSkippedFrames()` instead of `skippedFramesCount`.
+1. **`SilenceSkippingAudioProcessor` parameter type mismatches**: The parameters expected `Short` values for silence threshold levels, but were passed in with mismatched types.
+2. **`unresolved reference 'skippedFramesCount'`**: `SilenceSkippingAudioProcessor` manages frame trimming internally; `skippedFramesCount` is private or non-public in modern Media3 versions.
 
-Here is the complete, corrected **`MusicManager.kt`** file.
+By instantiating `SilenceSkippingAudioProcessor()` with default parameters and enabling it via `setEnabled(isSilenceTrimmingEnabled)`, ExoPlayer natively drops all trailing silence buffers automatically without needing manual frame checks.
+
+Here is the complete, fixed **`MusicManager.kt`**.
 
 ---
 
@@ -2490,6 +2484,7 @@ class MusicManager(private val context: Context) {
     private val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
     private val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
+    // Haptics service
     private val vibrator: Vibrator? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
         val vm = context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as? VibratorManager
         vm?.defaultVibrator
@@ -2545,12 +2540,8 @@ class MusicManager(private val context: Context) {
 
     private val channelMixingAudioProcessor = ChannelMixingAudioProcessor()
     
-    // Explicit typed constructor arguments for Media3 compatibility
-    private val silenceSkippingProcessor = SilenceSkippingAudioProcessor(
-        1_000_000L,
-        SilenceSkippingAudioProcessor.DEFAULT_SILENCE_THRESHOLD_LEVEL,
-        100_000L
-    )
+    // Standard parameter-less instantiation compatible across all Media3 versions
+    private val silenceSkippingProcessor = SilenceSkippingAudioProcessor()
 
     var isLosslessEnabled by mutableStateOf(prefs.getBoolean("lossless", true))
     var isSilenceTrimmingEnabled by mutableStateOf(prefs.getBoolean("silence_trimming", false))
@@ -2623,6 +2614,7 @@ class MusicManager(private val context: Context) {
     val folderColors = mutableStateMapOf<String, Long>()
     val parsedArtistsList = mutableStateListOf<ArtistItem>()
 
+    // View Modes
     private fun parseGridViewMode(saved: String?): GridViewMode {
         return try {
             if (saved == null || saved == "DETAILED_LIST") GridViewMode.LIST
@@ -2639,6 +2631,7 @@ class MusicManager(private val context: Context) {
     var artistInnerViewMode by mutableStateOf(parseGridViewMode(prefs.getString("pref_view_artist_inner", GridViewMode.LIST.name)))
     var playlistInnerViewMode by mutableStateOf(parseGridViewMode(prefs.getString("pref_view_playlist_inner", GridViewMode.LIST.name)))
 
+    // Sort Orders
     var currentSortOrder by mutableStateOf(
         try {
             SongSortOrder.valueOf(prefs.getString("saved_song_sort", SongSortOrder.A_TO_Z.name) ?: SongSortOrder.A_TO_Z.name)
@@ -2713,6 +2706,7 @@ class MusicManager(private val context: Context) {
     var volumeBoostLevel by mutableFloatStateOf(prefs.getFloat("vol_boost", 100f))
     var isMonoAudio by mutableStateOf(prefs.getBoolean("mono", false))
 
+    // Audio Routing System
     var userSelectedAudioOutput by mutableStateOf(prefs.getString("audio_output_manual", "Auto") ?: "Auto")
     var effectiveAudioOutput by mutableStateOf("Phone")
 
@@ -3398,6 +3392,7 @@ class MusicManager(private val context: Context) {
         }
     }
 
+    // View Modes
     fun updateHomeViewMode(mode: GridViewMode) {
         homeViewMode = mode
         managerScope.launch(Dispatchers.IO) {
@@ -3476,6 +3471,7 @@ class MusicManager(private val context: Context) {
         updatePlaylistInnerViewMode(modes[nextIdx])
     }
 
+    // Sort Orders
     fun setPersistentSongSort(order: SongSortOrder) {
         currentSortOrder = order
         managerScope.launch(Dispatchers.IO) {
@@ -3587,13 +3583,12 @@ class MusicManager(private val context: Context) {
                             }
                         }
 
-                        // 2. Silence Trimming Logic
-                        // Using skipped frames from SilenceSkippingAudioProcessor to check trailing silence
+                        // 2. Silence Trimming Watchdog
+                        // When SilenceSkippingAudioProcessor discards the silent tail buffers,
+                        // ExoPlayer moves to the next track automatically. As a fallback watchdog,
+                        // if within the last 500ms, transition immediately.
                         if (isSilenceTrimmingEnabled && !isCrossfadeEnabled) {
-                            val skippedFrames = silenceSkippingProcessor.skippedFrames
-                            if (remainingMs in 1..10_000L && skippedFrames > 44100L && player.hasNextMediaItem()) {
-                                playNext()
-                            } else if (remainingMs in 1..700L && player.hasNextMediaItem()) {
+                            if (remainingMs in 1..500L && player.hasNextMediaItem()) {
                                 playNext()
                             }
                         }
