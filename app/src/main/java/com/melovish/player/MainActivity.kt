@@ -101,7 +101,6 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.PointerInputChange
@@ -172,26 +171,7 @@ class MainActivity : ComponentActivity() {
         requestRequiredPermissions()
 
         setContent {
-            MelovishRootApp(
-                manager = viewModel.manager,
-                onRequestWritePermission = { uri ->
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                        try {
-                            val writePendingIntent = MediaStore.createWriteRequest(
-                                contentResolver,
-                                listOf(uri)
-                            )
-                            val request = IntentSenderRequest.Builder(writePendingIntent.intentSender).build()
-                            writeRequestLauncher.launch(request)
-                        } catch (e: Exception) {
-                            e.printStackTrace()
-                            viewModel.manager.executePendingStorageWrite()
-                        }
-                    } else {
-                        viewModel.manager.executePendingStorageWrite()
-                    }
-                }
-            )
+            MelovishRootApp(manager = viewModel.manager)
         }
     }
 
@@ -234,10 +214,7 @@ class MainActivity : ComponentActivity() {
 
 @UnstableApi
 @Composable
-fun MelovishRootApp(
-    manager: MusicManager,
-    onRequestWritePermission: (Uri) -> Unit = {}
-) {
+fun MelovishRootApp(manager: MusicManager) {
     val context = LocalContext.current
     val systemDark = isSystemInDarkTheme()
 
@@ -493,8 +470,7 @@ fun MelovishRootApp(
                 TagEditorDialog(
                     manager = manager,
                     song = activeTagEditSong!!,
-                    onDismiss = { activeTagEditSong = null },
-                    onRequestWritePermission = onRequestWritePermission
+                    onDismiss = { activeTagEditSong = null }
                 )
             }
 
