@@ -30,7 +30,6 @@ android {
                 keyAlias = System.getenv("RELEASE_KEY_ALIAS")
                 keyPassword = System.getenv("RELEASE_KEY_PASSWORD")
             } else {
-                // Fallback to debug signature if release keystore isn't present in environment
                 initWith(getByName("debug"))
             }
         }
@@ -38,17 +37,12 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = true
-            isShrinkResources = true
-            proguardFiles(
-                getDefaultProguardFile("proguard-android-optimize.txt"),
-                "proguard-rules.pro"
-            )
+            isMinifyEnabled = false
+            isShrinkResources = false
             signingConfig = signingConfigs.getByName("release")
         }
         debug {
             isMinifyEnabled = false
-            // Installs as a separate app (com.melovish.player.debug) alongside release
             applicationIdSuffix = ".debug"
             versionNameSuffix = "-DEBUG"
         }
@@ -84,10 +78,8 @@ android {
 }
 
 dependencies {
-    // Phase 2: Immutable Collections for Zero-Recomposition 120 FPS Rendering
     implementation("org.jetbrains.kotlinx:kotlinx-collections-immutable:0.3.8")
 
-    // AndroidX Core, Coroutines & Lifecycle SSOT Binding
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.6")
     implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.8.6")
@@ -95,7 +87,6 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.6")
     implementation("androidx.activity:activity-compose:1.9.2")
 
-    // Jetpack Compose Runtime & Material 3 (BOM Managed)
     val composeBom = platform("androidx.compose:compose-bom:2024.09.02")
     implementation(composeBom)
     implementation("androidx.compose.ui:ui")
@@ -105,21 +96,17 @@ dependencies {
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-extended")
 
-    // Phase 1 & 3: AndroidX Media3 Audio Engine (ExoPlayer + MediaSessionService)
     val media3Version = "1.4.1"
     implementation("androidx.media3:media3-exoplayer:$media3Version")
     implementation("androidx.media3:media3-session:$media3Version")
     implementation("androidx.media3:media3-common:$media3Version")
 
-    // Phase 3: High-Throughput Memory-Pooled Image Pipeline (Coil)
     implementation("io.coil-kt:coil-compose:2.7.0")
 
-    // Structured Concurrency & Non-Blocking Async Primitives
     val coroutinesVersion = "1.8.1"
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:$coroutinesVersion")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:$coroutinesVersion")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-guava:$coroutinesVersion")
 
-    // Physical Audio Tag Modification Engine (MP3 ID3v2.3/v2.4, FLAC Vorbis, M4A/AAC Atoms, WAV)
     implementation("net.jthink:jaudiotagger:3.0.1")
 }
