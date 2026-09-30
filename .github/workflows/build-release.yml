@@ -2,11 +2,6 @@ name: Build Production Release APK
 
 on:
   workflow_dispatch:
-    inputs:
-      release_notes:
-        description: 'Notes or version tag for this release build'
-        required: false
-        default: 'Production Release Build'
 
 jobs:
   build-release:
@@ -21,9 +16,7 @@ jobs:
         with:
           distribution: 'temurin'
           java-version: '17'
-
-      - name: Setup Gradle Cache
-        uses: actions/setup-gradle@v3
+          cache: 'gradle'
 
       - name: Grant Execute Permission to Gradle Wrapper
         run: chmod +x gradlew
@@ -32,7 +25,6 @@ jobs:
         env:
           KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
         run: |
-          # Decode the base64 secret and write it out as a physical JKS file
           echo "$KEYSTORE_BASE64" | base64 --decode > /tmp/release-key.jks
           echo "Keystore restored successfully to /tmp/release-key.jks"
 
