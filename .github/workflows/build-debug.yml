@@ -4,7 +4,7 @@ on:
   push:
     branches:
       - '**'        # Triggers automatically on every push to any branch
-  workflow_dispatch: # Keeps the manual "Run workflow" button in the Actions tab
+  workflow_dispatch: # Allows manual trigger from the Actions tab
 
 jobs:
   build-debug:
@@ -39,9 +39,15 @@ jobs:
             gradle assembleDebug --stacktrace
           fi
 
+      - name: Stage Artifact
+        run: |
+          mkdir -p dist
+          cp app/build/outputs/apk/debug/*.apk dist/
+
       - name: Upload Debug APK
         uses: actions/upload-artifact@v4
         with:
           name: Melovish-Debug-APK
-          path: "**/build/outputs/apk/debug/*.apk"
+          path: dist/*.apk
+          if-no-files-found: error
           retention-days: 14
