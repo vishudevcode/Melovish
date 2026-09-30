@@ -48,7 +48,9 @@ android {
         }
         debug {
             isMinifyEnabled = false
+            // Installs as a separate app (com.melovish.player.debug) alongside release
             applicationIdSuffix = ".debug"
+            versionNameSuffix = "-DEBUG"
         }
     }
 
