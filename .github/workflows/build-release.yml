@@ -56,7 +56,10 @@ jobs:
         run: |
           mkdir -p dist
           cp app/build/outputs/apk/release/*.apk dist/
-          cp app/build/outputs/bundle/release/*.aab dist/
+          for apk in dist/*.apk; do
+            base_name=$(basename "$apk" .apk)
+            cp app/build/outputs/bundle/release/*.aab "dist/${base_name}.aab"
+          done
 
       - name: Upload Release Artifacts
         uses: actions/upload-artifact@v4
