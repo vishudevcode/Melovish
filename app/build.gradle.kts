@@ -12,6 +12,12 @@ android {
         applicationId = "com.melovish.player"
         minSdk = 26
         targetSdk = 35
+
+        // =========================================================================
+        // 📌 VERSION CONTROL (UPDATE HERE FOR RELEASES)
+        // =========================================================================
+        // • versionCode: Internal Android/Play Store number. Increase by +1 every time (1, 2, 3...)
+        // • versionName: The visible version string shown to users in app details (e.g., "1.0.0", "1.0.1")
         versionCode = 1
         versionName = "1.0.0"
 
@@ -19,6 +25,23 @@ android {
         vectorDrawables {
             useSupportLibrary = true
         }
+    }
+
+    // =============================================================================
+    // 🏷️ AUTOMATIC APK FILE NAMING (SINGLE DEBUG / RELEASE LABEL)
+    // =============================================================================
+    // • Release APK: Melovish-v1.0.0-release.apk
+    // • Debug APK:   Melovish-v1.0.0-debug.apk
+    applicationVariants.all {
+        val variant = this
+        variant.outputs
+            .map { it as com.android.build.gradle.internal.api.BaseVariantOutputImpl }
+            .forEach { output ->
+                // Uses the clean base versionName from defaultConfig to prevent duplicate "-DEBUG-debug"
+                val baseVersion = defaultConfig.versionName
+                val bType = variant.buildType.name
+                output.outputFileName = "Melovish-v${baseVersion}-${bType}.apk"
+            }
     }
 
     signingConfigs {
