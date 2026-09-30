@@ -42,6 +42,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
@@ -726,7 +727,6 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
         }
     }
 
-    // High performance multi-swipe debounce: Only play once the user finishes flinging/swiping
     LaunchedEffect(pagerState) {
         snapshotFlow { pagerState.isScrollInProgress to pagerState.settledPage }.collect { (inProgress, settledPage) ->
             if (!inProgress && !isProgrammaticScroll && settledPage in currentQueue.indices) {
@@ -862,7 +862,6 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                     if (pageBmp == null) pageBmp = manager.loadAlbumArtAsync(pageSong)
                 }
 
-                // Compute high-performance hardware transformations on graphicsLayer
                 val pageOffset by remember(pageIndex) {
                     derivedStateOf {
                         (pagerState.currentPage - pageIndex) + pagerState.currentPageOffsetFraction
@@ -1099,11 +1098,15 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                                         Box(modifier = Modifier.size(6.dp, 22.dp).clip(RoundedCornerShape(3.dp)).background(iconTint))
                                     }
                                 } else {
-                                    Canvas(modifier = Modifier.size(24.dp).padding(start = 3.dp)) {
+                                    Canvas(
+                                        modifier = Modifier
+                                            .size(24.dp)
+                                            .offset(x = 1.5.dp) // Optical center offset
+                                    ) {
                                         val path = Path().apply {
-                                            moveTo(size.width * 0.15f, size.height * 0.10f)
-                                            lineTo(size.width * 0.90f, size.height * 0.50f)
-                                            lineTo(size.width * 0.15f, size.height * 0.90f)
+                                            moveTo(size.width * 0.18f, size.height * 0.12f)
+                                            lineTo(size.width * 0.88f, size.height * 0.50f)
+                                            lineTo(size.width * 0.18f, size.height * 0.88f)
                                             close()
                                         }
                                         drawPath(path, color = iconTint)
@@ -1242,7 +1245,7 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                             context.startActivity(Intent.createChooser(shareIntent, "Share Track"))
                         }
                         MenuRow("🎚️", "Equalizer", isDark) { showMenuModal = false; showEqualizerSheet = true }
-                        MenuRow("🏷️", "Tag Editor", isDark) { showMenuModal = false; showTagEditorDialog = true }
+                        MenuRow("🏷️️", "Tag Editor", isDark) { showMenuModal = false; showTagEditorDialog = true }
                         MenuRow("➕", "Add to Playlist", isDark) { showMenuModal = false; showAddToPlaylistDialog = true }
                         MenuRow("⏱️", "Playback Speed", isDark) { showMenuModal = false; showSpeedDialog = true }
 
@@ -1975,7 +1978,7 @@ fun MenuRow(icon: String, text: String, isDark: Boolean, isDanger: Boolean = fal
     }
 }
 
-// Mini Player Dock
+// Mini Player Dock with Unified Vector Controls & Floating Elevation
 @UnstableApi
 @Composable
 fun MiniPlayerDock(manager: MusicManager, onClick: () -> Unit) {
@@ -1992,6 +1995,11 @@ fun MiniPlayerDock(manager: MusicManager, onClick: () -> Unit) {
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 6.dp)
+            .shadow(
+                elevation = 6.dp,
+                shape = RoundedCornerShape(22.dp),
+                spotColor = if (isDark) Color(0x66000000) else Color(0x1F000000)
+            )
             .clip(RoundedCornerShape(22.dp))
             .background(if (isDark) Color(0xE60A0F1D) else Color(0xF2FFFFFF))
             .border(1.dp, if (isDark) Color(0x33FFFFFF) else Color(0x22000000), RoundedCornerShape(22.dp))
@@ -2008,7 +2016,7 @@ fun MiniPlayerDock(manager: MusicManager, onClick: () -> Unit) {
         Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Box(modifier = Modifier.size(44.dp).clip(RoundedCornerShape(10.dp)).background(Color(0xFF1E293B)), contentAlignment = Alignment.Center) {
                 if (albumArtBitmap != null) {
-                    Image(bitmap = albumArtBitmap!!.asImageBitmap(), contentDescription = "Art", modifier = Modifier.fillMaxSize())
+                    Image(bitmap = albumArtBitmap!!.asImageBitmap(), contentDescription = "Art", modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
                 } else {
                     Text("🎵", fontSize = 20.sp)
                 }
@@ -2018,11 +2026,43 @@ fun MiniPlayerDock(manager: MusicManager, onClick: () -> Unit) {
                 Text(song.title, color = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A), fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text("${formatFileSize(song.size)} • ${if (song.artist.isNotBlank()) song.artist else "Melovish"}", color = accent, fontSize = 11.sp, maxLines = 1)
             }
-            Box(modifier = Modifier.size(38.dp).clip(CircleShape).background(accent).clickable {
-                manager.triggerHapticFeedback(true)
-                manager.togglePlayPause()
-            }, contentAlignment = Alignment.Center) {
-                Text(if (manager.isPlaying) "❚❚" else "▶", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .shadow(
+                        elevation = 6.dp,
+                        shape = CircleShape,
+                        spotColor = accent
+                    )
+                    .clip(CircleShape)
+                    .background(accent)
+                    .border(1.2.dp, Color.White.copy(alpha = 0.25f), CircleShape)
+                    .clickable {
+                        manager.triggerHapticFeedback(true)
+                        manager.togglePlayPause()
+                    },
+                contentAlignment = Alignment.Center
+            ) {
+                if (manager.isPlaying) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Box(modifier = Modifier.size(3.5.dp, 14.dp).clip(RoundedCornerShape(2.dp)).background(Color.White))
+                        Box(modifier = Modifier.size(3.5.dp, 14.dp).clip(RoundedCornerShape(2.dp)).background(Color.White))
+                    }
+                } else {
+                    Canvas(
+                        modifier = Modifier
+                            .size(16.dp)
+                            .offset(x = 1.2.dp) // Optical center offset
+                    ) {
+                        val path = Path().apply {
+                            moveTo(size.width * 0.18f, size.height * 0.12f)
+                            lineTo(size.width * 0.88f, size.height * 0.50f)
+                            lineTo(size.width * 0.18f, size.height * 0.88f)
+                            close()
+                        }
+                        drawPath(path, color = Color.White)
+                    }
+                }
             }
         }
     }
@@ -2359,7 +2399,6 @@ fun MagneticSpeedDialog(manager: MusicManager, onDismiss: () -> Unit) {
                 )
                 Spacer(modifier = Modifier.height(24.dp))
 
-                // Custom Mathematical Speed Slider with perfectly aligned dots and indicator
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -2412,11 +2451,9 @@ fun MagneticSpeedDialog(manager: MusicManager, onDismiss: () -> Unit) {
                         val horizontalPaddingPx = 16.dp.toPx()
                         val usableWidth = size.width - (horizontalPaddingPx * 2)
 
-                        // Calculate current speed position on the rail
                         val currentFraction = ((speed - 0.25f) / (3.0f - 0.25f)).coerceIn(0f, 1f)
                         val activeX = horizontalPaddingPx + (currentFraction * usableWidth)
 
-                        // Draw background rail
                         drawRoundRect(
                             color = if (isDark) Color(0xFF334155) else Color(0xFFE2E8F0),
                             topLeft = Offset(horizontalPaddingPx, centerY - 2.5.dp.toPx()),
@@ -2424,7 +2461,6 @@ fun MagneticSpeedDialog(manager: MusicManager, onDismiss: () -> Unit) {
                             cornerRadius = CornerRadius(2.5.dp.toPx(), 2.5.dp.toPx())
                         )
 
-                        // Draw active progress rail
                         if (activeX > horizontalPaddingPx) {
                             drawRoundRect(
                                 color = accent.copy(alpha = 0.5f),
@@ -2434,7 +2470,6 @@ fun MagneticSpeedDialog(manager: MusicManager, onDismiss: () -> Unit) {
                             )
                         }
 
-                        // Draw all step dots
                         prominentSteps.forEach { step ->
                             val stepFraction = (step - 0.25f) / (3.0f - 0.25f)
                             val dotX = horizontalPaddingPx + (stepFraction * usableWidth)
@@ -2453,7 +2488,6 @@ fun MagneticSpeedDialog(manager: MusicManager, onDismiss: () -> Unit) {
                             )
                         }
 
-                        // Draw the vertical indicator pill centered on top of the dot
                         val indicatorWidth = 5.dp.toPx()
                         val indicatorHeight = 26.dp.toPx()
                         drawRoundRect(

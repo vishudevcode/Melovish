@@ -57,6 +57,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
@@ -175,7 +176,6 @@ class MainActivity : ComponentActivity() {
         
         viewModel.manager.attachActivity(this)
 
-        // Request hardware 120Hz/high refresh rate mode on supporting displays
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             try {
                 val display = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
@@ -284,7 +284,6 @@ fun MelovishRootApp(manager: MusicManager) {
     var isPlayerExpanded by remember { mutableStateOf(false) }
     var isSettingsEqOpen by remember { mutableStateOf(false) }
 
-    // Automatic Status Bar Icon Color Synchronization
     SideEffect {
         if (activity != null) {
             val windowInsetsController = WindowCompat.getInsetsController(activity.window, activity.window.decorView)
@@ -504,7 +503,6 @@ fun MelovishRootApp(manager: MusicManager) {
                 }
             }
 
-            // Feathered Gradient Scrim at the top
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -667,7 +665,6 @@ fun ShimmerSkeletonGridItem(aspectRatio: Float = 1f, isDark: Boolean, isHero: Bo
     )
 }
 
-// 1:1 Standard Square Card with Full Information
 @UnstableApi
 @Composable
 fun SquareAlbumOverlayCard(
@@ -751,7 +748,6 @@ fun SquareAlbumOverlayCard(
     }
 }
 
-// 5th View Mode: Hero Album Card (Strict 1:1 Aspect Ratio, Elevated Title Label)
 @UnstableApi
 @Composable
 fun HeroAlbumCard(
@@ -828,7 +824,6 @@ fun HeroAlbumCard(
     }
 }
 
-// 5-Mode Vector Switcher Icon
 @Composable
 fun GridViewModeVectorIcon(mode: GridViewMode, tint: Color, modifier: Modifier = Modifier) {
     Canvas(modifier = modifier) {
@@ -873,7 +868,6 @@ fun GridViewModeVectorIcon(mode: GridViewMode, tint: Color, modifier: Modifier =
     }
 }
 
-// 5-Mode Grid Size Dialog
 @Composable
 fun GridSizeDialog(
     currentMode: GridViewMode,
@@ -1011,7 +1005,7 @@ fun ManagePlaylistsDialog(
                     itemsIndexed(
                         items = manager.customPlaylists,
                         key = { _, pl -> pl.id }
-                    ) { index, pl ->
+                    ) { _, pl ->
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -1719,19 +1713,41 @@ fun HomeScreen(
             }
         }
 
+        // Floating Action Button with authentic floating elevation and matching vector play icon
         if (manager.currentSong == null && !showSkeleton) {
             Box(
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
-                    .padding(bottom = 16.dp, end = 16.dp)
-                    .size(56.dp)
-                    .shadow(10.dp, CircleShape)
+                    .padding(bottom = 18.dp, end = 18.dp)
+                    .size(58.dp)
+                    .shadow(
+                        elevation = 12.dp,
+                        shape = CircleShape,
+                        spotColor = manager.accentColor,
+                        ambientColor = if (isDark) Color(0x66000000) else Color(0x33000000)
+                    )
                     .clip(CircleShape)
                     .background(manager.accentColor)
-                    .clickable { onResumeClick() },
+                    .border(1.5.dp, Color.White.copy(alpha = 0.25f), CircleShape)
+                    .clickable {
+                        manager.triggerHapticFeedback(true)
+                        onResumeClick()
+                    },
                 contentAlignment = Alignment.Center
             ) {
-                Text("▶", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.ExtraBold)
+                Canvas(
+                    modifier = Modifier
+                        .size(24.dp)
+                        .offset(x = 1.5.dp) // Optical centering offset for the triangle
+                ) {
+                    val path = Path().apply {
+                        moveTo(size.width * 0.18f, size.height * 0.12f)
+                        lineTo(size.width * 0.88f, size.height * 0.50f)
+                        lineTo(size.width * 0.18f, size.height * 0.88f)
+                        close()
+                    }
+                    drawPath(path, color = Color.White)
+                }
             }
         }
     }
@@ -1876,7 +1892,6 @@ fun FolderColourPickerDialog(
     }
 }
 
-// 1:1 Dynamic Square Folder Card
 @Composable
 fun LibraryFolderSquareCard(
     folderName: String,
@@ -1974,7 +1989,6 @@ fun LibraryFolderSquareCard(
     }
 }
 
-// Library Screen
 @OptIn(ExperimentalFoundationApi::class)
 @UnstableApi
 @Composable
@@ -2300,7 +2314,6 @@ fun SearchScreen(manager: MusicManager, listState: LazyListState, onSongMenuClic
     }
 }
 
-// Playlist Detail Screen
 @UnstableApi
 @Composable
 fun PlaylistDetailScreen(
@@ -2650,7 +2663,6 @@ fun FilteredSongsScreen(title: String, songs: ImmutableList<Song>, manager: Musi
     }
 }
 
-// Inside Folder Screen
 @UnstableApi
 @Composable
 fun FolderSongsScreen(folderName: String, manager: MusicManager, isDark: Boolean, onBack: () -> Unit, onSongMenuClick: (Song) -> Unit) {
