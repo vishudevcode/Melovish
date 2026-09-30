@@ -1,7 +1,10 @@
 name: Build Debug APK
 
 on:
-  workflow_dispatch:
+  push:
+    branches:
+      - '**'        # Triggers automatically on every push to any branch
+  workflow_dispatch: # Keeps the manual "Run workflow" button in the Actions tab
 
 jobs:
   build-debug:
