@@ -18,8 +18,15 @@ jobs:
           java-version: '17'
           cache: 'gradle'
 
-      - name: Grant Execute Permission to Gradle Wrapper
-        run: chmod +x gradlew
+      - name: Ensure Gradle Wrapper Executable
+        run: |
+          if [ -f "./gradlew" ]; then
+            chmod +x ./gradlew
+          elif [ -f "gradlew" ]; then
+            chmod +x gradlew
+          else
+            echo "Gradle wrapper not in root, falling back to installed gradle"
+          fi
 
       - name: Decode and Restore Keystore File
         env:
@@ -34,7 +41,12 @@ jobs:
           RELEASE_KEYSTORE_PASSWORD: ${{ secrets.RELEASE_KEYSTORE_PASSWORD }}
           RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
           RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
-        run: ./gradlew assembleRelease --stacktrace
+        run: |
+          if [ -f "./gradlew" ]; then
+            ./gradlew assembleRelease --stacktrace
+          else
+            gradle assembleRelease --stacktrace
+          fi
 
       - name: Securely Remove Keystore from Runner
         if: always()
@@ -44,5 +56,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: Melovish-Release-APK
-          path: app/build/outputs/apk/release/app-release.apk
+          path: "**/build/outputs/apk/release/*.apk"
           retention-days: 30
