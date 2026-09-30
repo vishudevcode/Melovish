@@ -1,7 +1,7 @@
-name: Build Production Release APK
+name: Build Production Release APK & Bundle (AAB)
 
 on:
-  workflow_dispatch:
+  workflow_dispatch: # Only runs when manually triggered by you
 
 jobs:
   build-release:
@@ -35,7 +35,7 @@ jobs:
           echo "$KEYSTORE_BASE64" | base64 --decode > /tmp/release-key.jks
           echo "Keystore restored successfully to /tmp/release-key.jks"
 
-      - name: Build Signed Release APK
+      - name: Build Signed Release APK & Bundle (AAB)
         env:
           KEYSTORE_FILE_PATH: /tmp/release-key.jks
           RELEASE_KEYSTORE_PASSWORD: ${{ secrets.RELEASE_KEYSTORE_PASSWORD }}
@@ -43,18 +43,25 @@ jobs:
           RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
         run: |
           if [ -f "./gradlew" ]; then
-            ./gradlew assembleRelease --stacktrace
+            ./gradlew assembleRelease bundleRelease --stacktrace
           else
-            gradle assembleRelease --stacktrace
+            gradle assembleRelease bundleRelease --stacktrace
           fi
 
       - name: Securely Remove Keystore from Runner
         if: always()
         run: rm -f /tmp/release-key.jks
 
-      - name: Upload Signed Release APK Artifact
+      - name: Stage Artifacts
+        run: |
+          mkdir -p dist
+          cp app/build/outputs/apk/release/*.apk dist/
+          cp app/build/outputs/bundle/release/*.aab dist/
+
+      - name: Upload Release Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: Melovish-Release-APK
-          path: "**/build/outputs/apk/release/*.apk"
+          name: Melovish-Production-Builds
+          path: dist/*
+          if-no-files-found: error
           retention-days: 30
