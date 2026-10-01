@@ -4,6 +4,9 @@ import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -37,6 +40,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
@@ -67,7 +71,13 @@ fun ProfileScreen(manager: MusicManager, onBackClick: () -> Unit) {
     var showBigPicturePreview by remember { mutableStateOf(false) }
     var viewingAllType by remember { mutableStateOf<String?>(null) }
 
-    BackHandler(enabled = viewingAllType != null) { viewingAllType = null }
+    BackHandler(enabled = viewingAllType != null || showBigPicturePreview) {
+        if (showBigPicturePreview) {
+            showBigPicturePreview = false
+        } else {
+            viewingAllType = null
+        }
+    }
 
     val photoPicker = rememberLauncherForActivityResult(contract = ActivityResultContracts.GetContent()) { uri ->
         if (uri != null) {
@@ -82,13 +92,21 @@ fun ProfileScreen(manager: MusicManager, onBackClick: () -> Unit) {
         null
     }
 
-    // Phase 2 Invariant: Memoize analytical sorting to prevent frame drops on composition passes
     val mostPlayed: ImmutableList<Song> = remember(manager.allSongs.size, manager.historySongs.size) {
         manager.getMostPlayedSongs().toImmutableList()
     }
     val historyList: ImmutableList<Song> = remember(manager.historySongs.size, manager.historySongs.toList()) {
         manager.historySongs.toImmutableList()
     }
+
+    // Frosted Glass State: Determines whether avatar preview is active
+    val isAnyProfileDialogOpen = showBigPicturePreview
+
+    val animatedProfileBlur by animateDpAsState(
+        targetValue = if (isAnyProfileDialogOpen) 22.dp else 0.dp,
+        animationSpec = tween(durationMillis = 280, easing = FastOutSlowInEasing),
+        label = "profileBlurAnim"
+    )
 
     if (viewingAllType != null) {
         val isMostPlayedView = viewingAllType == "most_played"
@@ -163,117 +181,227 @@ fun ProfileScreen(manager: MusicManager, onBackClick: () -> Unit) {
         return
     }
 
-    LazyColumn(
-        modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
-        contentPadding = PaddingValues(bottom = 80.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
-    ) {
-        item(key = "profile_top_bar", contentType = "header") {
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 2.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                GlassBackButton(isDark = isDark, onClick = onBackClick)
-                Spacer(modifier = Modifier.width(14.dp))
-                Text(text = "My Profile", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = textColor)
-            }
-        }
-
-        item(key = "profile_info_card", contentType = "user_info_card") {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(24.dp))
-                    .background(cardBg)
-                    .border(1.dp, if (isDark) Color(0x22FFFFFF) else Color(0xFFE2E8F0), RoundedCornerShape(24.dp))
-                    .padding(20.dp)
-            ) {
+    Box(modifier = Modifier.fillMaxSize()) {
+        // Main Profile Content Layer: Blurs when big picture preview is active
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .blur(animatedProfileBlur)
+                .padding(horizontal = 16.dp),
+            contentPadding = PaddingValues(bottom = 80.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            item(key = "profile_top_bar", contentType = "header") {
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
+                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 2.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("Profile Info", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = textColor)
-                    Button(
-                        onClick = {
-                            if (isEditMode) {
-                                manager.savePermanentProfile(editName, editEmail, pickedImageUri)
-                                isEditMode = false
-                            } else {
-                                isEditMode = true
-                            }
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = accent),
-                        shape = RoundedCornerShape(12.dp)
-                    ) {
-                        Text(if (isEditMode) "Save" else "Edit", color = Color.White, fontWeight = FontWeight.Bold)
-                    }
+                    GlassBackButton(isDark = isDark, onClick = onBackClick)
+                    Spacer(modifier = Modifier.width(14.dp))
+                    Text(text = "My Profile", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = textColor)
                 }
+            }
 
-                Spacer(modifier = Modifier.height(18.dp))
+            item(key = "profile_info_card", contentType = "user_info_card") {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(24.dp))
+                        .background(cardBg)
+                        .border(1.dp, if (isDark) Color(0x22FFFFFF) else Color(0xFFE2E8F0), RoundedCornerShape(24.dp))
+                        .padding(20.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Profile Info", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = textColor)
+                        Button(
+                            onClick = {
+                                if (isEditMode) {
+                                    manager.savePermanentProfile(editName, editEmail, pickedImageUri)
+                                    isEditMode = false
+                                } else {
+                                    isEditMode = true
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = accent),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Text(if (isEditMode) "Save" else "Edit", color = Color.White, fontWeight = FontWeight.Bold)
+                        }
+                    }
 
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(
-                        modifier = Modifier
-                            .size(76.dp)
-                            .shadow(6.dp, CircleShape)
-                            .clip(CircleShape)
-                            .background(Color(0xFF030712))
-                            .border(2.dp, accent, CircleShape)
+                    Spacer(modifier = Modifier.height(18.dp))
+
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            modifier = Modifier
+                                .size(76.dp)
+                                .shadow(6.dp, CircleShape)
+                                .clip(CircleShape)
+                                .background(Color(0xFF030712))
+                                .border(2.dp, accent, CircleShape)
                             .clickable {
                                 if (isEditMode) photoPicker.launch("image/*") else showBigPicturePreview = true
                             },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        if (avatarModel != null) {
-                            AsyncImage(
-                                model = avatarModel,
-                                contentDescription = "Avatar",
-                                contentScale = ContentScale.Crop,
-                                modifier = Modifier.fillMaxSize()
-                            )
-                        } else {
-                            DefaultProfileAvatar(modifier = Modifier.fillMaxSize())
+                            contentAlignment = Alignment.Center
+                        ) {
+                            if (avatarModel != null) {
+                                AsyncImage(
+                                    model = avatarModel,
+                                    contentDescription = "Avatar",
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier.fillMaxSize()
+                                )
+                            } else {
+                                DefaultProfileAvatar(modifier = Modifier.fillMaxSize())
+                            }
+
+                            if (isEditMode) {
+                                Box(
+                                    modifier = Modifier
+                                        .align(Alignment.BottomEnd)
+                                        .size(26.dp)
+                                        .clip(CircleShape)
+                                        .background(accent)
+                                        .border(1.5.dp, Color.White, CircleShape),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text("📷", fontSize = 12.sp)
+                                }
+                            }
                         }
+
+                        Spacer(modifier = Modifier.width(18.dp))
 
                         if (isEditMode) {
-                            Box(
-                                modifier = Modifier
-                                    .align(Alignment.BottomEnd)
-                                    .size(26.dp)
-                                    .clip(CircleShape)
-                                    .background(accent)
-                                    .border(1.5.dp, Color.White, CircleShape),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text("📷", fontSize = 12.sp)
+                            Column(modifier = Modifier.weight(1f)) {
+                                OutlinedTextField(
+                                    value = editName,
+                                    onValueChange = { editName = it },
+                                    label = { Text("Your Name") },
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+                                OutlinedTextField(
+                                    value = editEmail,
+                                    onValueChange = { editEmail = it },
+                                    label = { Text("Email (Optional)") },
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            }
+                        } else {
+                            Column {
+                                Text(manager.profileName, color = textColor, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                                if (manager.profileEmail.isNotBlank()) {
+                                    Text(manager.profileEmail, color = Color(0xFF64748B), fontSize = 13.sp)
+                                }
                             }
                         }
                     }
+                }
+            }
 
-                    Spacer(modifier = Modifier.width(18.dp))
+            item(key = "profile_most_played", contentType = "analytics_card") {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(24.dp))
+                        .background(cardBg)
+                        .border(1.dp, if (isDark) Color(0x22FFFFFF) else Color(0xFFE2E8F0), RoundedCornerShape(24.dp))
+                        .padding(20.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text("Most Played", color = textColor, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                            Text("Your all-time favorite songs.", color = Color(0xFF64748B), fontSize = 12.sp)
+                        }
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(if (isDark) Color(0x1AFFFFFF) else Color(0xFFF1F5F9))
+                                .clickable { viewingAllType = "most_played" }
+                                .padding(horizontal = 12.dp, vertical = 6.dp)
+                        ) {
+                            Text("View all ›", color = textColor, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
 
-                    if (isEditMode) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            OutlinedTextField(
-                                value = editName,
-                                onValueChange = { editName = it },
-                                label = { Text("Your Name") },
-                                modifier = Modifier.fillMaxWidth()
-                            )
-                            Spacer(modifier = Modifier.height(8.dp))
-                            OutlinedTextField(
-                                value = editEmail,
-                                onValueChange = { editEmail = it },
-                                label = { Text("Email (Optional)") },
-                                modifier = Modifier.fillMaxWidth()
-                            )
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    if (mostPlayed.isEmpty()) {
+                        Box(modifier = Modifier.fillMaxWidth().height(90.dp), contentAlignment = Alignment.Center) {
+                            Text("No songs played yet.", color = Color(0xFF64748B), fontSize = 13.sp)
                         }
                     } else {
+                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            mostPlayed.take(5).forEach { song ->
+                                ProfileSongRow(
+                                    song = song,
+                                    manager = manager,
+                                    isDark = isDark,
+                                    accent = accent,
+                                    showPlayCount = true,
+                                    onClick = { manager.playSong(song, mostPlayed, "Most Played") }
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            item(key = "profile_history", contentType = "analytics_card") {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(24.dp))
+                        .background(cardBg)
+                        .border(1.dp, if (isDark) Color(0x22FFFFFF) else Color(0xFFE2E8F0), RoundedCornerShape(24.dp))
+                        .padding(20.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
                         Column {
-                            Text(manager.profileName, color = textColor, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                            if (manager.profileEmail.isNotBlank()) {
-                                Text(manager.profileEmail, color = Color(0xFF64748B), fontSize = 13.sp)
+                            Text("History", color = textColor, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                            Text("Your recently played songs.", color = Color(0xFF64748B), fontSize = 12.sp)
+                        }
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(if (isDark) Color(0x1AFFFFFF) else Color(0xFFF1F5F9))
+                                .clickable { viewingAllType = "history" }
+                                .padding(horizontal = 12.dp, vertical = 6.dp)
+                        ) {
+                            Text("View all ›", color = textColor, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    if (historyList.isEmpty()) {
+                        Box(modifier = Modifier.fillMaxWidth().height(90.dp), contentAlignment = Alignment.Center) {
+                            Text("No playback history yet.", color = Color(0xFF64748B), fontSize = 13.sp)
+                        }
+                    } else {
+                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            historyList.take(5).forEach { song ->
+                                ProfileSongRow(
+                                    song = song,
+                                    manager = manager,
+                                    isDark = isDark,
+                                    accent = accent,
+                                    showPlayCount = false,
+                                    onClick = { manager.playSong(song, historyList, "History") }
+                                )
                             }
                         }
                     }
@@ -281,145 +409,43 @@ fun ProfileScreen(manager: MusicManager, onBackClick: () -> Unit) {
             }
         }
 
-        item(key = "profile_most_played", contentType = "analytics_card") {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(24.dp))
-                    .background(cardBg)
-                    .border(1.dp, if (isDark) Color(0x22FFFFFF) else Color(0xFFE2E8F0), RoundedCornerShape(24.dp))
-                    .padding(20.dp)
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column {
-                        Text("Most Played", color = textColor, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                        Text("Your all-time favorite songs.", color = Color(0xFF64748B), fontSize = 12.sp)
-                    }
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(if (isDark) Color(0x1AFFFFFF) else Color(0xFFF1F5F9))
-                            .clickable { viewingAllType = "most_played" }
-                            .padding(horizontal = 12.dp, vertical = 6.dp)
-                    ) {
-                        Text("View all ›", color = textColor, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(14.dp))
-
-                if (mostPlayed.isEmpty()) {
-                    Box(modifier = Modifier.fillMaxWidth().height(90.dp), contentAlignment = Alignment.Center) {
-                        Text("No songs played yet.", color = Color(0xFF64748B), fontSize = 13.sp)
-                    }
-                } else {
-                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        mostPlayed.take(5).forEach { song ->
-                            ProfileSongRow(
-                                song = song,
-                                manager = manager,
-                                isDark = isDark,
-                                accent = accent,
-                                showPlayCount = true,
-                                onClick = { manager.playSong(song, mostPlayed, "Most Played") }
-                            )
-                        }
-                    }
-                }
-            }
-        }
-
-        item(key = "profile_history", contentType = "analytics_card") {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(24.dp))
-                    .background(cardBg)
-                    .border(1.dp, if (isDark) Color(0x22FFFFFF) else Color(0xFFE2E8F0), RoundedCornerShape(24.dp))
-                    .padding(20.dp)
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column {
-                        Text("History", color = textColor, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                        Text("Your recently played songs.", color = Color(0xFF64748B), fontSize = 12.sp)
-                    }
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(if (isDark) Color(0x1AFFFFFF) else Color(0xFFF1F5F9))
-                            .clickable { viewingAllType = "history" }
-                            .padding(horizontal = 12.dp, vertical = 6.dp)
-                    ) {
-                        Text("View all ›", color = textColor, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(14.dp))
-
-                if (historyList.isEmpty()) {
-                    Box(modifier = Modifier.fillMaxWidth().height(90.dp), contentAlignment = Alignment.Center) {
-                        Text("No playback history yet.", color = Color(0xFF64748B), fontSize = 13.sp)
-                    }
-                } else {
-                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        historyList.take(5).forEach { song ->
-                            ProfileSongRow(
-                                song = song,
-                                manager = manager,
-                                isDark = isDark,
-                                accent = accent,
-                                showPlayCount = false,
-                                onClick = { manager.playSong(song, historyList, "History") }
-                            )
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    if (showBigPicturePreview) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Color.Transparent)
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null
-                ) { showBigPicturePreview = false },
-            contentAlignment = Alignment.Center
-        ) {
+        // Frosted Glass Scrim Layer for Picture Preview
+        if (showBigPicturePreview) {
             Box(
                 modifier = Modifier
-                    .size(320.dp)
-                    .clip(RoundedCornerShape(28.dp))
-                    .background(Color(0xFF030712)),
+                    .fillMaxSize()
+                    .background(if (isDark) Color(0x66000000) else Color(0x40000000))
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null
+                    ) { showBigPicturePreview = false },
                 contentAlignment = Alignment.Center
             ) {
-                if (avatarModel != null) {
-                    AsyncImage(
-                        model = avatarModel,
-                        contentDescription = "Big Avatar",
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize()
-                    )
-                } else {
-                    DefaultProfileAvatar(modifier = Modifier.size(240.dp))
+                Box(
+                    modifier = Modifier
+                        .size(320.dp)
+                        .shadow(16.dp, RoundedCornerShape(28.dp))
+                        .clip(RoundedCornerShape(28.dp))
+                        .background(Color(0xFF030712))
+                        .border(1.5.dp, accent.copy(alpha = 0.6f), RoundedCornerShape(28.dp)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (avatarModel != null) {
+                        AsyncImage(
+                            model = avatarModel,
+                            contentDescription = "Big Avatar",
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    } else {
+                        DefaultProfileAvatar(modifier = Modifier.size(240.dp))
+                    }
                 }
             }
         }
     }
 }
 
-// Phase 2 Invariant: Ultra-Lightweight Song Row with Cached Art & Stable Types
 @UnstableApi
 @Composable
 fun ProfileSongRow(

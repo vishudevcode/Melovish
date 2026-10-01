@@ -6,6 +6,9 @@ import android.net.Uri
 import android.view.HapticFeedbackConstants
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -56,6 +59,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.shadow
@@ -102,7 +106,7 @@ import kotlin.math.roundToInt
 import kotlin.math.sin
 
 // =========================================================================
-// 1. IN-APP 1:1 SQUARE ALBUM ART CROPPER DIALOG (Shifted Upwards)
+// 1. IN-APP 1:1 SQUARE ALBUM ART CROPPER DIALOG
 // =========================================================================
 
 @Composable
@@ -164,7 +168,6 @@ fun SquareAlbumArtCropperDialog(
                 .statusBarsPadding()
                 .navigationBarsPadding()
         ) {
-            // Header Bar
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -195,7 +198,6 @@ fun SquareAlbumArtCropperDialog(
                 }
             }
 
-            // Cropper Canvas Area: Balanced crop framing
             BoxWithConstraints(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -285,7 +287,6 @@ fun SquareAlbumArtCropperDialog(
                 }
             }
 
-            // Bottom Action Bar: Shifted upward by a full button height (~56dp bottom spacer)
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -365,7 +366,7 @@ fun SquareAlbumArtCropperDialog(
 }
 
 // =========================================================================
-// 2. WHEEL ROLLER CODE-LOCK DATE PICKER (Matches Image 2)
+// 2. WHEEL ROLLER CODE-LOCK DATE PICKER
 // =========================================================================
 
 @Composable
@@ -424,7 +425,7 @@ fun WheelRollerDatePickerDialog(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0x80000000))
+            .background(Color(0x66000000))
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null
@@ -434,6 +435,7 @@ fun WheelRollerDatePickerDialog(
         Column(
             modifier = Modifier
                 .fillMaxWidth(0.88f)
+                .shadow(16.dp, RoundedCornerShape(16.dp))
                 .clip(RoundedCornerShape(16.dp))
                 .background(Color.White)
                 .clickable(enabled = false) {}
@@ -648,7 +650,7 @@ fun MaterialAnalogClockPickerDialog(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0x80000000))
+            .background(Color(0x66000000))
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null
@@ -658,6 +660,7 @@ fun MaterialAnalogClockPickerDialog(
         Column(
             modifier = Modifier
                 .fillMaxWidth(0.90f)
+                .shadow(16.dp, RoundedCornerShape(28.dp))
                 .clip(RoundedCornerShape(28.dp))
                 .background(Color.White)
                 .clickable(enabled = false) {}
@@ -973,7 +976,7 @@ private fun AnalogClockDial(
 }
 
 // =========================================================================
-// 4. COMPLETE TAG EDITOR DIALOG
+// 4. COMPLETE TAG EDITOR DIALOG WITH FROSTED BACKDROP BLUR
 // =========================================================================
 
 @UnstableApi
@@ -1023,10 +1026,19 @@ fun TagEditorDialog(
         }
     }
 
+    // Frosted Glass State: Determines whether cropper, date roller, or clock picker is active
+    val isAnyTagEditorSubDialogOpen = rawPickedUriForCrop != null || showWheelDatePicker || showAnalogClockPicker
+
+    val animatedTagEditorBlur by animateDpAsState(
+        targetValue = if (isAnyTagEditorSubDialogOpen) 22.dp else 0.dp,
+        animationSpec = tween(durationMillis = 280, easing = FastOutSlowInEasing),
+        label = "tagEditorBlurAnim"
+    )
+
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0x80000000))
+            .background(if (isDark) Color(0x66000000) else Color(0x40000000))
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null
@@ -1042,9 +1054,11 @@ fun TagEditorDialog(
                 .clickable(enabled = false) {}
                 .padding(22.dp)
         ) {
+            // Scrollable Content Layer: Blurs when sub-picker dialogs are showing
             Column(
                 modifier = Modifier
                     .fillMaxSize()
+                    .blur(animatedTagEditorBlur)
                     .verticalScroll(rememberScrollState())
             ) {
                 // Header

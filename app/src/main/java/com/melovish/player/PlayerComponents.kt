@@ -9,6 +9,7 @@ import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
@@ -80,6 +81,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.draw.shadow
@@ -230,7 +232,7 @@ fun GlassmorphicFolderIcon(folderColor: Color, modifier: Modifier = Modifier) {
     )
 }
 
-// Folder Color Dialog
+// Folder Color Dialog with Frosted Scrim
 @Composable
 fun FolderColorDialog(
     folderName: String,
@@ -250,7 +252,7 @@ fun FolderColorDialog(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.Transparent)
+            .background(if (isDark) Color(0x66000000) else Color(0x40000000))
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null
@@ -691,7 +693,7 @@ fun ReorderDragHandle(tint: Color, modifier: Modifier = Modifier) {
     }
 }
 
-// Full Player Sheet with 120Hz Fling Support and Zero Recomposition Lag
+// Full Player Sheet with Smooth Frosted Blur Backdrop & 120Hz Gestures
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @UnstableApi
 @Composable
@@ -822,21 +824,36 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
         }
     }
 
+    // Frosted Glass State: Determines whether any dialog or bottom sheet overlay is visible within player
+    val isAnyPlayerDialogOpen = showMenuModal || showSpeedDialog || showSleepDialog ||
+            showEqualizerSheet || showTagEditorDialog || showLyricsDialog || showAddToPlaylistDialog
+
+    val animatedPlayerBlur by animateDpAsState(
+        targetValue = if (isAnyPlayerDialogOpen) 22.dp else 0.dp,
+        animationSpec = tween(durationMillis = 280, easing = FastOutSlowInEasing),
+        label = "playerBlurAnim"
+    )
+
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(Brush.verticalGradient(listOf(animBgTop, animBgBottom)))
             .pointerInput(Unit) {
                 detectVerticalDragGestures { _, dragAmount ->
-                    if (dragAmount > 38f) {
+                    if (dragAmount > 38f && !isAnyPlayerDialogOpen && !showQueueSheet) {
                         onDismiss()
-                    } else if (dragAmount < -38f) {
+                    } else if (dragAmount < -38f && !isAnyPlayerDialogOpen && !showQueueSheet) {
                         showQueueSheet = true
                     }
                 }
             }
     ) {
-        Column(modifier = Modifier.fillMaxSize()) {
+        // Player Surface: Blurs smoothly when any sub-sheet or dialog is active
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .blur(animatedPlayerBlur)
+        ) {
             val statusBarTopPadding = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
             Box(
                 modifier = Modifier
@@ -1101,7 +1118,7 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                                     Canvas(
                                         modifier = Modifier
                                             .size(24.dp)
-                                            .offset(x = 1.5.dp) // Optical center offset
+                                            .offset(x = 1.5.dp)
                                     ) {
                                         val path = Path().apply {
                                             moveTo(size.width * 0.18f, size.height * 0.12f)
@@ -1204,6 +1221,15 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
             }
         }
 
+        // Frosted Glass Scrim Layer for Player Modals
+        if (isAnyPlayerDialogOpen) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(if (isDark) Color(0x66000000) else Color(0x40000000))
+            )
+        }
+
         if (showMenuModal) {
             Box(
                 modifier = Modifier
@@ -1245,7 +1271,7 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                             context.startActivity(Intent.createChooser(shareIntent, "Share Track"))
                         }
                         MenuRow("🎚️", "Equalizer", isDark) { showMenuModal = false; showEqualizerSheet = true }
-                        MenuRow("🏷️️", "Tag Editor", isDark) { showMenuModal = false; showTagEditorDialog = true }
+                        MenuRow("🏷", "Tag Editor", isDark) { showMenuModal = false; showTagEditorDialog = true }
                         MenuRow("➕", "Add to Playlist", isDark) { showMenuModal = false; showAddToPlaylistDialog = true }
                         MenuRow("⏱️", "Playback Speed", isDark) { showMenuModal = false; showSpeedDialog = true }
 
@@ -1623,7 +1649,7 @@ fun QueueSheet(
     }
 }
 
-// Equalizer Sheet
+// Equalizer Sheet with Frosted Outer Background
 @Composable
 fun EqualizerSheet(manager: MusicManager, onDismiss: () -> Unit) {
     val isDark = manager.isDarkMode
@@ -1633,7 +1659,7 @@ fun EqualizerSheet(manager: MusicManager, onDismiss: () -> Unit) {
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.Transparent)
+            .background(if (isDark) Color(0x66000000) else Color(0x40000000))
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null
@@ -2052,7 +2078,7 @@ fun MiniPlayerDock(manager: MusicManager, onClick: () -> Unit) {
                     Canvas(
                         modifier = Modifier
                             .size(16.dp)
-                            .offset(x = 1.2.dp) // Optical center offset
+                            .offset(x = 1.2.dp)
                     ) {
                         val path = Path().apply {
                             moveTo(size.width * 0.18f, size.height * 0.12f)
@@ -2068,7 +2094,7 @@ fun MiniPlayerDock(manager: MusicManager, onClick: () -> Unit) {
     }
 }
 
-// Sleep Timer Dialog with Per-Unit Haptic Feedback
+// Sleep Timer Dialog with Frosted Scrim & Per-Unit Haptic Feedback
 @UnstableApi
 @Composable
 fun SleepTimerDialog(manager: MusicManager, onDismiss: () -> Unit) {
@@ -2081,7 +2107,7 @@ fun SleepTimerDialog(manager: MusicManager, onDismiss: () -> Unit) {
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.Transparent)
+            .background(if (isDark) Color(0x66000000) else Color(0x40000000))
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null
@@ -2211,14 +2237,14 @@ fun SleepTimerDialog(manager: MusicManager, onDismiss: () -> Unit) {
     }
 }
 
-// Lyrics Dialog
+// Lyrics Dialog with Frosted Scrim
 @Composable
 fun LyricsDialog(song: Song, isDark: Boolean, onDismiss: () -> Unit) {
     val textColor = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A)
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.Transparent)
+            .background(if (isDark) Color(0x66000000) else Color(0x40000000))
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null
@@ -2252,7 +2278,7 @@ fun LyricsDialog(song: Song, isDark: Boolean, onDismiss: () -> Unit) {
     }
 }
 
-// Add to Playlist Dialog with Inline + New Playlist Creator
+// Add to Playlist Dialog with Inline + New Playlist Creator & Frosted Scrim
 @Composable
 fun AddToPlaylistDialog(manager: MusicManager, song: Song, onDismiss: () -> Unit) {
     val isDark = manager.isDarkMode
@@ -2264,7 +2290,7 @@ fun AddToPlaylistDialog(manager: MusicManager, song: Song, onDismiss: () -> Unit
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.Transparent)
+            .background(if (isDark) Color(0x66000000) else Color(0x40000000))
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null
@@ -2369,7 +2395,7 @@ fun AddToPlaylistDialog(manager: MusicManager, song: Song, onDismiss: () -> Unit
     }
 }
 
-// Magnetic Speed Dialog with 0.75x & Centered Indicator
+// Magnetic Speed Dialog with 0.75x, Centered Indicator & Frosted Scrim
 @Composable
 fun MagneticSpeedDialog(manager: MusicManager, onDismiss: () -> Unit) {
     var speed by remember { mutableFloatStateOf(manager.playbackSpeed) }
@@ -2382,7 +2408,7 @@ fun MagneticSpeedDialog(manager: MusicManager, onDismiss: () -> Unit) {
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.Transparent)
+            .background(if (isDark) Color(0x66000000) else Color(0x40000000))
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null
@@ -2667,4 +2693,3 @@ fun ShuffleControlIcon(isShuffleOn: Boolean, tint: Color, modifier: Modifier = M
         }
     )
 }
-

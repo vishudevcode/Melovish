@@ -2,6 +2,9 @@ package com.melovish.player
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -46,6 +49,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
@@ -89,7 +93,6 @@ fun SettingsScreen(
     var showCircularPicker by remember { mutableStateOf(false) }
     var activeSubScreen by remember { mutableStateOf<String?>(null) }
 
-    // Persistent transition animation switch state & remembered custom effect
     var isTransitionEnabled by remember {
         mutableStateOf(manager.prefs.getBoolean("pager_transition_enabled", true))
     }
@@ -104,7 +107,6 @@ fun SettingsScreen(
         )
     }
 
-    // Volume Boost On/Off toggle state (Off by default)
     var isVolumeBoostEnabled by remember {
         mutableStateOf(manager.prefs.getBoolean("vol_boost_enabled", false))
     }
@@ -114,8 +116,12 @@ fun SettingsScreen(
         )
     }
 
-    BackHandler(enabled = activeSubScreen != null) {
-        activeSubScreen = null
+    BackHandler(enabled = activeSubScreen != null || showCircularPicker) {
+        if (showCircularPicker) {
+            showCircularPicker = false
+        } else {
+            activeSubScreen = null
+        }
     }
 
     if (activeSubScreen == "hide_folders") {
@@ -130,592 +136,350 @@ fun SettingsScreen(
 
     val avatarPath = manager.profileImagePath
 
-    LazyColumn(
-        modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
-        contentPadding = PaddingValues(bottom = 80.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
-    ) {
-        item(key = "settings_header", contentType = "header") {
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 2.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                GlassBackButton(isDark = isDark, onClick = onBackClick)
-                Spacer(modifier = Modifier.width(14.dp))
-                Text(text = "Settings", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = textColor)
-            }
-        }
+    // Frosted Glass State: Tracks whether circular color dialog is showing
+    val isAnySettingsDialogOpen = showCircularPicker
 
-        // 1. Profile Section
-        item(key = "profile_section", contentType = "profile_card") {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(22.dp))
-                    .background(cardBg)
-                    .border(1.dp, if (isDark) Color(0x22FFFFFF) else Color(0xFFE2E8F0), RoundedCornerShape(22.dp))
-                    .clickable {
-                        manager.triggerHapticFeedback(false)
-                        onOpenProfile()
-                    }
-                    .padding(18.dp)
-            ) {
-                Text("Profile", color = textColor, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                Text("Manage your profile information and preferences.", color = Color(0xFF64748B), fontSize = 12.sp)
-                Spacer(modifier = Modifier.height(14.dp))
+    val animatedSettingsBlur by animateDpAsState(
+        targetValue = if (isAnySettingsDialogOpen) 22.dp else 0.dp,
+        animationSpec = tween(durationMillis = 280, easing = FastOutSlowInEasing),
+        label = "settingsBlurAnim"
+    )
 
+    Box(modifier = Modifier.fillMaxSize()) {
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .blur(animatedSettingsBlur)
+                .padding(horizontal = 16.dp),
+            contentPadding = PaddingValues(bottom = 80.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            item(key = "settings_header", contentType = "header") {
                 Row(
+                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    GlassBackButton(isDark = isDark, onClick = onBackClick)
+                    Spacer(modifier = Modifier.width(14.dp))
+                    Text(text = "Settings", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = textColor)
+                }
+            }
+
+            // 1. Profile Section
+            item(key = "profile_section", contentType = "profile_card") {
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(if (isDark) Color(0x14FFFFFF) else Color(0xFFF8FAFC))
-                        .padding(14.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(54.dp)
-                            .shadow(4.dp, CircleShape)
-                            .clip(CircleShape)
-                            .background(Color(0xFF030712))
-                            .border(2.dp, accent, CircleShape),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        if (!avatarPath.isNullOrBlank() && File(avatarPath).exists()) {
-                            AsyncImage(
-                                model = File(avatarPath),
-                                contentDescription = "Avatar",
-                                contentScale = ContentScale.Crop,
-                                modifier = Modifier.fillMaxSize()
-                            )
-                        } else {
-                            DefaultProfileAvatar(modifier = Modifier.fillMaxSize())
+                        .clip(RoundedCornerShape(22.dp))
+                        .background(cardBg)
+                        .border(1.dp, if (isDark) Color(0x22FFFFFF) else Color(0xFFE2E8F0), RoundedCornerShape(22.dp))
+                        .clickable {
+                            manager.triggerHapticFeedback(false)
+                            onOpenProfile()
                         }
-                    }
+                        .padding(18.dp)
+                ) {
+                    Text("Profile", color = textColor, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    Text("Manage your profile information and preferences.", color = Color(0xFF64748B), fontSize = 12.sp)
+                    Spacer(modifier = Modifier.height(14.dp))
 
-                    Spacer(modifier = Modifier.width(14.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(manager.profileName, color = textColor, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                        Text(if (manager.profileEmail.isNotBlank()) manager.profileEmail else "Personal Account", color = Color(0xFF64748B), fontSize = 12.sp)
-                    }
-                    Text("›", fontSize = 22.sp, color = accent, fontWeight = FontWeight.Bold)
-                }
-            }
-        }
-
-        // 2. Appearance Section
-        item(key = "appearance_section", contentType = "appearance_card") {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(22.dp))
-                    .background(cardBg)
-                    .border(1.dp, if (isDark) Color(0x22FFFFFF) else Color(0xFFE2E8F0), RoundedCornerShape(22.dp))
-                    .padding(18.dp)
-            ) {
-                Text("Appearance", color = textColor, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                Text("Customize the look and feel of your music player.", color = Color(0xFF64748B), fontSize = 12.sp)
-                Spacer(modifier = Modifier.height(14.dp))
-
-                Text("Theme", color = textColor, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                Spacer(modifier = Modifier.height(8.dp))
-
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    listOf("System", "Light", "Dark").forEach { mode ->
-                        val isSel = manager.themeMode == mode
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(if (isDark) Color(0x14FFFFFF) else Color(0xFFF8FAFC))
+                            .padding(14.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
                         Box(
                             modifier = Modifier
-                                .weight(1f)
-                                .height(46.dp)
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(if (isSel) accent.copy(alpha = 0.15f) else if (isDark) Color(0x14FFFFFF) else Color(0xFFF1F5F9))
-                                .border(1.5.dp, if (isSel) accent else Color.Transparent, RoundedCornerShape(12.dp))
-                                .clickable {
-                                    manager.triggerHapticFeedback(false)
-                                    manager.setTheme(mode)
-                                },
+                                .size(54.dp)
+                                .shadow(4.dp, CircleShape)
+                                .clip(CircleShape)
+                                .background(Color(0xFF030712))
+                                .border(2.dp, accent, CircleShape),
                             contentAlignment = Alignment.Center
                         ) {
-                            Text(mode, color = if (isSel) accent else textColor, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                            if (!avatarPath.isNullOrBlank() && File(avatarPath).exists()) {
+                                AsyncImage(
+                                    model = File(avatarPath),
+                                    contentDescription = "Avatar",
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier.fillMaxSize()
+                                )
+                            } else {
+                                DefaultProfileAvatar(modifier = Modifier.fillMaxSize())
+                            }
                         }
+
+                        Spacer(modifier = Modifier.width(14.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(manager.profileName, color = textColor, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                            Text(if (manager.profileEmail.isNotBlank()) manager.profileEmail else "Personal Account", color = Color(0xFF64748B), fontSize = 12.sp)
+                        }
+                        Text("›", fontSize = 22.sp, color = accent, fontWeight = FontWeight.Bold)
                     }
                 }
+            }
 
-                Spacer(modifier = Modifier.height(16.dp))
-                Text("Color Palette", color = textColor, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                Spacer(modifier = Modifier.height(10.dp))
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+            // 2. Appearance Section
+            item(key = "appearance_section", contentType = "appearance_card") {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(22.dp))
+                        .background(cardBg)
+                        .border(1.dp, if (isDark) Color(0x22FFFFFF) else Color(0xFFE2E8F0), RoundedCornerShape(22.dp))
+                        .padding(18.dp)
                 ) {
-                    val colors = listOf(Color(0xFF00B4D8), Color(0xFF2EC4B6), Color(0xFF39FF14), Color(0xFFFF2A85), Color(0xFFFF3B30))
-                    colors.forEach { col ->
+                    Text("Appearance", color = textColor, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    Text("Customize the look and feel of your music player.", color = Color(0xFF64748B), fontSize = 12.sp)
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    Text("Theme", color = textColor, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        listOf("System", "Light", "Dark").forEach { mode ->
+                            val isSel = manager.themeMode == mode
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(46.dp)
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(if (isSel) accent.copy(alpha = 0.15f) else if (isDark) Color(0x14FFFFFF) else Color(0xFFF1F5F9))
+                                    .border(1.5.dp, if (isSel) accent else Color.Transparent, RoundedCornerShape(12.dp))
+                                    .clickable {
+                                        manager.triggerHapticFeedback(false)
+                                        manager.setTheme(mode)
+                                    },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(mode, color = if (isSel) accent else textColor, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text("Color Palette", color = textColor, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        val colors = listOf(Color(0xFF00B4D8), Color(0xFF2EC4B6), Color(0xFF39FF14), Color(0xFFFF2A85), Color(0xFFFF3B30))
+                        colors.forEach { col ->
+                            Box(
+                                modifier = Modifier
+                                    .size(38.dp)
+                                    .clip(CircleShape)
+                                    .background(col)
+                                    .border(2.dp, if (manager.accentColor == col) Color.White else Color.Transparent, CircleShape)
+                                    .clickable {
+                                        manager.triggerHapticFeedback(false)
+                                        manager.updateAccent(col)
+                                    }
+                            )
+                        }
+
                         Box(
                             modifier = Modifier
                                 .size(38.dp)
                                 .clip(CircleShape)
-                                .background(col)
-                                .border(2.dp, if (manager.accentColor == col) Color.White else Color.Transparent, CircleShape)
+                                .background(Brush.sweepGradient(listOf(Color.Red, Color.Yellow, Color.Green, Color.Cyan, Color.Blue, Color.Magenta, Color.Red)))
+                                .border(2.dp, Color.White, CircleShape)
                                 .clickable {
                                     manager.triggerHapticFeedback(false)
-                                    manager.updateAccent(col)
-                                }
-                        )
-                    }
-
-                    Box(
-                        modifier = Modifier
-                            .size(38.dp)
-                            .clip(CircleShape)
-                            .background(Brush.sweepGradient(listOf(Color.Red, Color.Yellow, Color.Green, Color.Cyan, Color.Blue, Color.Magenta, Color.Red)))
-                            .border(2.dp, Color.White, CircleShape)
-                            .clickable {
-                                manager.triggerHapticFeedback(false)
-                                showCircularPicker = true
-                            },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Box(modifier = Modifier.size(12.dp).clip(CircleShape).background(Color.White))
-                    }
-                }
-            }
-        }
-
-        // 3. Player Settings Section
-        item(key = "player_settings_section", contentType = "player_settings_card") {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(22.dp))
-                    .background(cardBg)
-                    .border(1.dp, if (isDark) Color(0x22FFFFFF) else Color(0xFFE2E8F0), RoundedCornerShape(22.dp))
-                    .padding(18.dp)
-            ) {
-                Text("Player Settings", color = textColor, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                Text("Configure playback behavior.", color = Color(0xFF64748B), fontSize = 12.sp)
-                Spacer(modifier = Modifier.height(16.dp))
-
-                // 1. Always play
-                SettingSwitchRow(
-                    icon = "🔄",
-                    title = "Always play",
-                    subtitle = "Always play audio in background",
-                    checked = manager.isAlwaysPlay,
-                    textColor = textColor,
-                    accentColor = accent
-                ) {
-                    manager.triggerHapticFeedback(false)
-                    manager.toggleAlwaysPlay(it)
-                }
-
-                Spacer(modifier = Modifier.height(14.dp))
-
-                // 2. Colourful Player
-                SettingSwitchRow(
-                    icon = "🎨",
-                    title = "Colourful Player",
-                    subtitle = "Player background adapts to album art.",
-                    checked = manager.isColorfulPlayer,
-                    textColor = textColor,
-                    accentColor = accent
-                ) {
-                    manager.triggerHapticFeedback(false)
-                    manager.isColorfulPlayer = it
-                    manager.managerScope.launch(Dispatchers.IO) {
-                        manager.prefs.edit().putBoolean("colorful_player", it).apply()
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(14.dp))
-
-                // 3. Resume the First File
-                SettingSwitchRow(
-                    icon = "⏯️",
-                    title = "Resume the First File",
-                    subtitle = "Playback will only resume for the first track.",
-                    checked = manager.isResumeFirstOnly,
-                    textColor = textColor,
-                    accentColor = accent
-                ) {
-                    manager.triggerHapticFeedback(false)
-                    manager.isResumeFirstOnly = it
-                    manager.managerScope.launch(Dispatchers.IO) {
-                        manager.prefs.edit().putBoolean("resume_first", it).apply()
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(14.dp))
-
-                // 4. Silence Trimming
-                SettingSwitchRow(
-                    icon = "♾️",
-                    title = "Silence Trimming",
-                    subtitle = "Skips silent gaps at the end of tracks",
-                    checked = manager.isSilenceTrimmingEnabled,
-                    textColor = textColor,
-                    accentColor = accent
-                ) {
-                    manager.triggerHapticFeedback(false)
-                    manager.isSilenceTrimmingEnabled = it
-                    manager.managerScope.launch(Dispatchers.IO) {
-                        manager.prefs.edit().putBoolean("silence_trimming", it).apply()
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(14.dp))
-
-                // 5. Fade on start
-                SettingSwitchRow(
-                    icon = "🔊",
-                    title = "Fade on start",
-                    subtitle = "Gently fades in audio when playback begins.",
-                    checked = manager.isFadeOnStart,
-                    textColor = textColor,
-                    accentColor = accent
-                ) {
-                    manager.triggerHapticFeedback(false)
-                    manager.isFadeOnStart = it
-                    manager.managerScope.launch(Dispatchers.IO) {
-                        manager.prefs.edit().putBoolean("fade_start", it).apply()
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(14.dp))
-
-                // 6. Crossfade
-                SettingSwitchRow(
-                    icon = "↔️",
-                    title = "Crossfade",
-                    subtitle = "Adjust the fade duration between tracks.",
-                    checked = manager.isCrossfadeEnabled,
-                    textColor = textColor,
-                    accentColor = accent
-                ) {
-                    manager.triggerHapticFeedback(false)
-                    manager.isCrossfadeEnabled = it
-                    manager.managerScope.launch(Dispatchers.IO) {
-                        manager.prefs.edit().putBoolean("crossfade_enabled", it).apply()
-                    }
-                }
-
-                if (manager.isCrossfadeEnabled) {
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 4.dp)
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 2.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text("Duration", color = Color(0xFF64748B), fontSize = 12.sp, fontWeight = FontWeight.Medium)
-                            Text("${manager.crossfadeDuration.toInt()}s", color = accent, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                        }
-                        Slider(
-                            value = manager.crossfadeDuration,
-                            onValueChange = { newValue ->
-                                val targetInt = newValue.roundToInt().coerceIn(1, 12)
-                                val targetFloat = targetInt.toFloat()
-                                if (targetFloat != manager.crossfadeDuration) {
-                                    manager.triggerHapticFeedback(false)
-                                    manager.crossfadeDuration = targetFloat
-                                    manager.managerScope.launch(Dispatchers.IO) {
-                                        manager.prefs.edit().putFloat("crossfade_duration", targetFloat).apply()
-                                    }
-                                }
-                            },
-                            valueRange = 1f..12f,
-                            steps = 10,
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = SliderDefaults.colors(thumbColor = accent, activeTrackColor = accent)
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                // 7. Swipe Transition Effect
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
-                        Text("📲", fontSize = 20.sp)
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Column {
-                            Text("Swipe Transition Effect", color = textColor, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-                            Text("Select track change animation", color = Color(0xFF64748B), fontSize = 12.sp)
-                        }
-                    }
-                    Switch(
-                        checked = isTransitionEnabled,
-                        onCheckedChange = { isEnabled ->
-                            manager.triggerHapticFeedback(false)
-                            isTransitionEnabled = isEnabled
-                            manager.managerScope.launch(Dispatchers.IO) {
-                                manager.prefs.edit().putBoolean("pager_transition_enabled", isEnabled).apply()
-                            }
-
-                            if (isEnabled) {
-                                manager.setPagerTransition(rememberedCustomTransition)
-                            } else {
-                                manager.setPagerTransition(PagerTransitionEffect.SLIDE)
-                            }
-                        },
-                        colors = SwitchDefaults.colors(
-                            checkedThumbColor = Color.White,
-                            checkedTrackColor = accent
-                        )
-                    )
-                }
-
-                AnimatedVisibility(
-                    visible = isTransitionEnabled,
-                    enter = expandVertically() + fadeIn(),
-                    exit = shrinkVertically() + fadeOut()
-                ) {
-                    Column {
-                        Spacer(modifier = Modifier.height(12.dp))
-                        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            items(PagerTransitionEffect.values()) { effect ->
-                                val isSel = manager.pagerTransitionEffect == effect
-                                Box(
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(12.dp))
-                                        .background(if (isSel) accent else if (isDark) Color(0x22FFFFFF) else Color(0xFFF1F5F9))
-                                        .clickable {
-                                            manager.triggerHapticFeedback(false)
-                                            rememberedCustomTransition = effect
-                                            manager.managerScope.launch(Dispatchers.IO) {
-                                                manager.prefs.edit().putString("pager_transition_custom_saved", effect.name).apply()
-                                            }
-                                            manager.setPagerTransition(effect)
-                                        }
-                                        .padding(horizontal = 14.dp, vertical = 8.dp)
-                                ) {
-                                    Text(
-                                        text = effect.name.lowercase().replaceFirstChar { it.uppercase() },
-                                        color = if (isSel) Color.White else textColor,
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // 4. Audio Section Directly On Page
-        item(key = "audio_section_direct", contentType = "audio_card") {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(22.dp))
-                    .background(cardBg)
-                    .border(1.dp, if (isDark) Color(0x22FFFFFF) else Color(0xFFE2E8F0), RoundedCornerShape(22.dp))
-                    .padding(18.dp)
-            ) {
-                Text("Audio", color = textColor, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                Text("Adjust audio playback settings.", color = Color(0xFF64748B), fontSize = 12.sp)
-                Spacer(modifier = Modifier.height(16.dp))
-
-                // 1. Lossless Audio
-                SettingSwitchRow(
-                    icon = "📶",
-                    title = "Lossless Audio",
-                    subtitle = "Use Dolby Atmos and Hi-Res Audio.",
-                    checked = manager.isLosslessEnabled,
-                    textColor = textColor,
-                    accentColor = accent
-                ) {
-                    manager.triggerHapticFeedback(false)
-                    manager.toggleLosslessAudio(it)
-                }
-
-                Spacer(modifier = Modifier.height(14.dp))
-
-                // 2. Volume Normalization
-                SettingSwitchRow(
-                    icon = "🔉",
-                    title = "Volume Normalization",
-                    subtitle = "Set the same loudness level for all tracks.",
-                    checked = manager.isVolumeNormalized,
-                    textColor = textColor,
-                    accentColor = accent
-                ) {
-                    manager.triggerHapticFeedback(false)
-                    manager.toggleVolumeNormalization(it)
-                }
-
-                Spacer(modifier = Modifier.height(14.dp))
-
-                // 3. Mono Audio
-                SettingSwitchRow(
-                    icon = "🎚️",
-                    title = "Mono Audio",
-                    subtitle = "Combine left and right channels.",
-                    checked = manager.isMonoAudio,
-                    textColor = textColor,
-                    accentColor = accent
-                ) {
-                    manager.triggerHapticFeedback(false)
-                    manager.toggleMonoAudio(it)
-                }
-
-                Spacer(modifier = Modifier.height(14.dp))
-
-                // 4. Volume Boost
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
-                        Text("📢", fontSize = 20.sp)
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Column {
-                            Text("Volume Boost", color = textColor, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-                            Text(
-                                text = if (isVolumeBoostEnabled) {
-                                    "Increase the maximum volume (${manager.volumeBoostLevel.toInt()}%)."
-                                } else {
-                                    "Increase the maximum volume beyond 100%."
-                                },
-                                color = Color(0xFF64748B),
-                                fontSize = 12.sp
-                            )
-                        }
-                    }
-                    Switch(
-                        checked = isVolumeBoostEnabled,
-                        onCheckedChange = { isEnabled ->
-                            manager.triggerHapticFeedback(false)
-                            isVolumeBoostEnabled = isEnabled
-                            manager.managerScope.launch(Dispatchers.IO) {
-                                manager.prefs.edit().putBoolean("vol_boost_enabled", isEnabled).apply()
-                            }
-
-                            if (isEnabled) {
-                                manager.setVolumeBoost(rememberedVolumeBoostLevel)
-                            } else {
-                                manager.setVolumeBoost(100f)
-                            }
-                        },
-                        colors = SwitchDefaults.colors(
-                            checkedThumbColor = Color.White,
-                            checkedTrackColor = accent
-                        )
-                    )
-                }
-
-                AnimatedVisibility(
-                    visible = isVolumeBoostEnabled,
-                    enter = expandVertically() + fadeIn(),
-                    exit = shrinkVertically() + fadeOut()
-                ) {
-                    Column {
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Slider(
-                            value = manager.volumeBoostLevel,
-                            onValueChange = { liveLevel ->
-                                val rounded = liveLevel.toInt()
-                                if (rounded != manager.volumeBoostLevel.toInt()) {
-                                    if (rounded % 10 == 0) manager.triggerHapticFeedback(false)
-                                    rememberedVolumeBoostLevel = liveLevel
-                                    manager.managerScope.launch(Dispatchers.IO) {
-                                        manager.prefs.edit().putFloat("saved_vol_boost_level", liveLevel).apply()
-                                    }
-                                    manager.setVolumeBoost(liveLevel)
-                                }
-                            },
-                            valueRange = 100f..200f,
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = SliderDefaults.colors(thumbColor = accent, activeTrackColor = accent)
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(14.dp))
-
-                // 5. Audio Output
-                Text("Audio Output", color = textColor, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                Spacer(modifier = Modifier.height(8.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    listOf(
-                        Triple("Phone", "📱  Phone", "Built-in Speaker"),
-                        Triple("Speaker", "🔊  Speaker", "Ext / BT Speaker"),
-                        Triple("Buds", "🎧  Buds", "Earphones / BT")
-                    ).forEach { (outputKey, label, _) ->
-                        val isHighlighted = manager.effectiveAudioOutput == outputKey
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(46.dp)
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(if (isHighlighted) accent.copy(alpha = 0.16f) else if (isDark) Color(0x14FFFFFF) else Color(0xFFF1F5F9))
-                                .border(1.5.dp, if (isHighlighted) accent else Color.Transparent, RoundedCornerShape(12.dp))
-                                .clickable {
-                                    manager.triggerHapticFeedback(true)
-                                    if (manager.userSelectedAudioOutput == outputKey) {
-                                        manager.setAudioOutputRouting("Auto")
-                                    } else {
-                                        manager.setAudioOutputRouting(outputKey)
-                                    }
+                                    showCircularPicker = true
                                 },
                             contentAlignment = Alignment.Center
                         ) {
-                            Text(
-                                text = label,
-                                color = if (isHighlighted) accent else textColor,
-                                fontSize = 13.sp,
-                                fontWeight = if (isHighlighted) FontWeight.Bold else FontWeight.Medium
-                            )
+                            Box(modifier = Modifier.size(12.dp).clip(CircleShape).background(Color.White))
                         }
                     }
                 }
+            }
 
-                Spacer(modifier = Modifier.height(16.dp))
-
-                // 6. Equalizer
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+            // 3. Player Settings Section
+            item(key = "player_settings_section", contentType = "player_settings_card") {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(22.dp))
+                        .background(cardBg)
+                        .border(1.dp, if (isDark) Color(0x22FFFFFF) else Color(0xFFE2E8F0), RoundedCornerShape(22.dp))
+                        .padding(18.dp)
                 ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text("Equalizer", color = textColor, fontSize = 15.sp, fontWeight = FontWeight.Bold)
-                        Text(if (manager.isEqEnabled) manager.selectedEqPreset else "Off", color = accent, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                    Text("Player Settings", color = textColor, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    Text("Configure playback behavior.", color = Color(0xFF64748B), fontSize = 12.sp)
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    SettingSwitchRow(
+                        icon = "🔄",
+                        title = "Always play",
+                        subtitle = "Always play audio in background",
+                        checked = manager.isAlwaysPlay,
+                        textColor = textColor,
+                        accentColor = accent
+                    ) {
+                        manager.triggerHapticFeedback(false)
+                        manager.toggleAlwaysPlay(it)
                     }
 
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Button(
-                            onClick = {
-                                manager.triggerHapticFeedback(false)
-                                onOpenEqualizer()
-                            },
-                            colors = ButtonDefaults.buttonColors(containerColor = if (isDark) Color(0x22FFFFFF) else Color(0xFFF1F5F9)),
-                            shape = RoundedCornerShape(10.dp)
-                        ) {
-                            Text("Adjust", color = textColor, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                        }
+                    Spacer(modifier = Modifier.height(14.dp))
 
+                    SettingSwitchRow(
+                        icon = "🎨",
+                        title = "Colourful Player",
+                        subtitle = "Player background adapts to album art.",
+                        checked = manager.isColorfulPlayer,
+                        textColor = textColor,
+                        accentColor = accent
+                    ) {
+                        manager.triggerHapticFeedback(false)
+                        manager.isColorfulPlayer = it
+                        manager.managerScope.launch(Dispatchers.IO) {
+                            manager.prefs.edit().putBoolean("colorful_player", it).apply()
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    SettingSwitchRow(
+                        icon = "⏯️",
+                        title = "Resume the First File",
+                        subtitle = "Playback will only resume for the first track.",
+                        checked = manager.isResumeFirstOnly,
+                        textColor = textColor,
+                        accentColor = accent
+                    ) {
+                        manager.triggerHapticFeedback(false)
+                        manager.isResumeFirstOnly = it
+                        manager.managerScope.launch(Dispatchers.IO) {
+                            manager.prefs.edit().putBoolean("resume_first", it).apply()
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    SettingSwitchRow(
+                        icon = "♾️",
+                        title = "Silence Trimming",
+                        subtitle = "Skips silent gaps at the end of tracks",
+                        checked = manager.isSilenceTrimmingEnabled,
+                        textColor = textColor,
+                        accentColor = accent
+                    ) {
+                        manager.triggerHapticFeedback(false)
+                        manager.isSilenceTrimmingEnabled = it
+                        manager.managerScope.launch(Dispatchers.IO) {
+                            manager.prefs.edit().putBoolean("silence_trimming", it).apply()
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    SettingSwitchRow(
+                        icon = "🔊",
+                        title = "Fade on start",
+                        subtitle = "Gently fades in audio when playback begins.",
+                        checked = manager.isFadeOnStart,
+                        textColor = textColor,
+                        accentColor = accent
+                    ) {
+                        manager.triggerHapticFeedback(false)
+                        manager.isFadeOnStart = it
+                        manager.managerScope.launch(Dispatchers.IO) {
+                            manager.prefs.edit().putBoolean("fade_start", it).apply()
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    SettingSwitchRow(
+                        icon = "↔️",
+                        title = "Crossfade",
+                        subtitle = "Adjust the fade duration between tracks.",
+                        checked = manager.isCrossfadeEnabled,
+                        textColor = textColor,
+                        accentColor = accent
+                    ) {
+                        manager.triggerHapticFeedback(false)
+                        manager.isCrossfadeEnabled = it
+                        manager.managerScope.launch(Dispatchers.IO) {
+                            manager.prefs.edit().putBoolean("crossfade_enabled", it).apply()
+                        }
+                    }
+
+                    if (manager.isCrossfadeEnabled) {
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 4.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 2.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text("Duration", color = Color(0xFF64748B), fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                                Text("${manager.crossfadeDuration.toInt()}s", color = accent, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            }
+                            Slider(
+                                value = manager.crossfadeDuration,
+                                onValueChange = { newValue ->
+                                    val targetInt = newValue.roundToInt().coerceIn(1, 12)
+                                    val targetFloat = targetInt.toFloat()
+                                    if (targetFloat != manager.crossfadeDuration) {
+                                        manager.triggerHapticFeedback(false)
+                                        manager.crossfadeDuration = targetFloat
+                                        manager.managerScope.launch(Dispatchers.IO) {
+                                            manager.prefs.edit().putFloat("crossfade_duration", targetFloat).apply()
+                                        }
+                                    }
+                                },
+                                valueRange = 1f..12f,
+                                steps = 10,
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = SliderDefaults.colors(thumbColor = accent, activeTrackColor = accent)
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                            Text("📲", fontSize = 20.sp)
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column {
+                                Text("Swipe Transition Effect", color = textColor, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                                Text("Select track change animation", color = Color(0xFF64748B), fontSize = 12.sp)
+                            }
+                        }
                         Switch(
-                            checked = manager.isEqEnabled,
-                            onCheckedChange = {
+                            checked = isTransitionEnabled,
+                            onCheckedChange = { isEnabled ->
                                 manager.triggerHapticFeedback(false)
-                                manager.toggleEqualizer(it)
+                                isTransitionEnabled = isEnabled
+                                manager.managerScope.launch(Dispatchers.IO) {
+                                    manager.prefs.edit().putBoolean("pager_transition_enabled", isEnabled).apply()
+                                }
+
+                                if (isEnabled) {
+                                    manager.setPagerTransition(rememberedCustomTransition)
+                                } else {
+                                    manager.setPagerTransition(PagerTransitionEffect.SLIDE)
+                                }
                             },
                             colors = SwitchDefaults.colors(
                                 checkedThumbColor = Color.White,
@@ -723,95 +487,347 @@ fun SettingsScreen(
                             )
                         )
                     }
+
+                    AnimatedVisibility(
+                        visible = isTransitionEnabled,
+                        enter = expandVertically() + fadeIn(),
+                        exit = shrinkVertically() + fadeOut()
+                    ) {
+                        Column {
+                            Spacer(modifier = Modifier.height(12.dp))
+                            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                items(PagerTransitionEffect.values()) { effect ->
+                                    val isSel = manager.pagerTransitionEffect == effect
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(12.dp))
+                                            .background(if (isSel) accent else if (isDark) Color(0x22FFFFFF) else Color(0xFFF1F5F9))
+                                            .clickable {
+                                                manager.triggerHapticFeedback(false)
+                                                rememberedCustomTransition = effect
+                                                manager.managerScope.launch(Dispatchers.IO) {
+                                                    manager.prefs.edit().putString("pager_transition_custom_saved", effect.name).apply()
+                                                }
+                                                manager.setPagerTransition(effect)
+                                            }
+                                            .padding(horizontal = 14.dp, vertical = 8.dp)
+                                    ) {
+                                        Text(
+                                            text = effect.name.lowercase().replaceFirstChar { it.uppercase() },
+                                            color = if (isSel) Color.White else textColor,
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 4. Audio Section
+            item(key = "audio_section_direct", contentType = "audio_card") {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(22.dp))
+                        .background(cardBg)
+                        .border(1.dp, if (isDark) Color(0x22FFFFFF) else Color(0xFFE2E8F0), RoundedCornerShape(22.dp))
+                        .padding(18.dp)
+                ) {
+                    Text("Audio", color = textColor, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    Text("Adjust audio playback settings.", color = Color(0xFF64748B), fontSize = 12.sp)
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    SettingSwitchRow(
+                        icon = "📶",
+                        title = "Lossless Audio",
+                        subtitle = "Use Dolby Atmos and Hi-Res Audio.",
+                        checked = manager.isLosslessEnabled,
+                        textColor = textColor,
+                        accentColor = accent
+                    ) {
+                        manager.triggerHapticFeedback(false)
+                        manager.toggleLosslessAudio(it)
+                    }
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    SettingSwitchRow(
+                        icon = "🔉",
+                        title = "Volume Normalization",
+                        subtitle = "Set the same loudness level for all tracks.",
+                        checked = manager.isVolumeNormalized,
+                        textColor = textColor,
+                        accentColor = accent
+                    ) {
+                        manager.triggerHapticFeedback(false)
+                        manager.toggleVolumeNormalization(it)
+                    }
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    SettingSwitchRow(
+                        icon = "🎚️",
+                        title = "Mono Audio",
+                        subtitle = "Combine left and right channels.",
+                        checked = manager.isMonoAudio,
+                        textColor = textColor,
+                        accentColor = accent
+                    ) {
+                        manager.triggerHapticFeedback(false)
+                        manager.toggleMonoAudio(it)
+                    }
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                            Text("📢", fontSize = 20.sp)
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column {
+                                Text("Volume Boost", color = textColor, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                                Text(
+                                    text = if (isVolumeBoostEnabled) {
+                                        "Increase the maximum volume (${manager.volumeBoostLevel.toInt()}%)."
+                                    } else {
+                                        "Increase the maximum volume beyond 100%."
+                                    },
+                                    color = Color(0xFF64748B),
+                                    fontSize = 12.sp
+                                )
+                            }
+                        }
+                        Switch(
+                            checked = isVolumeBoostEnabled,
+                            onCheckedChange = { isEnabled ->
+                                manager.triggerHapticFeedback(false)
+                                isVolumeBoostEnabled = isEnabled
+                                manager.managerScope.launch(Dispatchers.IO) {
+                                    manager.prefs.edit().putBoolean("vol_boost_enabled", isEnabled).apply()
+                                }
+
+                                if (isEnabled) {
+                                    manager.setVolumeBoost(rememberedVolumeBoostLevel)
+                                } else {
+                                    manager.setVolumeBoost(100f)
+                                }
+                            },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = Color.White,
+                                checkedTrackColor = accent
+                            )
+                        )
+                    }
+
+                    AnimatedVisibility(
+                        visible = isVolumeBoostEnabled,
+                        enter = expandVertically() + fadeIn(),
+                        exit = shrinkVertically() + fadeOut()
+                    ) {
+                        Column {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Slider(
+                                value = manager.volumeBoostLevel,
+                                onValueChange = { liveLevel ->
+                                    val rounded = liveLevel.toInt()
+                                    if (rounded != manager.volumeBoostLevel.toInt()) {
+                                        if (rounded % 10 == 0) manager.triggerHapticFeedback(false)
+                                        rememberedVolumeBoostLevel = liveLevel
+                                        manager.managerScope.launch(Dispatchers.IO) {
+                                            manager.prefs.edit().putFloat("saved_vol_boost_level", liveLevel).apply()
+                                        }
+                                        manager.setVolumeBoost(liveLevel)
+                                    }
+                                },
+                                valueRange = 100f..200f,
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = SliderDefaults.colors(thumbColor = accent, activeTrackColor = accent)
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    Text("Audio Output", color = textColor, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        listOf(
+                            Triple("Phone", "📱  Phone", "Built-in Speaker"),
+                            Triple("Speaker", "🔊  Speaker", "Ext / BT Speaker"),
+                            Triple("Buds", "🎧  Buds", "Earphones / BT")
+                        ).forEach { (outputKey, label, _) ->
+                            val isHighlighted = manager.effectiveAudioOutput == outputKey
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(46.dp)
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(if (isHighlighted) accent.copy(alpha = 0.16f) else if (isDark) Color(0x14FFFFFF) else Color(0xFFF1F5F9))
+                                    .border(1.5.dp, if (isHighlighted) accent else Color.Transparent, RoundedCornerShape(12.dp))
+                                    .clickable {
+                                        manager.triggerHapticFeedback(true)
+                                        if (manager.userSelectedAudioOutput == outputKey) {
+                                            manager.setAudioOutputRouting("Auto")
+                                        } else {
+                                            manager.setAudioOutputRouting(outputKey)
+                                        }
+                                    },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = label,
+                                    color = if (isHighlighted) accent else textColor,
+                                    fontSize = 13.sp,
+                                    fontWeight = if (isHighlighted) FontWeight.Bold else FontWeight.Medium
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Equalizer", color = textColor, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                            Text(if (manager.isEqEnabled) manager.selectedEqPreset else "Off", color = accent, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                        }
+
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Button(
+                                onClick = {
+                                    manager.triggerHapticFeedback(false)
+                                    onOpenEqualizer()
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = if (isDark) Color(0x22FFFFFF) else Color(0xFFF1F5F9)),
+                                shape = RoundedCornerShape(10.dp)
+                            ) {
+                                Text("Adjust", color = textColor, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            }
+
+                            Switch(
+                                checked = manager.isEqEnabled,
+                                onCheckedChange = {
+                                    manager.triggerHapticFeedback(false)
+                                    manager.toggleEqualizer(it)
+                                },
+                                colors = SwitchDefaults.colors(
+                                    checkedThumbColor = Color.White,
+                                    checkedTrackColor = accent
+                                )
+                            )
+                        }
+                    }
+                }
+            }
+
+            // 5. Content Manager Section
+            item(key = "content_manager_section", contentType = "content_manager_card") {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(22.dp))
+                        .background(cardBg)
+                        .border(1.dp, if (isDark) Color(0x22FFFFFF) else Color(0xFFE2E8F0), RoundedCornerShape(22.dp))
+                        .padding(18.dp)
+                ) {
+                    Text("Content Manager", color = textColor, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    Text("Manage what music appears in your library.", color = Color(0xFF64748B), fontSize = 12.sp)
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Hide Folders", color = textColor, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                            Text("Exclude specific folders from library.", color = Color(0xFF64748B), fontSize = 12.sp)
+                        }
+                        Button(
+                            onClick = {
+                                manager.triggerHapticFeedback(false)
+                                activeSubScreen = "hide_folders"
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = if (isDark) Color(0x22FFFFFF) else Color(0xFFF1F5F9)),
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Text("Manage", color = textColor, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Hide Audio", color = textColor, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                            Text("Hide specific audio files from library.", color = Color(0xFF64748B), fontSize = 12.sp)
+                        }
+                        Button(
+                            onClick = {
+                                manager.triggerHapticFeedback(false)
+                                activeSubScreen = "hide_audio"
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = if (isDark) Color(0x22FFFFFF) else Color(0xFFF1F5F9)),
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Text("Manage", color = textColor, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+
+            // 6. Haptics & Feedback Section
+            item(key = "haptics_section", contentType = "haptics_card") {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(22.dp))
+                        .background(cardBg)
+                        .border(1.dp, if (isDark) Color(0x22FFFFFF) else Color(0xFFE2E8F0), RoundedCornerShape(22.dp))
+                        .padding(18.dp)
+                ) {
+                    Text("Haptics & Feedback", color = textColor, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    Text("Configure tactile vibration responses for sliders and controls.", color = Color(0xFF64748B), fontSize = 12.sp)
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    SettingSwitchRow(
+                        icon = "📳",
+                        title = "Haptic Feedback",
+                        subtitle = "Vibrate when adjusting sliders, switches, and scrubbers",
+                        checked = manager.isHapticsEnabled,
+                        textColor = textColor,
+                        accentColor = accent
+                    ) {
+                        manager.toggleHaptics(it)
+                    }
                 }
             }
         }
 
-        // 5. Content Manager Section
-        item(key = "content_manager_section", contentType = "content_manager_card") {
-            Column(
+        // Frosted Glass Scrim Layer for Circular Picker Dialog
+        if (showCircularPicker) {
+            Box(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(22.dp))
-                    .background(cardBg)
-                    .border(1.dp, if (isDark) Color(0x22FFFFFF) else Color(0xFFE2E8F0), RoundedCornerShape(22.dp))
-                    .padding(18.dp)
-            ) {
-                Text("Content Manager", color = textColor, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                Text("Manage what music appears in your library.", color = Color(0xFF64748B), fontSize = 12.sp)
-                Spacer(modifier = Modifier.height(16.dp))
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text("Hide Folders", color = textColor, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-                        Text("Exclude specific folders from library.", color = Color(0xFF64748B), fontSize = 12.sp)
-                    }
-                    Button(
-                        onClick = {
-                            manager.triggerHapticFeedback(false)
-                            activeSubScreen = "hide_folders"
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = if (isDark) Color(0x22FFFFFF) else Color(0xFFF1F5F9)),
-                        shape = RoundedCornerShape(10.dp)
-                    ) {
-                        Text("Manage", color = textColor, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(14.dp))
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text("Hide Audio", color = textColor, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-                        Text("Hide specific audio files from library.", color = Color(0xFF64748B), fontSize = 12.sp)
-                    }
-                    Button(
-                        onClick = {
-                            manager.triggerHapticFeedback(false)
-                            activeSubScreen = "hide_audio"
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = if (isDark) Color(0x22FFFFFF) else Color(0xFFF1F5F9)),
-                        shape = RoundedCornerShape(10.dp)
-                    ) {
-                        Text("Manage", color = textColor, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                    }
-                }
-            }
-        }
-
-        // 6. Haptics & Feedback Section
-        item(key = "haptics_section", contentType = "haptics_card") {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(22.dp))
-                    .background(cardBg)
-                    .border(1.dp, if (isDark) Color(0x22FFFFFF) else Color(0xFFE2E8F0), RoundedCornerShape(22.dp))
-                    .padding(18.dp)
-            ) {
-                Text("Haptics & Feedback", color = textColor, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                Text("Configure tactile vibration responses for sliders and controls.", color = Color(0xFF64748B), fontSize = 12.sp)
-                Spacer(modifier = Modifier.height(16.dp))
-
-                SettingSwitchRow(
-                    icon = "📳",
-                    title = "Haptic Feedback",
-                    subtitle = "Vibrate when adjusting sliders, switches, and scrubbers",
-                    checked = manager.isHapticsEnabled,
-                    textColor = textColor,
-                    accentColor = accent
-                ) {
-                    manager.toggleHaptics(it)
-                }
-            }
+                    .fillMaxSize()
+                    .background(if (isDark) Color(0x66000000) else Color(0x40000000))
+            )
         }
     }
 
@@ -863,7 +879,7 @@ fun SettingSwitchRow(
     }
 }
 
-// Full Screen Manage Folders with matching GlassmorphicFolderIcon and row heights
+// Full Screen Manage Folders
 @UnstableApi
 @Composable
 fun ManageHiddenFoldersFullScreen(
@@ -979,7 +995,7 @@ fun ManageHiddenFoldersFullScreen(
     }
 }
 
-// Full Screen Manage Audio Files with matching card aesthetics
+// Full Screen Manage Audio Files
 @UnstableApi
 @Composable
 fun ManageHiddenAudioFullScreen(
@@ -1101,8 +1117,8 @@ fun ManageHiddenAudioFullScreen(
                             manager.toggleHideAudio(song.id)
                         }
                         .padding(horizontal = 16.dp, vertical = 14.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
                         Text("🎵", fontSize = 22.sp)
