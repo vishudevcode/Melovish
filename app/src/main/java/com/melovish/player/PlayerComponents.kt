@@ -4,6 +4,8 @@ import android.content.Intent
 import android.graphics.Bitmap
 import android.net.Uri
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -63,6 +65,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Switch
@@ -169,7 +172,8 @@ fun CurvedBackArrowIcon(tint: Color, modifier: Modifier = Modifier) {
     )
 }
 
-// Circular Embossed Glass Back Button
+// Circular Embossed Glass Back Button with Haptic Response
+@OptIn(UnstableApi::class)
 @Composable
 fun GlassBackButton(isDark: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
     Box(
@@ -179,7 +183,10 @@ fun GlassBackButton(isDark: Boolean, onClick: () -> Unit, modifier: Modifier = M
             .clip(CircleShape)
             .background(if (isDark) Color(0x33FFFFFF) else Color(0xFFF1F5F9))
             .border(1.2.dp, if (isDark) Color(0x44FFFFFF) else Color(0xFFCBD5E1), CircleShape)
-            .clickable { onClick() },
+            .clickable {
+                MusicManager.activeInstance?.triggerHapticFeedback(false)
+                onClick()
+            },
         contentAlignment = Alignment.Center
     ) {
         CurvedBackArrowIcon(tint = if (isDark) Color.White else Color(0xFF0F172A), modifier = Modifier.size(20.dp))
@@ -232,7 +239,7 @@ fun GlassmorphicFolderIcon(folderColor: Color, modifier: Modifier = Modifier) {
     )
 }
 
-// Folder Color Dialog with Frosted Scrim
+// Folder Color Dialog with Frosted Glass Styling
 @Composable
 fun FolderColorDialog(
     folderName: String,
@@ -321,9 +328,7 @@ fun FolderColorDialog(
                                 .clip(CircleShape)
                                 .background(Brush.sweepGradient(listOf(Color.Red, Color.Yellow, Color.Green, Color.Cyan, Color.Blue, Color.Magenta, Color.Red)))
                                 .border(2.dp, Color.White, CircleShape)
-                                .clickable {
-                                    onOpenRainbowPicker()
-                                },
+                                .clickable { onOpenRainbowPicker() },
                             contentAlignment = Alignment.Center
                         ) {
                             Box(modifier = Modifier.size(12.dp).clip(CircleShape).background(Color.White))
@@ -344,9 +349,12 @@ fun FolderColorDialog(
     }
 }
 
-// Minimalist Vector Avatar
+// Minimalist Vector Avatar Supporting Dynamic Theme Atmosphere Tinting
 @Composable
-fun DefaultProfileAvatar(modifier: Modifier = Modifier, backgroundColor: Color = Color(0xFF030712)) {
+fun DefaultProfileAvatar(
+    modifier: Modifier = Modifier,
+    backgroundColor: Color = Color.Transparent
+) {
     Spacer(
         modifier = modifier.drawWithCache {
             val w = size.width
@@ -364,7 +372,9 @@ fun DefaultProfileAvatar(modifier: Modifier = Modifier, backgroundColor: Color =
             val headBrush = Brush.verticalGradient(listOf(Color(0xFFE2F1FE), Color(0xFF7FA8FE)), startY = headCenter.y - headRadius, endY = headCenter.y + headRadius)
 
             onDrawBehind {
-                drawCircle(color = backgroundColor, radius = w / 2f, center = Offset(w / 2f, h / 2f))
+                if (backgroundColor != Color.Transparent) {
+                    drawCircle(color = backgroundColor, radius = w / 2f, center = Offset(w / 2f, h / 2f))
+                }
                 drawPath(bodyPath, brush = bodyBrush)
                 drawCircle(brush = headBrush, radius = headRadius, center = headCenter)
             }
@@ -693,7 +703,7 @@ fun ReorderDragHandle(tint: Color, modifier: Modifier = Modifier) {
     }
 }
 
-// Full Player Sheet with Smooth Frosted Blur Backdrop & 120Hz Gestures
+// Full Player Sheet with Smooth Frosted Blur Backdrop & Dynamic Material You
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @UnstableApi
 @Composable
@@ -824,7 +834,6 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
         }
     }
 
-    // Frosted Glass State: Determines whether any dialog or bottom sheet overlay is visible within player
     val isAnyPlayerDialogOpen = showMenuModal || showSpeedDialog || showSleepDialog ||
             showEqualizerSheet || showTagEditorDialog || showLyricsDialog || showAddToPlaylistDialog
 
@@ -848,7 +857,6 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                 }
             }
     ) {
-        // Player Surface: Blurs smoothly when any sub-sheet or dialog is active
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -936,7 +944,12 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                     ) {
                         CurvedBackArrowIcon(
                             tint = animTextPrimary,
-                            modifier = Modifier.size(24.dp).clickable { onDismiss() }
+                            modifier = Modifier
+                                .size(24.dp)
+                                .clickable {
+                                    manager.triggerHapticFeedback(false)
+                                    onDismiss()
+                                }
                         )
                         Box(
                             modifier = Modifier
@@ -1110,9 +1123,9 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                                 val isThisSongPlaying = manager.isPlaying && (pageSong.id == manager.currentSong?.id)
                                 val iconTint = if (isDark) Color(0xFF0F172A) else Color.White
                                 if (isThisSongPlaying) {
-                                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                        Box(modifier = Modifier.size(6.dp, 22.dp).clip(RoundedCornerShape(3.dp)).background(iconTint))
-                                        Box(modifier = Modifier.size(6.dp, 22.dp).clip(RoundedCornerShape(3.dp)).background(iconTint))
+                                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                        Box(modifier = Modifier.size(3.5.dp, 14.dp).clip(RoundedCornerShape(2.dp)).background(iconTint))
+                                        Box(modifier = Modifier.size(3.5.dp, 14.dp).clip(RoundedCornerShape(2.dp)).background(iconTint))
                                     }
                                 } else {
                                     Canvas(
@@ -1149,12 +1162,13 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                             )
                         }
 
+                        // Frosted Glass Bottom Control Dock reacting directly to the Opacity Slider
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clip(RoundedCornerShape(26.dp))
-                                .background(animSurface)
-                                .border(1.dp, Color(0x22FFFFFF), RoundedCornerShape(26.dp))
+                                .background(manager.getCurrentSurfaceColor())
+                                .border(1.2.dp, manager.getGlassBorderBrush(), RoundedCornerShape(26.dp))
                                 .padding(vertical = 12.dp, horizontal = 24.dp),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
@@ -1230,6 +1244,7 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
             )
         }
 
+        // Frosted Glass Menu Modal
         if (showMenuModal) {
             Box(
                 modifier = Modifier
@@ -1245,7 +1260,8 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
-                        .background(if (isDark) Color(0xFF1E293B) else Color.White)
+                        .background(manager.getCurrentDialogColor())
+                        .border(1.2.dp, manager.getGlassBorderBrush(), RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
                         .clickable(enabled = false) {}
                         .padding(22.dp)
                 ) {
@@ -1254,7 +1270,7 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                             text = "${activeSong.title} - ${if (activeSong.artist.isNotBlank()) activeSong.artist else "Unknown"}",
                             fontSize = 17.sp,
                             fontWeight = FontWeight.Bold,
-                            color = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A),
+                            color = manager.getCurrentTextColor(),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
@@ -1288,7 +1304,7 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                             colors = ButtonDefaults.buttonColors(containerColor = if (isDark) Color(0x22FFFFFF) else Color(0xFFF1F5F9)),
                             shape = RoundedCornerShape(12.dp)
                         ) {
-                            Text("Cancel", color = if (isDark) Color.White else Color(0xFF0F172A), fontWeight = FontWeight.Bold)
+                            Text("Cancel", color = manager.getCurrentTextColor(), fontWeight = FontWeight.Bold)
                         }
                     }
                 }
@@ -1321,12 +1337,12 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
         if (showTagEditorDialog) {
             TagEditorDialog(manager = manager, song = activeSong, onDismiss = { showTagEditorDialog = false })
         }
-        if (showLyricsDialog) LyricsDialog(song = activeSong, isDark = isDark, onDismiss = { showLyricsDialog = false })
+        if (showLyricsDialog) LyricsDialog(song = activeSong, manager = manager, onDismiss = { showLyricsDialog = false })
         if (showAddToPlaylistDialog) AddToPlaylistDialog(manager = manager, song = activeSong, onDismiss = { showAddToPlaylistDialog = false })
     }
 }
 
-// Queue Sheet with Integrated Material You Status Bar Tint
+// Queue Sheet with Integrated Material You Tint
 @OptIn(ExperimentalFoundationApi::class)
 @UnstableApi
 @Composable
@@ -1649,11 +1665,11 @@ fun QueueSheet(
     }
 }
 
-// Equalizer Sheet with Frosted Outer Background
+// Equalizer Sheet with Frosted Glass Styling
 @Composable
 fun EqualizerSheet(manager: MusicManager, onDismiss: () -> Unit) {
     val isDark = manager.isDarkMode
-    val textColor = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A)
+    val textColor = manager.getCurrentTextColor()
     val accent = manager.accentColor
 
     Box(
@@ -1671,7 +1687,8 @@ fun EqualizerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                 .fillMaxWidth()
                 .fillMaxHeight(0.88f)
                 .clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
-                .background(if (isDark) Color(0xFF1E293B) else Color.White)
+                .background(manager.getCurrentDialogColor())
+                .border(1.2.dp, manager.getGlassBorderBrush(), RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
                 .clickable(enabled = false) {}
                 .padding(22.dp)
         ) {
@@ -2004,7 +2021,7 @@ fun MenuRow(icon: String, text: String, isDark: Boolean, isDanger: Boolean = fal
     }
 }
 
-// Mini Player Dock with Unified Vector Controls & Floating Elevation
+// Mini Player Dock with Frosted Specular Border & Uniform Clean Background
 @UnstableApi
 @Composable
 fun MiniPlayerDock(manager: MusicManager, onClick: () -> Unit) {
@@ -2021,14 +2038,10 @@ fun MiniPlayerDock(manager: MusicManager, onClick: () -> Unit) {
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 6.dp)
-            .shadow(
-                elevation = 6.dp,
-                shape = RoundedCornerShape(22.dp),
-                spotColor = if (isDark) Color(0x66000000) else Color(0x1F000000)
-            )
             .clip(RoundedCornerShape(22.dp))
-            .background(if (isDark) Color(0xE60A0F1D) else Color(0xF2FFFFFF))
-            .border(1.dp, if (isDark) Color(0x33FFFFFF) else Color(0x22000000), RoundedCornerShape(22.dp))
+            .background(manager.getCurrentBackgroundColor().copy(alpha = 0.85f))
+            .background(manager.getCurrentSurfaceColor())
+            .border(1.2.dp, manager.getGlassBorderBrush(), RoundedCornerShape(22.dp))
             .pointerInput(Unit) {
                 detectVerticalDragGestures { _, dragAmount ->
                     if (dragAmount < -24f) {
@@ -2049,17 +2062,13 @@ fun MiniPlayerDock(manager: MusicManager, onClick: () -> Unit) {
             }
             Spacer(modifier = Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
-                Text(song.title, color = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A), fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(song.title, color = manager.getCurrentTextColor(), fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text("${formatFileSize(song.size)} • ${if (song.artist.isNotBlank()) song.artist else "Melovish"}", color = accent, fontSize = 11.sp, maxLines = 1)
             }
             Box(
                 modifier = Modifier
                     .size(40.dp)
-                    .shadow(
-                        elevation = 6.dp,
-                        shape = CircleShape,
-                        spotColor = accent
-                    )
+                    .shadow(elevation = 6.dp, shape = CircleShape, spotColor = accent)
                     .clip(CircleShape)
                     .background(accent)
                     .border(1.2.dp, Color.White.copy(alpha = 0.25f), CircleShape)
@@ -2094,12 +2103,12 @@ fun MiniPlayerDock(manager: MusicManager, onClick: () -> Unit) {
     }
 }
 
-// Sleep Timer Dialog with Frosted Scrim & Per-Unit Haptic Feedback
+// Sleep Timer Dialog with Frosted Glass Surface
 @UnstableApi
 @Composable
 fun SleepTimerDialog(manager: MusicManager, onDismiss: () -> Unit) {
     val isDark = manager.isDarkMode
-    val textColor = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A)
+    val textColor = manager.getCurrentTextColor()
     val accent = manager.accentColor
     var customHours by remember { mutableIntStateOf(0) }
     var customMinutes by remember { mutableIntStateOf(15) }
@@ -2118,7 +2127,8 @@ fun SleepTimerDialog(manager: MusicManager, onDismiss: () -> Unit) {
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
-                .background(if (isDark) Color(0xFF1E293B) else Color.White)
+                .background(manager.getCurrentDialogColor())
+                .border(1.2.dp, manager.getGlassBorderBrush(), RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
                 .clickable(enabled = false) {}
                 .padding(22.dp)
         ) {
@@ -2237,10 +2247,11 @@ fun SleepTimerDialog(manager: MusicManager, onDismiss: () -> Unit) {
     }
 }
 
-// Lyrics Dialog with Frosted Scrim
+// Lyrics Dialog with Frosted Glass Surface
 @Composable
-fun LyricsDialog(song: Song, isDark: Boolean, onDismiss: () -> Unit) {
-    val textColor = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A)
+fun LyricsDialog(song: Song, manager: MusicManager, onDismiss: () -> Unit) {
+    val isDark = manager.isDarkMode
+    val textColor = manager.getCurrentTextColor()
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -2256,7 +2267,8 @@ fun LyricsDialog(song: Song, isDark: Boolean, onDismiss: () -> Unit) {
                 .fillMaxWidth()
                 .fillMaxHeight(0.6f)
                 .clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
-                .background(if (isDark) Color(0xFF1E293B) else Color.White)
+                .background(manager.getCurrentDialogColor())
+                .border(1.2.dp, manager.getGlassBorderBrush(), RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
                 .clickable(enabled = false) {}
                 .padding(22.dp)
         ) {
@@ -2278,11 +2290,12 @@ fun LyricsDialog(song: Song, isDark: Boolean, onDismiss: () -> Unit) {
     }
 }
 
-// Add to Playlist Dialog with Inline + New Playlist Creator & Frosted Scrim
+// Add to Playlist Dialog with Frosted Glass Surface & High Contrast Text Input
 @Composable
 fun AddToPlaylistDialog(manager: MusicManager, song: Song, onDismiss: () -> Unit) {
     val isDark = manager.isDarkMode
-    val textColor = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A)
+    val textColor = manager.getCurrentTextColor()
+    val cardBg = manager.getCurrentSurfaceColor()
     val accent = manager.accentColor
     var isCreatingNew by remember { mutableStateOf(false) }
     var newPlaylistName by remember { mutableStateOf("") }
@@ -2297,7 +2310,15 @@ fun AddToPlaylistDialog(manager: MusicManager, song: Song, onDismiss: () -> Unit
             ) { onDismiss() },
         contentAlignment = Alignment.BottomCenter
     ) {
-        Box(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)).background(if (isDark) Color(0xFF1E293B) else Color.White).clickable(enabled = false) {}.padding(22.dp)) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
+                .background(manager.getCurrentDialogColor())
+                .border(1.2.dp, manager.getGlassBorderBrush(), RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
+                .clickable(enabled = false) {}
+                .padding(22.dp)
+        ) {
             Column {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -2327,10 +2348,19 @@ fun AddToPlaylistDialog(manager: MusicManager, song: Song, onDismiss: () -> Unit
                         OutlinedTextField(
                             value = newPlaylistName,
                             onValueChange = { newPlaylistName = it },
-                            placeholder = { Text("Playlist Name") },
+                            placeholder = { Text("Playlist Name", color = Color(0xFF64748B)) },
                             modifier = Modifier.weight(1f),
                             singleLine = true,
-                            shape = RoundedCornerShape(12.dp)
+                            shape = RoundedCornerShape(12.dp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedTextColor = textColor,
+                                unfocusedTextColor = textColor,
+                                focusedContainerColor = cardBg,
+                                unfocusedContainerColor = cardBg,
+                                focusedBorderColor = accent,
+                                unfocusedBorderColor = manager.getCurrentBorderColor(),
+                                cursorColor = accent
+                            )
                         )
                         Button(
                             onClick = {
@@ -2395,12 +2425,13 @@ fun AddToPlaylistDialog(manager: MusicManager, song: Song, onDismiss: () -> Unit
     }
 }
 
-// Magnetic Speed Dialog with 0.75x, Centered Indicator & Frosted Scrim
+// Magnetic Speed Dialog with Frosted Glass Surface
 @Composable
 fun MagneticSpeedDialog(manager: MusicManager, onDismiss: () -> Unit) {
     var speed by remember { mutableFloatStateOf(manager.playbackSpeed) }
     val isDark = manager.isDarkMode
     val accent = manager.accentColor
+    val textColor = manager.getCurrentTextColor()
     val prominentSteps = remember {
         listOf(0.25f, 0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 1.75f, 2.0f, 2.25f, 2.5f, 2.75f, 3.0f)
     }
@@ -2415,11 +2446,18 @@ fun MagneticSpeedDialog(manager: MusicManager, onDismiss: () -> Unit) {
             ) { onDismiss() },
         contentAlignment = Alignment.BottomCenter
     ) {
-        Box(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)).background(if (isDark) Color(0xFF1E293B) else Color.White).padding(24.dp)) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
+                .background(manager.getCurrentDialogColor())
+                .border(1.2.dp, manager.getGlassBorderBrush(), RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
+                .padding(24.dp)
+        ) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(
                     text = "Playback Speed: ${String.format(Locale.US, "%.2fx", speed)}",
-                    color = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A),
+                    color = textColor,
                     fontSize = 18.sp,
                     fontWeight = FontWeight.Bold
                 )

@@ -31,6 +31,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -43,6 +44,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
@@ -60,8 +62,9 @@ import java.io.File
 @Composable
 fun ProfileScreen(manager: MusicManager, onBackClick: () -> Unit) {
     val isDark = manager.isDarkMode
-    val textColor = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A)
-    val cardBg = if (isDark) Color(0xFF131B2E) else Color.White
+    val textColor = manager.getCurrentTextColor()
+    val cardBg = manager.getCurrentSurfaceColor()
+    val glassBorderBrush = manager.getGlassBorderBrush()
     val accent = manager.accentColor
 
     var isEditMode by remember { mutableStateOf(false) }
@@ -99,7 +102,6 @@ fun ProfileScreen(manager: MusicManager, onBackClick: () -> Unit) {
         manager.historySongs.toImmutableList()
     }
 
-    // Frosted Glass State: Determines whether avatar preview is active
     val isAnyProfileDialogOpen = showBigPicturePreview
 
     val animatedProfileBlur by animateDpAsState(
@@ -119,7 +121,13 @@ fun ProfileScreen(manager: MusicManager, onBackClick: () -> Unit) {
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    GlassBackButton(isDark = isDark, onClick = { viewingAllType = null })
+                    GlassBackButton(
+                        isDark = isDark,
+                        onClick = {
+                            manager.triggerHapticFeedback(false)
+                            viewingAllType = null
+                        }
+                    )
                     Spacer(modifier = Modifier.width(14.dp))
                     Column {
                         Text(
@@ -135,6 +143,7 @@ fun ProfileScreen(manager: MusicManager, onBackClick: () -> Unit) {
                 if (!isMostPlayedView && fullList.isNotEmpty()) {
                     Button(
                         onClick = {
+                            manager.triggerHapticFeedback(true)
                             manager.clearHistory()
                             viewingAllType = null
                         },
@@ -182,7 +191,6 @@ fun ProfileScreen(manager: MusicManager, onBackClick: () -> Unit) {
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        // Main Profile Content Layer: Blurs when big picture preview is active
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
@@ -196,7 +204,13 @@ fun ProfileScreen(manager: MusicManager, onBackClick: () -> Unit) {
                     modifier = Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 2.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    GlassBackButton(isDark = isDark, onClick = onBackClick)
+                    GlassBackButton(
+                        isDark = isDark,
+                        onClick = {
+                            manager.triggerHapticFeedback(false)
+                            onBackClick()
+                        }
+                    )
                     Spacer(modifier = Modifier.width(14.dp))
                     Text(text = "My Profile", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = textColor)
                 }
@@ -208,7 +222,7 @@ fun ProfileScreen(manager: MusicManager, onBackClick: () -> Unit) {
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(24.dp))
                         .background(cardBg)
-                        .border(1.dp, if (isDark) Color(0x22FFFFFF) else Color(0xFFE2E8F0), RoundedCornerShape(24.dp))
+                        .border(1.2.dp, glassBorderBrush, RoundedCornerShape(24.dp))
                         .padding(20.dp)
                 ) {
                     Row(
@@ -219,6 +233,7 @@ fun ProfileScreen(manager: MusicManager, onBackClick: () -> Unit) {
                         Text("Profile Info", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = textColor)
                         Button(
                             onClick = {
+                                manager.triggerHapticFeedback(false)
                                 if (isEditMode) {
                                     manager.savePermanentProfile(editName, editEmail, pickedImageUri)
                                     isEditMode = false
@@ -236,16 +251,18 @@ fun ProfileScreen(manager: MusicManager, onBackClick: () -> Unit) {
                     Spacer(modifier = Modifier.height(18.dp))
 
                     Row(verticalAlignment = Alignment.CenterVertically) {
+                        // Option A Dynamic Frosted Glass Avatar Container
                         Box(
                             modifier = Modifier
                                 .size(76.dp)
-                                .shadow(6.dp, CircleShape)
+                                .shadow(6.dp, CircleShape, spotColor = accent)
                                 .clip(CircleShape)
-                                .background(Color(0xFF030712))
+                                .background(manager.getCurrentSurfaceColor())
                                 .border(2.dp, accent, CircleShape)
-                            .clickable {
-                                if (isEditMode) photoPicker.launch("image/*") else showBigPicturePreview = true
-                            },
+                                .clickable {
+                                    manager.triggerHapticFeedback(false)
+                                    if (isEditMode) photoPicker.launch("image/*") else showBigPicturePreview = true
+                                },
                             contentAlignment = Alignment.Center
                         ) {
                             if (avatarModel != null) {
@@ -256,7 +273,10 @@ fun ProfileScreen(manager: MusicManager, onBackClick: () -> Unit) {
                                     modifier = Modifier.fillMaxSize()
                                 )
                             } else {
-                                DefaultProfileAvatar(modifier = Modifier.fillMaxSize())
+                                DefaultProfileAvatar(
+                                    modifier = Modifier.fillMaxSize(),
+                                    backgroundColor = Color.Transparent
+                                )
                             }
 
                             if (isEditMode) {
@@ -282,14 +302,38 @@ fun ProfileScreen(manager: MusicManager, onBackClick: () -> Unit) {
                                     value = editName,
                                     onValueChange = { editName = it },
                                     label = { Text("Your Name") },
-                                    modifier = Modifier.fillMaxWidth()
+                                    modifier = Modifier.fillMaxWidth(),
+                                    singleLine = true,
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedTextColor = textColor,
+                                        unfocusedTextColor = textColor,
+                                        focusedContainerColor = cardBg,
+                                        unfocusedContainerColor = cardBg,
+                                        focusedBorderColor = accent,
+                                        unfocusedBorderColor = manager.getCurrentBorderColor(),
+                                        cursorColor = accent,
+                                        focusedLabelColor = accent,
+                                        unfocusedLabelColor = Color(0xFF64748B)
+                                    )
                                 )
                                 Spacer(modifier = Modifier.height(8.dp))
                                 OutlinedTextField(
                                     value = editEmail,
                                     onValueChange = { editEmail = it },
                                     label = { Text("Email (Optional)") },
-                                    modifier = Modifier.fillMaxWidth()
+                                    modifier = Modifier.fillMaxWidth(),
+                                    singleLine = true,
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedTextColor = textColor,
+                                        unfocusedTextColor = textColor,
+                                        focusedContainerColor = cardBg,
+                                        unfocusedContainerColor = cardBg,
+                                        focusedBorderColor = accent,
+                                        unfocusedBorderColor = manager.getCurrentBorderColor(),
+                                        cursorColor = accent,
+                                        focusedLabelColor = accent,
+                                        unfocusedLabelColor = Color(0xFF64748B)
+                                    )
                                 )
                             }
                         } else {
@@ -310,7 +354,7 @@ fun ProfileScreen(manager: MusicManager, onBackClick: () -> Unit) {
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(24.dp))
                         .background(cardBg)
-                        .border(1.dp, if (isDark) Color(0x22FFFFFF) else Color(0xFFE2E8F0), RoundedCornerShape(24.dp))
+                        .border(1.2.dp, glassBorderBrush, RoundedCornerShape(24.dp))
                         .padding(20.dp)
                 ) {
                     Row(
@@ -326,7 +370,10 @@ fun ProfileScreen(manager: MusicManager, onBackClick: () -> Unit) {
                             modifier = Modifier
                                 .clip(RoundedCornerShape(12.dp))
                                 .background(if (isDark) Color(0x1AFFFFFF) else Color(0xFFF1F5F9))
-                                .clickable { viewingAllType = "most_played" }
+                                .clickable {
+                                    manager.triggerHapticFeedback(false)
+                                    viewingAllType = "most_played"
+                                }
                                 .padding(horizontal = 12.dp, vertical = 6.dp)
                         ) {
                             Text("View all ›", color = textColor, fontSize = 12.sp, fontWeight = FontWeight.Bold)
@@ -362,7 +409,7 @@ fun ProfileScreen(manager: MusicManager, onBackClick: () -> Unit) {
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(24.dp))
                         .background(cardBg)
-                        .border(1.dp, if (isDark) Color(0x22FFFFFF) else Color(0xFFE2E8F0), RoundedCornerShape(24.dp))
+                        .border(1.2.dp, glassBorderBrush, RoundedCornerShape(24.dp))
                         .padding(20.dp)
                 ) {
                     Row(
@@ -378,7 +425,10 @@ fun ProfileScreen(manager: MusicManager, onBackClick: () -> Unit) {
                             modifier = Modifier
                                 .clip(RoundedCornerShape(12.dp))
                                 .background(if (isDark) Color(0x1AFFFFFF) else Color(0xFFF1F5F9))
-                                .clickable { viewingAllType = "history" }
+                                .clickable {
+                                    manager.triggerHapticFeedback(false)
+                                    viewingAllType = "history"
+                                }
                                 .padding(horizontal = 12.dp, vertical = 6.dp)
                         ) {
                             Text("View all ›", color = textColor, fontSize = 12.sp, fontWeight = FontWeight.Bold)
@@ -409,7 +459,6 @@ fun ProfileScreen(manager: MusicManager, onBackClick: () -> Unit) {
             }
         }
 
-        // Frosted Glass Scrim Layer for Picture Preview
         if (showBigPicturePreview) {
             Box(
                 modifier = Modifier
@@ -426,8 +475,8 @@ fun ProfileScreen(manager: MusicManager, onBackClick: () -> Unit) {
                         .size(320.dp)
                         .shadow(16.dp, RoundedCornerShape(28.dp))
                         .clip(RoundedCornerShape(28.dp))
-                        .background(Color(0xFF030712))
-                        .border(1.5.dp, accent.copy(alpha = 0.6f), RoundedCornerShape(28.dp)),
+                        .background(manager.getCurrentDialogColor())
+                        .border(1.5.dp, manager.getGlassBorderBrush(), RoundedCornerShape(28.dp)),
                     contentAlignment = Alignment.Center
                 ) {
                     if (avatarModel != null) {
@@ -438,7 +487,10 @@ fun ProfileScreen(manager: MusicManager, onBackClick: () -> Unit) {
                             modifier = Modifier.fillMaxSize()
                         )
                     } else {
-                        DefaultProfileAvatar(modifier = Modifier.size(240.dp))
+                        DefaultProfileAvatar(
+                            modifier = Modifier.size(240.dp),
+                            backgroundColor = Color.Transparent
+                        )
                     }
                 }
             }
@@ -458,7 +510,9 @@ fun ProfileSongRow(
     onClick: () -> Unit
 ) {
     val isPlayingThis = manager.currentSong?.id == song.id
-    val textColor = if (isPlayingThis) accent else if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A)
+    val textColor = if (isPlayingThis) accent else manager.getCurrentTextColor()
+    val cardBg = if (isPlayingThis) accent.copy(alpha = 0.12f) else manager.getCurrentSurfaceColor()
+    val glassBorderBrush = if (isPlayingThis) Brush.linearGradient(listOf(accent, accent)) else manager.getGlassBorderBrush()
     var albumArtBitmap by remember(song.id) { mutableStateOf(manager.getCachedAlbumArt(song.id)) }
 
     LaunchedEffect(song.id) {
@@ -471,9 +525,12 @@ fun ProfileSongRow(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(14.dp))
-            .background(if (isPlayingThis) accent.copy(alpha = 0.08f) else if (isDark) Color(0x14FFFFFF) else Color(0xFFF8FAFC))
-            .border(1.2.dp, if (isPlayingThis) accent.copy(alpha = 0.6f) else Color.Transparent, RoundedCornerShape(14.dp))
-            .clickable { onClick() }
+            .background(cardBg)
+            .border(1.2.dp, glassBorderBrush, RoundedCornerShape(14.dp))
+            .clickable {
+                manager.triggerHapticFeedback(false)
+                onClick()
+            }
             .padding(10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {

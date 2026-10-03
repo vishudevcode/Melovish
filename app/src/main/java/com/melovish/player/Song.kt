@@ -93,6 +93,18 @@ enum class ArtistSongSortOrder {
     NEWEST
 }
 
+enum class DarkThemeSubStyle {
+    BLUISH,
+    AMOLED_BLACK,
+    CUSTOM
+}
+
+enum class LightThemeSubStyle {
+    WHITE,
+    CREAM,
+    CUSTOM
+}
+
 enum class ReplayGainMode {
     OFF,
     TRACK,

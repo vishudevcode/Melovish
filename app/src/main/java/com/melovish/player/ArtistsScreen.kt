@@ -31,11 +31,15 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -86,6 +90,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -439,7 +444,252 @@ object ArtistParsingEngine {
     }
 }
 
-// 1:1 Dynamic Square Artist Card with Elevated Floating Label
+// Root Artist Action Modal Hoisted for Universal Header Blur
+@UnstableApi
+@Composable
+fun RootArtistActionModal(
+    artist: ArtistItem,
+    manager: MusicManager,
+    isDark: Boolean,
+    onDismiss: () -> Unit
+) {
+    val context = LocalContext.current
+    val textColor = manager.getCurrentTextColor()
+    val accentColor = manager.accentColor
+    var artistToMergeSource by remember { mutableStateOf<ArtistItem?>(null) }
+    var artistForCustomImage by remember { mutableStateOf<ArtistItem?>(null) }
+
+    val imagePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        if (uri != null && artistForCustomImage != null) {
+            ArtistDataManager.setArtistCustomImage(context, artistForCustomImage!!.name, uri)
+            val updated = ArtistParsingEngine.parseAndGroupArtists(manager.allSongs)
+            manager.parsedArtistsList.clear()
+            manager.parsedArtistsList.addAll(updated)
+            Toast.makeText(context, "Artist image updated!", Toast.LENGTH_SHORT).show()
+        }
+        artistForCustomImage = null
+        onDismiss()
+    }
+
+    if (artistToMergeSource != null) {
+        val src = artistToMergeSource!!
+        var mergeSearchQuery by remember { mutableStateOf("") }
+        val artistsList = manager.parsedArtistsList
+        val targetCandidates = artistsList.filter { it.name != src.name && it.name.contains(mergeSearchQuery, ignoreCase = true) }
+
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(if (manager.isDarkMode) Color(0x66000000) else Color(0x40000000))
+                .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
+                    onDismiss()
+                },
+            contentAlignment = Alignment.BottomCenter
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(550.dp)
+                    .clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
+                    .background(manager.getCurrentDialogColor())
+                    .border(1.2.dp, manager.getGlassBorderBrush(), RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
+                    .clickable(enabled = false) {}
+                    .padding(20.dp)
+            ) {
+                Column {
+                    Text("Merge '${src.name}' into:", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = textColor)
+                    Spacer(modifier = Modifier.height(10.dp))
+                    OutlinedTextField(
+                        value = mergeSearchQuery,
+                        onValueChange = { mergeSearchQuery = it },
+                        placeholder = { Text("Search target artist...") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = textColor,
+                            unfocusedTextColor = textColor,
+                            focusedContainerColor = manager.getCurrentSurfaceColor(),
+                            unfocusedContainerColor = manager.getCurrentSurfaceColor(),
+                            focusedBorderColor = accentColor,
+                            unfocusedBorderColor = manager.getCurrentBorderColor(),
+                            cursorColor = accentColor
+                        )
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    LazyColumn(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        items(
+                            items = targetCandidates,
+                            key = { it.name },
+                            contentType = { "merge_target_row" }
+                        ) { targetArtist ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(if (manager.isDarkMode) Color(0x1AFFFFFF) else Color(0xFFF1F5F9))
+                                    .clickable {
+                                        ArtistDataManager.mergeArtists(src.name, targetArtist.name)
+                                        val updated = ArtistParsingEngine.parseAndGroupArtists(manager.allSongs)
+                                        manager.parsedArtistsList.clear()
+                                        manager.parsedArtistsList.addAll(updated)
+                                        Toast.makeText(context, "Merged into ${targetArtist.name}", Toast.LENGTH_SHORT).show()
+                                        onDismiss()
+                                    }
+                                    .padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text("🎙", fontSize = 18.sp)
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Text(targetArtist.name, color = textColor, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Button(
+                        onClick = onDismiss,
+                        modifier = Modifier.fillMaxWidth().height(48.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = if (manager.isDarkMode) Color(0x22FFFFFF) else Color(0xFFF1F5F9)),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Text("Cancel", color = textColor, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
+        return
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(if (manager.isDarkMode) Color(0x66000000) else Color(0x40000000))
+            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
+                onDismiss()
+            },
+        contentAlignment = Alignment.BottomCenter
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
+                .background(manager.getCurrentDialogColor())
+                .border(1.2.dp, manager.getGlassBorderBrush(), RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
+                .clickable(enabled = false) {}
+                .padding(22.dp)
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(artist.name, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = textColor)
+                Spacer(modifier = Modifier.height(4.dp))
+
+                // 1. Pin / Unpin from top
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .clickable {
+                            ArtistDataManager.togglePinArtist(artist.name)
+                            val updated = ArtistParsingEngine.parseAndGroupArtists(manager.allSongs)
+                            manager.parsedArtistsList.clear()
+                            manager.parsedArtistsList.addAll(updated)
+                            onDismiss()
+                        }
+                        .padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(if (artist.isPinned) "📍" else "📌", fontSize = 18.sp)
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Text("Pin / Unpin from top", fontSize = 15.sp, color = textColor, fontWeight = FontWeight.SemiBold)
+                }
+
+                // 2. Change artist photo...
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .clickable {
+                            artistForCustomImage = artist
+                            imagePickerLauncher.launch("image/*")
+                        }
+                        .padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("🖼️", fontSize = 18.sp)
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Text("Change artist photo...", fontSize = 15.sp, color = textColor, fontWeight = FontWeight.SemiBold)
+                }
+
+                // 3. Add to Favourite Playlists (Home)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .clickable {
+                            addArtistToFavouritePlaylists(context, manager, artist)
+                            onDismiss()
+                        }
+                        .padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("⭐", fontSize = 18.sp)
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Text("Add to Favourite Playlists (Home)", fontSize = 15.sp, color = textColor, fontWeight = FontWeight.SemiBold)
+                }
+
+                // 4. Merge into another artist...
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .clickable {
+                            artistToMergeSource = artist
+                        }
+                        .padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("🔀", fontSize = 18.sp)
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Text("Merge into another artist...", fontSize = 15.sp, color = textColor, fontWeight = FontWeight.SemiBold)
+                }
+
+                // 5. Hide artist group
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .clickable {
+                            ArtistDataManager.hideArtist(artist.name)
+                            val updated = ArtistParsingEngine.parseAndGroupArtists(manager.allSongs)
+                            manager.parsedArtistsList.clear()
+                            manager.parsedArtistsList.addAll(updated)
+                            onDismiss()
+                        }
+                        .padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("🚫", fontSize = 18.sp)
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Text("Hide artist group", fontSize = 15.sp, color = Color(0xFFEF4444), fontWeight = FontWeight.SemiBold)
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+                Button(
+                    onClick = onDismiss,
+                    modifier = Modifier.fillMaxWidth().height(48.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = if (manager.isDarkMode) Color(0x22FFFFFF) else Color(0xFFF1F5F9)),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text("Cancel", color = textColor, fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+    }
+}
+
+// 1:1 Dynamic Square Artist Card with Specular Glass Highlight Rims
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun ArtistSquareCard(
@@ -447,6 +697,7 @@ fun ArtistSquareCard(
     manager: MusicManager,
     isDark: Boolean,
     cardBg: Color,
+    glassBorderBrush: Brush,
     accentColor: Color,
     textColor: Color,
     isHero: Boolean,
@@ -470,13 +721,12 @@ fun ArtistSquareCard(
         modifier = Modifier
             .fillMaxWidth()
             .aspectRatio(1f)
-            .shadow(4.dp, RoundedCornerShape(18.dp))
             .clip(RoundedCornerShape(18.dp))
             .background(cardBg)
             .border(
-                1.2.dp,
-                if (artist.isPinned) accentColor else if (isDark) Color(0x22FFFFFF) else Color(0xFFECEFF3),
-                RoundedCornerShape(18.dp)
+                width = if (artist.isPinned) 1.6.dp else 1.2.dp,
+                brush = if (artist.isPinned) Brush.linearGradient(listOf(accentColor, accentColor)) else glassBorderBrush,
+                shape = RoundedCornerShape(18.dp)
             )
             .combinedClickable(
                 onClick = onClick,
@@ -595,7 +845,7 @@ fun ArtistSquareCard(
 }
 
 // =========================================================================
-// 📌 ARTISTS SCREEN (With Unified Image 4 Sort Vector)
+// 📌 ARTISTS SCREEN (With Monochromatic Frosted Glass Styling)
 // =========================================================================
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -604,33 +854,22 @@ fun ArtistSquareCard(
 fun ArtistsScreen(
     manager: MusicManager,
     listState: LazyListState,
-    onArtistClick: (ArtistItem) -> Unit
+    onArtistClick: (ArtistItem) -> Unit,
+    onArtistLongClick: (ArtistItem) -> Unit,
+    onOpenCreateArtist: () -> Unit = {}
 ) {
     val context = LocalContext.current
     remember { ArtistDataManager.init(context) }
 
-    val textColor = if (manager.isDarkMode) Color(0xFFF8FAFC) else Color(0xFF0F172A)
-    val cardBg = if (manager.isDarkMode) Color(0xFF131B2E) else Color.White
+    val textColor = manager.getCurrentTextColor()
+    val cardBg = manager.getCurrentSurfaceColor()
+    val glassBorderBrush = manager.getGlassBorderBrush()
     val accentColor = manager.accentColor
     val coroutineScope = rememberCoroutineScope()
 
     var query by remember { mutableStateOf("") }
     var showSortMenu by remember { mutableStateOf(false) }
     var showGridSizeDialog by remember { mutableStateOf(false) }
-    var showCreateArtistDialog by remember { mutableStateOf(false) }
-    var selectedArtistForActions by remember { mutableStateOf<ArtistItem?>(null) }
-    var artistToMergeSource by remember { mutableStateOf<ArtistItem?>(null) }
-    var artistForCustomImage by remember { mutableStateOf<ArtistItem?>(null) }
-
-    val imagePickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent()
-    ) { uri: Uri? ->
-        if (uri != null && artistForCustomImage != null) {
-            ArtistDataManager.setArtistCustomImage(context, artistForCustomImage!!.name, uri)
-            Toast.makeText(context, "Artist image updated!", Toast.LENGTH_SHORT).show()
-        }
-        artistForCustomImage = null
-    }
 
     val artistsList = if (manager.parsedArtistsList.isNotEmpty()) {
         manager.parsedArtistsList
@@ -657,7 +896,6 @@ fun ArtistsScreen(
             }
             ArtistSortOrder.MOST_TRACKS -> compareByDescending<ArtistItem> { it.songs.size }
             ArtistSortOrder.FEWEST_TRACKS -> compareBy<ArtistItem> { it.songs.size }
-            else -> compareByDescending<ArtistItem> { it.songs.size }
         }
 
         val pinned = filtered.filter { it.isPinned }.sortedWith(comparator)
@@ -668,20 +906,10 @@ fun ArtistsScreen(
     val alphabet = remember { listOf('#') + ('A'..'Z').toList() }
     var activeBubbleChar by remember { mutableStateOf<Char?>(null) }
 
-    val isAnyArtistDialogOpen = showGridSizeDialog || selectedArtistForActions != null ||
-            artistToMergeSource != null || showCreateArtistDialog
-
-    val animatedArtistBlur by animateDpAsState(
-        targetValue = if (isAnyArtistDialogOpen) 22.dp else 0.dp,
-        animationSpec = tween(durationMillis = 280, easing = FastOutSlowInEasing),
-        label = "artistBlurAnim"
-    )
-
     Box(modifier = Modifier.fillMaxSize()) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .blur(animatedArtistBlur)
                 .padding(horizontal = 16.dp)
         ) {
             Row(
@@ -699,28 +927,27 @@ fun ArtistsScreen(
                         modifier = Modifier
                             .size(38.dp)
                             .clip(CircleShape)
-                            .background(if (manager.isDarkMode) Color(0x22FFFFFF) else Color(0xFFF1F5F9))
-                            .border(1.dp, if (manager.isDarkMode) Color(0x22FFFFFF) else Color(0xFFE2E8F0), CircleShape)
+                            .background(cardBg)
+                            .border(1.2.dp, glassBorderBrush, CircleShape)
                             .combinedClickable(
                                 onClick = { manager.cycleNextArtistsViewMode() },
                                 onLongClick = { showGridSizeDialog = true }
                             ),
                         contentAlignment = Alignment.Center
                     ) {
-                        GridViewModeVectorIcon(mode = manager.artistsViewMode, tint = textColor, modifier = Modifier.size(18.dp))
+                        GridViewModeVectorIcon(mode = manager.artistsViewMode, tint = accentColor, modifier = Modifier.size(18.dp))
                     }
 
                     Spacer(modifier = Modifier.width(8.dp))
 
-                    // Unified Image 4 Sort Vector
                     Box {
                         Box(
                             modifier = Modifier
                                 .size(38.dp)
                                 .clip(CircleShape)
-                                .background(if (manager.isDarkMode) Color(0x22FFFFFF) else Color(0xFFF1F5F9))
-                                .border(1.dp, if (manager.isDarkMode) Color(0x22FFFFFF) else Color(0xFFE2E8F0), CircleShape)
-                            .clickable { showSortMenu = true },
+                                .background(cardBg)
+                                .border(1.2.dp, glassBorderBrush, CircleShape)
+                                .clickable { showSortMenu = true },
                             contentAlignment = Alignment.Center
                         ) {
                             SortListVector(tint = accentColor, modifier = Modifier.size(19.dp))
@@ -749,7 +976,7 @@ fun ArtistsScreen(
                     Spacer(modifier = Modifier.width(8.dp))
 
                     Button(
-                        onClick = { showCreateArtistDialog = true },
+                        onClick = onOpenCreateArtist,
                         colors = ButtonDefaults.buttonColors(containerColor = accentColor),
                         shape = RoundedCornerShape(12.dp)
                     ) {
@@ -760,6 +987,7 @@ fun ArtistsScreen(
 
             Spacer(modifier = Modifier.height(10.dp))
 
+            // Search Bar with High Contrast Text & Cursor
             OutlinedTextField(
                 value = query,
                 onValueChange = { query = it },
@@ -767,10 +995,13 @@ fun ArtistsScreen(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(16.dp),
                 colors = OutlinedTextFieldDefaults.colors(
+                    focusedTextColor = textColor,
+                    unfocusedTextColor = textColor,
                     focusedContainerColor = cardBg,
                     unfocusedContainerColor = cardBg,
                     focusedBorderColor = accentColor,
-                    unfocusedBorderColor = if (manager.isDarkMode) Color(0x22FFFFFF) else Color(0xFFECEFF3)
+                    unfocusedBorderColor = manager.getCurrentBorderColor(),
+                    cursorColor = accentColor
                 ),
                 singleLine = true
             )
@@ -803,13 +1034,13 @@ fun ArtistsScreen(
                                             .clip(RoundedCornerShape(18.dp))
                                             .background(cardBg)
                                             .border(
-                                                1.2.dp,
-                                                if (artist.isPinned) accentColor else if (manager.isDarkMode) Color(0x22FFFFFF) else Color(0xFFECEFF3),
-                                                RoundedCornerShape(18.dp)
+                                                width = if (artist.isPinned) 1.6.dp else 1.2.dp,
+                                                brush = if (artist.isPinned) Brush.linearGradient(listOf(accentColor, accentColor)) else glassBorderBrush,
+                                                shape = RoundedCornerShape(18.dp)
                                             )
                                             .combinedClickable(
                                                 onClick = { onArtistClick(artist) },
-                                                onLongClick = { selectedArtistForActions = artist }
+                                                onLongClick = { onArtistLongClick(artist) }
                                             )
                                             .padding(14.dp),
                                         verticalAlignment = Alignment.CenterVertically
@@ -830,7 +1061,7 @@ fun ArtistsScreen(
                                                     modifier = Modifier.fillMaxSize()
                                                 )
                                             } else {
-                                                Text("🎙️", fontSize = 20.sp)
+                                                Text("🎙", fontSize = 20.sp)
                                             }
                                         }
                                         Spacer(modifier = Modifier.width(14.dp))
@@ -844,7 +1075,7 @@ fun ArtistsScreen(
                                             }
                                             Text("${artist.songs.size} ${if (artist.songs.size == 1) "track" else "tracks"}", color = Color(0xFF64748B), fontSize = 12.sp)
                                         }
-                                        Text("⋮", fontSize = 20.sp, color = textColor, modifier = Modifier.clickable { selectedArtistForActions = artist }.padding(4.dp))
+                                        Text("⋮", fontSize = 20.sp, color = textColor, modifier = Modifier.clickable { onArtistLongClick(artist) }.padding(4.dp))
                                     }
                                 }
                             }
@@ -867,12 +1098,13 @@ fun ArtistsScreen(
                                         manager = manager,
                                         isDark = manager.isDarkMode,
                                         cardBg = cardBg,
+                                        glassBorderBrush = glassBorderBrush,
                                         accentColor = accentColor,
                                         textColor = textColor,
                                         isHero = false,
                                         gridColumns = 2,
                                         onClick = { onArtistClick(artist) },
-                                        onLongClick = { selectedArtistForActions = artist }
+                                        onLongClick = { onArtistLongClick(artist) }
                                     )
                                 }
                             }
@@ -895,12 +1127,13 @@ fun ArtistsScreen(
                                         manager = manager,
                                         isDark = manager.isDarkMode,
                                         cardBg = cardBg,
+                                        glassBorderBrush = glassBorderBrush,
                                         accentColor = accentColor,
                                         textColor = textColor,
                                         isHero = false,
                                         gridColumns = 3,
                                         onClick = { onArtistClick(artist) },
-                                        onLongClick = { selectedArtistForActions = artist }
+                                        onLongClick = { onArtistLongClick(artist) }
                                     )
                                 }
                             }
@@ -923,12 +1156,13 @@ fun ArtistsScreen(
                                         manager = manager,
                                         isDark = manager.isDarkMode,
                                         cardBg = cardBg,
+                                        glassBorderBrush = glassBorderBrush,
                                         accentColor = accentColor,
                                         textColor = textColor,
                                         isHero = false,
                                         gridColumns = 4,
                                         onClick = { onArtistClick(artist) },
-                                        onLongClick = { selectedArtistForActions = artist }
+                                        onLongClick = { onArtistLongClick(artist) }
                                     )
                                 }
                             }
@@ -951,12 +1185,13 @@ fun ArtistsScreen(
                                         manager = manager,
                                         isDark = manager.isDarkMode,
                                         cardBg = cardBg,
+                                        glassBorderBrush = glassBorderBrush,
                                         accentColor = accentColor,
                                         textColor = textColor,
                                         isHero = true,
                                         gridColumns = 2,
                                         onClick = { onArtistClick(artist) },
-                                        onLongClick = { selectedArtistForActions = artist }
+                                        onLongClick = { onArtistLongClick(artist) }
                                     )
                                 }
                             }
@@ -1060,209 +1295,10 @@ fun ArtistsScreen(
             onDismiss = { showGridSizeDialog = false }
         )
     }
-
-    if (selectedArtistForActions != null) {
-        val target = selectedArtistForActions!!
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(if (manager.isDarkMode) Color(0x66000000) else Color(0x40000000))
-                .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
-                    selectedArtistForActions = null
-                },
-            contentAlignment = Alignment.BottomCenter
-        ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
-                    .background(if (manager.isDarkMode) Color(0xFF1E293B) else Color.White)
-                    .clickable(enabled = false) {}
-                    .padding(22.dp)
-            ) {
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text(target.name, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = textColor)
-                    Spacer(modifier = Modifier.height(4.dp))
-
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
-                            .clickable {
-                                artistForCustomImage = target
-                                imagePickerLauncher.launch("image/*")
-                                selectedArtistForActions = null
-                            }
-                            .padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text("🖼️", fontSize = 18.sp)
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Text("Change artist photo...", fontSize = 15.sp, color = textColor, fontWeight = FontWeight.SemiBold)
-                    }
-
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
-                            .clickable {
-                                ArtistDataManager.togglePinArtist(target.name)
-                                selectedArtistForActions = null
-                            }
-                            .padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(if (target.isPinned) "📍" else "📌", fontSize = 18.sp)
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Text(if (target.isPinned) "Unpin from top" else "Pin to top", fontSize = 15.sp, color = textColor, fontWeight = FontWeight.SemiBold)
-                    }
-
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
-                            .clickable {
-                                addArtistToFavouritePlaylists(context, manager, target)
-                                selectedArtistForActions = null
-                            }
-                            .padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text("⭐", fontSize = 18.sp)
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Text("Add to Favourite Playlists (Home)", fontSize = 15.sp, color = textColor, fontWeight = FontWeight.SemiBold)
-                    }
-
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
-                            .clickable {
-                                artistToMergeSource = target
-                                selectedArtistForActions = null
-                            }
-                            .padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text("🔀", fontSize = 18.sp)
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Text("Merge into another artist...", fontSize = 15.sp, color = textColor, fontWeight = FontWeight.SemiBold)
-                    }
-
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
-                            .clickable {
-                                ArtistDataManager.hideArtist(target.name)
-                                selectedArtistForActions = null
-                            }
-                            .padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text("🚫", fontSize = 18.sp)
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Text("Hide artist group", fontSize = 15.sp, color = Color(0xFFEF4444), fontWeight = FontWeight.SemiBold)
-                    }
-
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Button(
-                        onClick = { selectedArtistForActions = null },
-                        modifier = Modifier.fillMaxWidth().height(48.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = if (manager.isDarkMode) Color(0x22FFFFFF) else Color(0xFFF1F5F9)),
-                        shape = RoundedCornerShape(12.dp)
-                    ) {
-                        Text("Cancel", color = textColor, fontWeight = FontWeight.Bold)
-                    }
-                }
-            }
-        }
-    }
-
-    if (artistToMergeSource != null) {
-        val src = artistToMergeSource!!
-        var mergeSearchQuery by remember { mutableStateOf("") }
-        val targetCandidates = artistsList.filter { it.name != src.name && it.name.contains(mergeSearchQuery, ignoreCase = true) }
-
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(if (manager.isDarkMode) Color(0x66000000) else Color(0x40000000))
-                .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
-                    artistToMergeSource = null
-                },
-            contentAlignment = Alignment.BottomCenter
-        ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(550.dp)
-                    .clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
-                    .background(if (manager.isDarkMode) Color(0xFF1E293B) else Color.White)
-                    .clickable(enabled = false) {}
-                    .padding(20.dp)
-            ) {
-                Column {
-                    Text("Merge '${src.name}' into:", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = textColor)
-                    Spacer(modifier = Modifier.height(10.dp))
-                    OutlinedTextField(
-                        value = mergeSearchQuery,
-                        onValueChange = { mergeSearchQuery = it },
-                        placeholder = { Text("Search target artist...") },
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    Spacer(modifier = Modifier.height(10.dp))
-
-                    LazyColumn(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        items(
-                            items = targetCandidates,
-                            key = { it.name },
-                            contentType = { "merge_target_row" }
-                        ) { targetArtist ->
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .background(if (manager.isDarkMode) Color(0x1AFFFFFF) else Color(0xFFF1F5F9))
-                                    .clickable {
-                                        ArtistDataManager.mergeArtists(src.name, targetArtist.name)
-                                        Toast.makeText(context, "Merged into ${targetArtist.name}", Toast.LENGTH_SHORT).show()
-                                        artistToMergeSource = null
-                                    }
-                                    .padding(12.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text("🎙️", fontSize = 18.sp)
-                                Spacer(modifier = Modifier.width(10.dp))
-                                Text(targetArtist.name, color = textColor, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                            }
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(10.dp))
-                    Button(
-                        onClick = { artistToMergeSource = null },
-                        modifier = Modifier.fillMaxWidth().height(48.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = if (manager.isDarkMode) Color(0x22FFFFFF) else Color(0xFFF1F5F9)),
-                        shape = RoundedCornerShape(12.dp)
-                    ) {
-                        Text("Cancel", color = textColor, fontWeight = FontWeight.Bold)
-                    }
-                }
-            }
-        }
-    }
-
-    if (showCreateArtistDialog) {
-        CreateArtistDialog(
-            manager = manager,
-            onDismiss = { showCreateArtistDialog = false }
-        )
-    }
 }
 
 // =========================================================================
-// 📌 ARTIST DETAIL SCREEN (With Compact Round Action Buttons)
+// 📌 ARTIST DETAIL SCREEN
 // =========================================================================
 
 @UnstableApi
@@ -1275,7 +1311,9 @@ fun ArtistDetailScreen(
     onSongMenuClick: (Song) -> Unit
 ) {
     val context = LocalContext.current
-    val textColor = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A)
+    val textColor = manager.getCurrentTextColor()
+    val cardBg = manager.getCurrentSurfaceColor()
+    val glassBorderBrush = manager.getGlassBorderBrush()
     val accent = manager.accentColor
 
     var showSortMenu by remember { mutableStateOf(false) }
@@ -1321,7 +1359,6 @@ fun ArtistDetailScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Maximized Room for Artist Name
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
                     GlassBackButton(isDark = isDark, onClick = onBack)
                     Spacer(modifier = Modifier.width(12.dp))
@@ -1331,33 +1368,31 @@ fun ArtistDetailScreen(
                     }
                 }
 
-                // Compact Circular Action Items
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(
                         modifier = Modifier
                             .size(36.dp)
                             .clip(CircleShape)
-                            .background(if (isDark) Color(0x22FFFFFF) else Color(0xFFF1F5F9))
-                            .border(1.dp, if (isDark) Color(0x22FFFFFF) else Color(0xFFE2E8F0), CircleShape)
+                            .background(cardBg)
+                            .border(1.2.dp, glassBorderBrush, CircleShape)
                             .combinedClickable(
                                 onClick = { manager.cycleNextArtistInnerViewMode() },
                                 onLongClick = { showGridSizeDialog = true }
                             ),
                         contentAlignment = Alignment.Center
                     ) {
-                        GridViewModeVectorIcon(mode = manager.artistInnerViewMode, tint = textColor, modifier = Modifier.size(16.dp))
+                        GridViewModeVectorIcon(mode = manager.artistInnerViewMode, tint = accent, modifier = Modifier.size(16.dp))
                     }
 
                     Spacer(modifier = Modifier.width(6.dp))
 
-                    // Sort Button (Pixel-matched Image 4 Vector)
                     Box {
                         Box(
                             modifier = Modifier
                                 .size(36.dp)
                                 .clip(CircleShape)
-                                .background(if (isDark) Color(0x22FFFFFF) else Color(0xFFF1F5F9))
-                                .border(1.dp, if (isDark) Color(0x22FFFFFF) else Color(0xFFE2E8F0), CircleShape)
+                                .background(cardBg)
+                                .border(1.2.dp, glassBorderBrush, CircleShape)
                                 .clickable { showSortMenu = true },
                             contentAlignment = Alignment.Center
                         ) {
@@ -1375,13 +1410,12 @@ fun ArtistDetailScreen(
 
                     Spacer(modifier = Modifier.width(6.dp))
 
-                    // Circular + Add Button
                     Box(
                         modifier = Modifier
                             .size(36.dp)
                             .clip(CircleShape)
-                            .background(if (isDark) Color(0x22FFFFFF) else Color(0xFFF1F5F9))
-                            .border(1.dp, if (isDark) Color(0x22FFFFFF) else Color(0xFFE2E8F0), CircleShape)
+                            .background(cardBg)
+                            .border(1.2.dp, glassBorderBrush, CircleShape)
                             .clickable { showAddSongsDialog = true },
                         contentAlignment = Alignment.Center
                     ) {
@@ -1390,13 +1424,11 @@ fun ArtistDetailScreen(
 
                     Spacer(modifier = Modifier.width(6.dp))
 
-                    // Circular Image 3 Shuffle Button
                     Box(
                         modifier = Modifier
                             .size(36.dp)
-                            .shadow(3.dp, CircleShape)
                             .clip(CircleShape)
-                            .background(if (isDark) Color(0xFF1E293B) else Color.White)
+                            .background(cardBg)
                             .border(1.2.dp, accent.copy(alpha = 0.5f), CircleShape)
                             .clickable {
                                 val shuffled = sortedSongs.shuffled()
@@ -1432,7 +1464,7 @@ fun ArtistDetailScreen(
                                     manager = manager,
                                     isDark = isDark,
                                     onPlay = { manager.playSong(song, sortedSongs, artistItem.name) },
-                                    onMenuClick = { selectedSongForAction = song }
+                                    onMenuClick = { onSongMenuClick(song) }
                                 )
                             }
                         }
@@ -1455,7 +1487,7 @@ fun ArtistDetailScreen(
                                     manager = manager,
                                     isDark = isDark,
                                     onPlay = { manager.playSong(song, sortedSongs, artistItem.name) },
-                                    onMenuClick = { selectedSongForAction = song }
+                                    onMenuClick = { onSongMenuClick(song) }
                                 )
                             }
                         }
@@ -1478,7 +1510,7 @@ fun ArtistDetailScreen(
                                     manager = manager,
                                     isDark = isDark,
                                     onPlay = { manager.playSong(song, sortedSongs, artistItem.name) },
-                                    onMenuClick = { selectedSongForAction = song }
+                                    onMenuClick = { onSongMenuClick(song) }
                                 )
                             }
                         }
@@ -1501,7 +1533,7 @@ fun ArtistDetailScreen(
                                     manager = manager,
                                     isDark = isDark,
                                     onPlay = { manager.playSong(song, sortedSongs, artistItem.name) },
-                                    onMenuClick = { selectedSongForAction = song }
+                                    onMenuClick = { onSongMenuClick(song) }
                                 )
                             }
                         }
@@ -1524,7 +1556,7 @@ fun ArtistDetailScreen(
                                     manager = manager,
                                     isDark = isDark,
                                     onPlay = { manager.playSong(song, sortedSongs, artistItem.name) },
-                                    onMenuClick = { selectedSongForAction = song }
+                                    onMenuClick = { onSongMenuClick(song) }
                                 )
                             }
                         }
@@ -1559,7 +1591,8 @@ fun ArtistDetailScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
-                    .background(if (isDark) Color(0xFF1E293B) else Color.White)
+                    .background(manager.getCurrentDialogColor())
+                    .border(1.2.dp, manager.getGlassBorderBrush(), RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
                     .clickable(enabled = false) {}
                     .padding(22.dp)
             ) {
@@ -1648,7 +1681,8 @@ fun ArtistDetailScreen(
                     .fillMaxWidth()
                     .height(550.dp)
                     .clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
-                    .background(if (isDark) Color(0xFF1E293B) else Color.White)
+                    .background(manager.getCurrentDialogColor())
+                    .border(1.2.dp, manager.getGlassBorderBrush(), RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
                     .clickable(enabled = false) {}
                     .padding(20.dp)
             ) {
@@ -1659,7 +1693,17 @@ fun ArtistDetailScreen(
                         value = destSearch,
                         onValueChange = { destSearch = it },
                         placeholder = { Text("Search target artist...") },
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = textColor,
+                            unfocusedTextColor = textColor,
+                            focusedContainerColor = cardBg,
+                            unfocusedContainerColor = cardBg,
+                            focusedBorderColor = accent,
+                            unfocusedBorderColor = manager.getCurrentBorderColor(),
+                            cursorColor = accent
+                        )
                     )
                     Spacer(modifier = Modifier.height(10.dp))
 
@@ -1708,6 +1752,7 @@ fun ArtistDetailScreen(
     }
 
     if (showAddSongsDialog) {
+        val context = LocalContext.current
         var addSongSearch by remember { mutableStateOf("") }
         val currentSongIdSet = sortedSongs.map { it.id }.toHashSet()
         val candidates = manager.allSongs.filter {
@@ -1729,7 +1774,8 @@ fun ArtistDetailScreen(
                     .fillMaxWidth()
                     .height(600.dp)
                     .clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
-                    .background(if (isDark) Color(0xFF1E293B) else Color.White)
+                    .background(manager.getCurrentDialogColor())
+                    .border(1.2.dp, manager.getGlassBorderBrush(), RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
                     .clickable(enabled = false) {}
                     .padding(20.dp)
             ) {
@@ -1739,11 +1785,23 @@ fun ArtistDetailScreen(
                         Button(onClick = { showAddSongsDialog = false }, shape = RoundedCornerShape(8.dp)) { Text("Done") }
                     }
                     Spacer(modifier = Modifier.height(10.dp))
+
+                    // Explicit High-Contrast Colors for Add Songs Search Input
                     OutlinedTextField(
                         value = addSongSearch,
                         onValueChange = { addSongSearch = it },
-                        placeholder = { Text("Search songs to add...") },
-                        modifier = Modifier.fillMaxWidth()
+                        placeholder = { Text("Search songs to add...", color = Color(0xFF64748B)) },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = textColor,
+                            unfocusedTextColor = textColor,
+                            focusedContainerColor = cardBg,
+                            unfocusedContainerColor = cardBg,
+                            focusedBorderColor = accent,
+                            unfocusedBorderColor = manager.getCurrentBorderColor(),
+                            cursorColor = accent
+                        )
                     )
                     Spacer(modifier = Modifier.height(10.dp))
 
@@ -1789,8 +1847,17 @@ fun CreateArtistDialog(
 ) {
     val context = LocalContext.current
     val isDark = manager.isDarkMode
-    val textColor = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A)
+    val textColor = manager.getCurrentTextColor()
+    val cardBg = manager.getCurrentSurfaceColor()
     val accentColor = manager.accentColor
+
+    val density = LocalDensity.current
+    val isImeVisible = WindowInsets.ime.getBottom(density) > 0
+    val bottomInsetPadding = if (isImeVisible) {
+        WindowInsets.ime.asPaddingValues().calculateBottomPadding()
+    } else {
+        WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+    }
 
     var artistName by remember { mutableStateOf("") }
     var searchSongQuery by remember { mutableStateOf("") }
@@ -1812,31 +1879,58 @@ fun CreateArtistDialog(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
+                .padding(bottom = bottomInsetPadding)
                 .height(650.dp)
                 .clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
-                .background(if (isDark) Color(0xFF1E293B) else Color.White)
+                .background(manager.getCurrentDialogColor())
+                .border(1.2.dp, manager.getGlassBorderBrush(), RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
                 .clickable(enabled = false) {}
                 .padding(22.dp)
         ) {
             Column(modifier = Modifier.fillMaxSize()) {
                 Text("Create New Artist", color = textColor, fontSize = 18.sp, fontWeight = FontWeight.Bold)
                 Spacer(modifier = Modifier.height(10.dp))
+
+                // High-Contrast Input for Artist Name
                 OutlinedTextField(
                     value = artistName,
                     onValueChange = { artistName = it },
                     label = { Text("Artist Name") },
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = textColor,
+                        unfocusedTextColor = textColor,
+                        focusedContainerColor = cardBg,
+                        unfocusedContainerColor = cardBg,
+                        focusedBorderColor = accentColor,
+                        unfocusedBorderColor = manager.getCurrentBorderColor(),
+                        cursorColor = accentColor,
+                        focusedLabelColor = accentColor,
+                        unfocusedLabelColor = Color(0xFF64748B)
+                    )
                 )
 
                 Spacer(modifier = Modifier.height(12.dp))
                 Text("Add Songs (${selectedSongs.size} selected):", color = Color(0xFF64748B), fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
                 Spacer(modifier = Modifier.height(6.dp))
 
+                // High-Contrast Input for Song Search in Create Artist Dialog
                 OutlinedTextField(
                     value = searchSongQuery,
                     onValueChange = { searchSongQuery = it },
-                    placeholder = { Text("Search songs to add...") },
-                    modifier = Modifier.fillMaxWidth()
+                    placeholder = { Text("Search songs to add...", color = Color(0xFF64748B)) },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = textColor,
+                        unfocusedTextColor = textColor,
+                        focusedContainerColor = cardBg,
+                        unfocusedContainerColor = cardBg,
+                        focusedBorderColor = accentColor,
+                        unfocusedBorderColor = manager.getCurrentBorderColor(),
+                        cursorColor = accentColor
+                    )
                 )
 
                 Spacer(modifier = Modifier.height(10.dp))

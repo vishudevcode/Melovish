@@ -10,9 +10,11 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -35,6 +37,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Switch
@@ -66,8 +69,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.media3.common.util.UnstableApi
 import coil.compose.AsyncImage
-import kotlinx.collections.immutable.ImmutableList
-import kotlinx.collections.immutable.toImmutableList
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import java.io.File
@@ -77,20 +78,26 @@ import kotlin.math.roundToInt
 import kotlin.math.sin
 import kotlin.math.sqrt
 
+@OptIn(ExperimentalFoundationApi::class)
 @UnstableApi
 @Composable
 fun SettingsScreen(
     manager: MusicManager,
     onBackClick: () -> Unit,
     onOpenProfile: () -> Unit,
-    onOpenEqualizer: () -> Unit
+    onOpenEqualizer: () -> Unit,
+    onDarkSubStyleClick: () -> Unit = {},
+    onLightSubStyleClick: () -> Unit = {},
+    onOpenAccentPicker: () -> Unit = {}
 ) {
     val isDark = manager.isDarkMode
-    val textColor = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A)
-    val cardBg = if (isDark) Color(0xFF131B2E) else Color.White
+    val textColor = manager.getCurrentTextColor()
+    val cardBg = manager.getCurrentSurfaceColor()
+    val glassBorderBrush = manager.getGlassBorderBrush()
     val accent = manager.accentColor
 
     var showCircularPicker by remember { mutableStateOf(false) }
+    var isPickingDarkHue by remember { mutableStateOf(false) }
     var activeSubScreen by remember { mutableStateOf<String?>(null) }
 
     var isTransitionEnabled by remember {
@@ -117,10 +124,9 @@ fun SettingsScreen(
     }
 
     BackHandler(enabled = activeSubScreen != null || showCircularPicker) {
-        if (showCircularPicker) {
-            showCircularPicker = false
-        } else {
-            activeSubScreen = null
+        when {
+            showCircularPicker -> showCircularPicker = false
+            else -> activeSubScreen = null
         }
     }
 
@@ -136,20 +142,10 @@ fun SettingsScreen(
 
     val avatarPath = manager.profileImagePath
 
-    // Frosted Glass State: Tracks whether circular color dialog is showing
-    val isAnySettingsDialogOpen = showCircularPicker
-
-    val animatedSettingsBlur by animateDpAsState(
-        targetValue = if (isAnySettingsDialogOpen) 22.dp else 0.dp,
-        animationSpec = tween(durationMillis = 280, easing = FastOutSlowInEasing),
-        label = "settingsBlurAnim"
-    )
-
     Box(modifier = Modifier.fillMaxSize()) {
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
-                .blur(animatedSettingsBlur)
                 .padding(horizontal = 16.dp),
             contentPadding = PaddingValues(bottom = 80.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
@@ -159,7 +155,13 @@ fun SettingsScreen(
                     modifier = Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 2.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    GlassBackButton(isDark = isDark, onClick = onBackClick)
+                    GlassBackButton(
+                        isDark = isDark,
+                        onClick = {
+                            manager.triggerHapticFeedback(false)
+                            onBackClick()
+                        }
+                    )
                     Spacer(modifier = Modifier.width(14.dp))
                     Text(text = "Settings", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = textColor)
                 }
@@ -172,7 +174,7 @@ fun SettingsScreen(
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(22.dp))
                         .background(cardBg)
-                        .border(1.dp, if (isDark) Color(0x22FFFFFF) else Color(0xFFE2E8F0), RoundedCornerShape(22.dp))
+                        .border(1.2.dp, glassBorderBrush, RoundedCornerShape(22.dp))
                         .clickable {
                             manager.triggerHapticFeedback(false)
                             onOpenProfile()
@@ -191,12 +193,13 @@ fun SettingsScreen(
                             .padding(14.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
+                        // Option A Dynamic Frosted Glass Avatar Container
                         Box(
                             modifier = Modifier
                                 .size(54.dp)
-                                .shadow(4.dp, CircleShape)
+                                .shadow(4.dp, CircleShape, spotColor = accent)
                                 .clip(CircleShape)
-                                .background(Color(0xFF030712))
+                                .background(manager.getCurrentSurfaceColor())
                                 .border(2.dp, accent, CircleShape),
                             contentAlignment = Alignment.Center
                         ) {
@@ -208,7 +211,10 @@ fun SettingsScreen(
                                     modifier = Modifier.fillMaxSize()
                                 )
                             } else {
-                                DefaultProfileAvatar(modifier = Modifier.fillMaxSize())
+                                DefaultProfileAvatar(
+                                    modifier = Modifier.fillMaxSize(),
+                                    backgroundColor = Color.Transparent
+                                )
                             }
                         }
 
@@ -229,14 +235,21 @@ fun SettingsScreen(
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(22.dp))
                         .background(cardBg)
-                        .border(1.dp, if (isDark) Color(0x22FFFFFF) else Color(0xFFE2E8F0), RoundedCornerShape(22.dp))
+                        .border(1.2.dp, glassBorderBrush, RoundedCornerShape(22.dp))
                         .padding(18.dp)
                 ) {
                     Text("Appearance", color = textColor, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                    Text("Customize the look and feel of your music player.", color = Color(0xFF64748B), fontSize = 12.sp)
+                    Text("Customize theme, style variants, and accent colors.", color = Color(0xFF64748B), fontSize = 12.sp)
                     Spacer(modifier = Modifier.height(14.dp))
 
-                    Text("Theme", color = textColor, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Theme", color = textColor, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                        Text("Hold Light / Dark for variants", color = accent, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    }
                     Spacer(modifier = Modifier.height(8.dp))
 
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -249,13 +262,45 @@ fun SettingsScreen(
                                     .clip(RoundedCornerShape(12.dp))
                                     .background(if (isSel) accent.copy(alpha = 0.15f) else if (isDark) Color(0x14FFFFFF) else Color(0xFFF1F5F9))
                                     .border(1.5.dp, if (isSel) accent else Color.Transparent, RoundedCornerShape(12.dp))
-                                    .clickable {
-                                        manager.triggerHapticFeedback(false)
-                                        manager.setTheme(mode)
-                                    },
+                                    .combinedClickable(
+                                        onClick = {
+                                            manager.triggerHapticFeedback(false)
+                                            manager.setTheme(mode)
+                                        },
+                                        onLongClick = {
+                                            manager.triggerHapticFeedback(true)
+                                            when (mode) {
+                                                "Dark" -> onDarkSubStyleClick()
+                                                "Light" -> onLightSubStyleClick()
+                                            }
+                                        }
+                                    ),
                                 contentAlignment = Alignment.Center
                             ) {
-                                Text(mode, color = if (isSel) accent else textColor, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Text(mode, color = if (isSel) accent else textColor, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                    if (mode == "Dark" && isSel) {
+                                        Text(
+                                            when (manager.darkThemeSubStyle) {
+                                                DarkThemeSubStyle.AMOLED_BLACK -> "AMOLED"
+                                                DarkThemeSubStyle.BLUISH -> "Slate"
+                                                DarkThemeSubStyle.CUSTOM -> "Custom"
+                                            },
+                                            color = accent.copy(alpha = 0.8f),
+                                            fontSize = 9.sp
+                                        )
+                                    } else if (mode == "Light" && isSel) {
+                                        Text(
+                                            when (manager.lightThemeSubStyle) {
+                                                LightThemeSubStyle.WHITE -> "White"
+                                                LightThemeSubStyle.CREAM -> "Cream"
+                                                LightThemeSubStyle.CUSTOM -> "Custom"
+                                            },
+                                            color = accent.copy(alpha = 0.8f),
+                                            fontSize = 9.sp
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
@@ -284,6 +329,7 @@ fun SettingsScreen(
                             )
                         }
 
+                        // Completely decoupled accent color picker trigger
                         Box(
                             modifier = Modifier
                                 .size(38.dp)
@@ -292,7 +338,7 @@ fun SettingsScreen(
                                 .border(2.dp, Color.White, CircleShape)
                                 .clickable {
                                     manager.triggerHapticFeedback(false)
-                                    showCircularPicker = true
+                                    onOpenAccentPicker()
                                 },
                             contentAlignment = Alignment.Center
                         ) {
@@ -309,7 +355,7 @@ fun SettingsScreen(
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(22.dp))
                         .background(cardBg)
-                        .border(1.dp, if (isDark) Color(0x22FFFFFF) else Color(0xFFE2E8F0), RoundedCornerShape(22.dp))
+                        .border(1.2.dp, glassBorderBrush, RoundedCornerShape(22.dp))
                         .padding(18.dp)
                 ) {
                     Text("Player Settings", color = textColor, fontSize = 16.sp, fontWeight = FontWeight.Bold)
@@ -348,7 +394,7 @@ fun SettingsScreen(
                     Spacer(modifier = Modifier.height(14.dp))
 
                     SettingSwitchRow(
-                        icon = "⏯️",
+                        icon = "⏭️",
                         title = "Resume the First File",
                         subtitle = "Playback will only resume for the first track.",
                         checked = manager.isResumeFirstOnly,
@@ -415,15 +461,9 @@ fun SettingsScreen(
 
                     if (manager.isCrossfadeEnabled) {
                         Spacer(modifier = Modifier.height(12.dp))
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 4.dp)
-                        ) {
+                        Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp)) {
                             Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 2.dp),
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = 2.dp),
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
@@ -533,7 +573,7 @@ fun SettingsScreen(
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(22.dp))
                         .background(cardBg)
-                        .border(1.dp, if (isDark) Color(0x22FFFFFF) else Color(0xFFE2E8F0), RoundedCornerShape(22.dp))
+                        .border(1.2.dp, glassBorderBrush, RoundedCornerShape(22.dp))
                         .padding(18.dp)
                 ) {
                     Text("Audio", color = textColor, fontSize = 16.sp, fontWeight = FontWeight.Bold)
@@ -569,7 +609,7 @@ fun SettingsScreen(
                     Spacer(modifier = Modifier.height(14.dp))
 
                     SettingSwitchRow(
-                        icon = "🎚️",
+                        icon = "🎚",
                         title = "Mono Audio",
                         subtitle = "Combine left and right channels.",
                         checked = manager.isMonoAudio,
@@ -656,10 +696,7 @@ fun SettingsScreen(
 
                     Text("Audio Output", color = textColor, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                     Spacer(modifier = Modifier.height(8.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         listOf(
                             Triple("Phone", "📱  Phone", "Built-in Speaker"),
                             Triple("Speaker", "🔊  Speaker", "Ext / BT Speaker"),
@@ -740,7 +777,7 @@ fun SettingsScreen(
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(22.dp))
                         .background(cardBg)
-                        .border(1.dp, if (isDark) Color(0x22FFFFFF) else Color(0xFFE2E8F0), RoundedCornerShape(22.dp))
+                        .border(1.2.dp, glassBorderBrush, RoundedCornerShape(22.dp))
                         .padding(18.dp)
                 ) {
                     Text("Content Manager", color = textColor, fontSize = 16.sp, fontWeight = FontWeight.Bold)
@@ -793,14 +830,92 @@ fun SettingsScreen(
                 }
             }
 
-            // 6. Haptics & Feedback Section
+            // 6. Frosted Glass Styling (Between Content Manager & Haptics)
+            item(key = "frosted_glass_section", contentType = "frosted_glass_card") {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(22.dp))
+                        .background(cardBg)
+                        .border(1.2.dp, glassBorderBrush, RoundedCornerShape(22.dp))
+                        .padding(18.dp)
+                ) {
+                    SettingSwitchRow(
+                        icon = "✨",
+                        title = "Frosted Glass UI Effect",
+                        subtitle = "Enable transparent glass surfaces with depth blur",
+                        checked = manager.isFrostedGlassEnabled,
+                        textColor = textColor,
+                        accentColor = accent
+                    ) {
+                        manager.triggerHapticFeedback(true)
+                        manager.toggleFrostedGlass(it)
+                    }
+
+                    AnimatedVisibility(
+                        visible = manager.isFrostedGlassEnabled,
+                        enter = expandVertically() + fadeIn(),
+                        exit = shrinkVertically() + fadeOut()
+                    ) {
+                        Column(modifier = Modifier.fillMaxWidth().padding(top = 16.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = 2.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text("Glass Transparency", color = textColor, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                                val label = when {
+                                    manager.frostedGlassOpacity <= 0.25f -> "Transparent"
+                                    manager.frostedGlassOpacity <= 0.70f -> "Frosted"
+                                    else -> "Opaque"
+                                }
+                                Text(
+                                    "$label (${(manager.frostedGlassOpacity * 100).toInt()}%)",
+                                    color = accent,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Slider(
+                                value = manager.frostedGlassOpacity,
+                                onValueChange = { newOpacity ->
+                                    val oldInt = (manager.frostedGlassOpacity * 100).toInt()
+                                    val newInt = (newOpacity * 100).toInt()
+                                    if (newInt != oldInt && newInt % 5 == 0) {
+                                        manager.triggerHapticFeedback(false)
+                                    }
+                                    manager.updateFrostedGlassOpacity(newOpacity)
+                                },
+                                valueRange = 0.0f..1.0f,
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = SliderDefaults.colors(
+                                    thumbColor = accent,
+                                    activeTrackColor = accent,
+                                    inactiveTrackColor = if (isDark) Color(0xFF334155) else Color(0xFFE2E8F0)
+                                )
+                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text("Glass (Clear)", color = Color(0xFF64748B), fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                Text("Frosted", color = Color(0xFF64748B), fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                Text("Opaque", color = Color(0xFF64748B), fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 7. Haptics & Feedback Section
             item(key = "haptics_section", contentType = "haptics_card") {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(22.dp))
                         .background(cardBg)
-                        .border(1.dp, if (isDark) Color(0x22FFFFFF) else Color(0xFFE2E8F0), RoundedCornerShape(22.dp))
+                        .border(1.2.dp, glassBorderBrush, RoundedCornerShape(22.dp))
                         .padding(18.dp)
                 ) {
                     Text("Haptics & Feedback", color = textColor, fontSize = 16.sp, fontWeight = FontWeight.Bold)
@@ -820,28 +935,223 @@ fun SettingsScreen(
                 }
             }
         }
-
-        // Frosted Glass Scrim Layer for Circular Picker Dialog
-        if (showCircularPicker) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(if (isDark) Color(0x66000000) else Color(0x40000000))
-            )
-        }
     }
 
     if (showCircularPicker) {
+        val initialPickerColor = if (isPickingDarkHue) {
+            manager.customDarkFrostedHueColor
+        } else {
+            if (manager.lightThemeSubStyle == LightThemeSubStyle.CUSTOM) manager.customFrostedHueColor else accent
+        }
+
         CircularColorPickerDialog(
-            currentColor = accent,
-            isDark = isDark,
+            manager = manager,
+            title = if (isPickingDarkHue) "Select Dark Mode Tint" else "Select Accent Color",
+            currentColor = initialPickerColor,
             onColorSelected = { col ->
                 manager.triggerHapticFeedback(true)
-                manager.updateAccent(col)
+                if (isPickingDarkHue) {
+                    manager.setCustomDarkFrostedHue(col)
+                    manager.setTheme("Dark")
+                } else {
+                    manager.updateAccent(col)
+                }
                 showCircularPicker = false
             },
             onDismiss = { showCircularPicker = false }
         )
+    }
+}
+
+@Composable
+fun DarkThemeVariantDialog(
+    manager: MusicManager,
+    currentStyle: DarkThemeSubStyle,
+    accent: Color,
+    isDark: Boolean,
+    onSelect: (DarkThemeSubStyle) -> Unit,
+    onOpenColorWheel: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    val textColor = manager.getCurrentTextColor()
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onDismiss() },
+        contentAlignment = Alignment.BottomCenter
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
+                .background(manager.getCurrentDialogColor())
+                .border(1.2.dp, manager.getGlassBorderBrush(), RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
+                .clickable(enabled = false) {}
+                .padding(22.dp)
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Select Dark Mode Variant", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = textColor)
+                Text("Choose your preferred dark background aesthetic.", color = Color(0xFF64748B), fontSize = 12.sp)
+                Spacer(modifier = Modifier.height(6.dp))
+
+                listOf(
+                    Pair(DarkThemeSubStyle.BLUISH, Pair("Midnight Bluish Slate", "Deep slate blue background")),
+                    Pair(DarkThemeSubStyle.AMOLED_BLACK, Pair("Pure Pitch Black", "True pure black background"))
+                ).forEach { (style, textPair) ->
+                    val isSel = currentStyle == style
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(if (isSel) accent.copy(alpha = 0.15f) else Color.Transparent)
+                            .border(1.2.dp, if (isSel) accent else Color(0x22FFFFFF), RoundedCornerShape(14.dp))
+                            .clickable { onSelect(style) }
+                            .padding(14.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column {
+                            Text(textPair.first, color = if (isSel) accent else textColor, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                            Text(textPair.second, color = Color(0xFF64748B), fontSize = 11.sp)
+                        }
+                        if (isSel) Text("✓", color = accent, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(if (currentStyle == DarkThemeSubStyle.CUSTOM) accent.copy(alpha = 0.15f) else Color.Transparent)
+                        .border(1.2.dp, if (currentStyle == DarkThemeSubStyle.CUSTOM) accent else Color(0x22FFFFFF), RoundedCornerShape(14.dp))
+                        .clickable { onOpenColorWheel() }
+                        .padding(14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            modifier = Modifier
+                                .size(24.dp)
+                                .clip(CircleShape)
+                                .background(Brush.sweepGradient(listOf(Color.Red, Color.Yellow, Color.Green, Color.Cyan, Color.Blue, Color.Magenta, Color.Red)))
+                        )
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Column {
+                            Text("Custom Dark Frosted Hue", color = if (currentStyle == DarkThemeSubStyle.CUSTOM) accent else textColor, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                            Text("Pick any custom atmosphere colour tint", color = Color(0xFF64748B), fontSize = 11.sp)
+                        }
+                    }
+                    if (currentStyle == DarkThemeSubStyle.CUSTOM) Text("✓", color = accent, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+                Button(
+                    onClick = onDismiss,
+                    modifier = Modifier.fillMaxWidth().height(48.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = if (isDark) Color(0x22FFFFFF) else Color(0xFFF1F5F9)),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text("Close", color = textColor, fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun LightThemeVariantDialog(
+    manager: MusicManager,
+    currentStyle: LightThemeSubStyle,
+    accent: Color,
+    isDark: Boolean,
+    onSelect: (LightThemeSubStyle) -> Unit,
+    onOpenColorWheel: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    val textColor = manager.getCurrentTextColor()
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onDismiss() },
+        contentAlignment = Alignment.BottomCenter
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
+                .background(manager.getCurrentDialogColor())
+                .border(1.2.dp, manager.getGlassBorderBrush(), RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
+                .clickable(enabled = false) {}
+                .padding(22.dp)
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Select Light Mode Variant", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = textColor)
+                Text("Choose your preferred light background shade or tint.", color = Color(0xFF64748B), fontSize = 12.sp)
+                Spacer(modifier = Modifier.height(6.dp))
+
+                listOf(
+                    Pair(LightThemeSubStyle.WHITE, Pair("Pure Porcelain White", "Clean, modern crisp white style")),
+                    Pair(LightThemeSubStyle.CREAM, Pair("Warm Cream / Pale Linen", "Gentle off-white cream tone with soft warmth"))
+                ).forEach { (style, textPair) ->
+                    val isSel = currentStyle == style
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(if (isSel) accent.copy(alpha = 0.15f) else Color.Transparent)
+                            .border(1.2.dp, if (isSel) accent else Color(0x22FFFFFF), RoundedCornerShape(14.dp))
+                            .clickable { onSelect(style) }
+                            .padding(14.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column {
+                            Text(textPair.first, color = if (isSel) accent else textColor, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                            Text(textPair.second, color = Color(0xFF64748B), fontSize = 11.sp)
+                        }
+                        if (isSel) Text("✓", color = accent, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(if (currentStyle == LightThemeSubStyle.CUSTOM) accent.copy(alpha = 0.15f) else Color.Transparent)
+                        .border(1.2.dp, if (currentStyle == LightThemeSubStyle.CUSTOM) accent else Color(0x22FFFFFF), RoundedCornerShape(14.dp))
+                        .clickable { onOpenColorWheel() }
+                        .padding(14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            modifier = Modifier
+                                .size(24.dp)
+                                .clip(CircleShape)
+                                .background(Brush.sweepGradient(listOf(Color.Red, Color.Yellow, Color.Green, Color.Cyan, Color.Blue, Color.Magenta, Color.Red)))
+                        )
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Column {
+                            Text("Custom Frosted Hue", color = if (currentStyle == LightThemeSubStyle.CUSTOM) accent else textColor, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                            Text("Pick any custom atmosphere colour tint", color = Color(0xFF64748B), fontSize = 11.sp)
+                        }
+                    }
+                    if (currentStyle == LightThemeSubStyle.CUSTOM) Text("✓", color = accent, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+                Button(
+                    onClick = onDismiss,
+                    modifier = Modifier.fillMaxWidth().height(48.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = if (isDark) Color(0x22FFFFFF) else Color(0xFFF1F5F9)),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text("Close", color = textColor, fontWeight = FontWeight.Bold)
+                }
+            }
+        }
     }
 }
 
@@ -879,7 +1189,6 @@ fun SettingSwitchRow(
     }
 }
 
-// Full Screen Manage Folders
 @UnstableApi
 @Composable
 fun ManageHiddenFoldersFullScreen(
@@ -887,8 +1196,9 @@ fun ManageHiddenFoldersFullScreen(
     isDark: Boolean,
     onBack: () -> Unit
 ) {
-    val textColor = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A)
-    val cardBg = if (isDark) Color(0xFF131B2E) else Color.White
+    val textColor = manager.getCurrentTextColor()
+    val cardBg = manager.getCurrentSurfaceColor()
+    val glassBorderBrush = manager.getGlassBorderBrush()
     val allFolders = remember(manager.rawStorageSongs.size) {
         manager.rawStorageSongs.map { it.folderName }.distinct().sorted()
     }
@@ -901,7 +1211,13 @@ fun ManageHiddenFoldersFullScreen(
             modifier = Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 6.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            GlassBackButton(isDark = isDark, onClick = onBack)
+            GlassBackButton(
+                isDark = isDark,
+                onClick = {
+                    manager.triggerHapticFeedback(false)
+                    onBack()
+                }
+            )
             Spacer(modifier = Modifier.width(14.dp))
             Column {
                 Text("Manage Folders", color = textColor, fontSize = 20.sp, fontWeight = FontWeight.ExtraBold)
@@ -971,7 +1287,7 @@ fun ManageHiddenFoldersFullScreen(
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(18.dp))
                         .background(cardBg)
-                        .border(1.dp, if (isDark) Color(0x22FFFFFF) else Color(0xFFECEFF3), RoundedCornerShape(18.dp))
+                        .border(1.2.dp, glassBorderBrush, RoundedCornerShape(18.dp))
                         .clickable {
                             manager.triggerHapticFeedback(false)
                             manager.toggleHideFolder(folder)
@@ -995,7 +1311,6 @@ fun ManageHiddenFoldersFullScreen(
     }
 }
 
-// Full Screen Manage Audio Files
 @UnstableApi
 @Composable
 fun ManageHiddenAudioFullScreen(
@@ -1003,8 +1318,10 @@ fun ManageHiddenAudioFullScreen(
     isDark: Boolean,
     onBack: () -> Unit
 ) {
-    val textColor = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A)
-    val cardBg = if (isDark) Color(0xFF131B2E) else Color.White
+    val textColor = manager.getCurrentTextColor()
+    val cardBg = manager.getCurrentSurfaceColor()
+    val glassBorderBrush = manager.getGlassBorderBrush()
+    val accent = manager.accentColor
     var query by remember { mutableStateOf("") }
 
     val rawSongs = manager.rawStorageSongs
@@ -1028,7 +1345,13 @@ fun ManageHiddenAudioFullScreen(
             modifier = Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 6.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            GlassBackButton(isDark = isDark, onClick = onBack)
+            GlassBackButton(
+                isDark = isDark,
+                onClick = {
+                    manager.triggerHapticFeedback(false)
+                    onBack()
+                }
+            )
             Spacer(modifier = Modifier.width(14.dp))
             Column {
                 Text("Manage Audio Files", color = textColor, fontSize = 20.sp, fontWeight = FontWeight.ExtraBold)
@@ -1042,11 +1365,14 @@ fun ManageHiddenAudioFullScreen(
             placeholder = { Text("Search songs to hide or unhide...", color = Color(0xFF94A3B8)) },
             modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
             shape = RoundedCornerShape(18.dp),
-            colors = TextFieldDefaults.colors(
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedTextColor = textColor,
+                unfocusedTextColor = textColor,
                 focusedContainerColor = cardBg,
                 unfocusedContainerColor = cardBg,
-                focusedIndicatorColor = manager.accentColor,
-                unfocusedIndicatorColor = if (isDark) Color(0x22FFFFFF) else Color(0xFFE2E8F0)
+                focusedBorderColor = accent,
+                unfocusedBorderColor = manager.getCurrentBorderColor(),
+                cursorColor = accent
             ),
             singleLine = true
         )
@@ -1111,14 +1437,14 @@ fun ManageHiddenAudioFullScreen(
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(18.dp))
                         .background(cardBg)
-                        .border(1.dp, if (isDark) Color(0x22FFFFFF) else Color(0xFFECEFF3), RoundedCornerShape(18.dp))
+                        .border(1.2.dp, glassBorderBrush, RoundedCornerShape(18.dp))
                         .clickable {
                             manager.triggerHapticFeedback(false)
                             manager.toggleHideAudio(song.id)
                         }
                         .padding(horizontal = 16.dp, vertical = 14.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
                         Text("🎵", fontSize = 22.sp)
@@ -1137,8 +1463,9 @@ fun ManageHiddenAudioFullScreen(
 
 @Composable
 fun CircularColorPickerDialog(
+    manager: MusicManager,
+    title: String = "Select Accent / Glass Tint",
     currentColor: Color,
-    isDark: Boolean,
     onColorSelected: (Color) -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -1149,10 +1476,13 @@ fun CircularColorPickerDialog(
         Color(android.graphics.Color.HSVToColor(floatArrayOf(hue, sat, value)))
     }
 
+    val isDark = manager.isDarkMode
+    val textColor = manager.getCurrentTextColor()
+
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.Transparent)
+            .background(if (isDark) Color(0x66000000) else Color(0x40000000))
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null
@@ -1163,13 +1493,14 @@ fun CircularColorPickerDialog(
             modifier = Modifier
                 .fillMaxWidth(0.92f)
                 .clip(RoundedCornerShape(28.dp))
-                .background(if (isDark) Color(0xFF1E293B) else Color.White)
+                .background(manager.getCurrentDialogColor())
+                .border(1.2.dp, manager.getGlassBorderBrush(), RoundedCornerShape(28.dp))
                 .clickable(enabled = false) {}
                 .padding(20.dp)
         ) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                    Text("Select Accent Color", color = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A), fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                    Text(title, color = textColor, fontSize = 18.sp, fontWeight = FontWeight.Bold)
                     Text("✕", fontSize = 18.sp, color = Color(0xFF64748B), modifier = Modifier.clickable { onDismiss() })
                 }
                 Spacer(modifier = Modifier.height(16.dp))

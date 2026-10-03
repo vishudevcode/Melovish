@@ -42,6 +42,8 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.core.app.NotificationCompat
@@ -125,7 +127,7 @@ class MusicManager(private val context: Context) {
     }
 
     val managerScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate + exceptionHandler)
-    val prefs: SharedPreferences = context.getSharedPreferences("melovish_prefs_v13", Context.MODE_PRIVATE)
+    val prefs: SharedPreferences = context.getSharedPreferences("melovish_prefs_v15", Context.MODE_PRIVATE)
     private val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
     private val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
@@ -321,8 +323,217 @@ class MusicManager(private val context: Context) {
         }
     )
 
+    // =========================================================================
+    // 🎨 COMPREHENSIVE THEME & SPECULAR FROSTED GLASS ENGINE
+    // =========================================================================
+
     var themeMode by mutableStateOf(prefs.getString("theme_mode", "System") ?: "System")
     var isDarkMode by mutableStateOf(false)
+
+    var darkThemeSubStyle by mutableStateOf(
+        try {
+            DarkThemeSubStyle.valueOf(prefs.getString("pref_dark_sub_style", DarkThemeSubStyle.BLUISH.name) ?: DarkThemeSubStyle.BLUISH.name)
+        } catch (_: Exception) {
+            DarkThemeSubStyle.BLUISH
+        }
+    )
+
+    var lightThemeSubStyle by mutableStateOf(
+        try {
+            LightThemeSubStyle.valueOf(prefs.getString("pref_light_sub_style", LightThemeSubStyle.WHITE.name) ?: LightThemeSubStyle.WHITE.name)
+        } catch (_: Exception) {
+            LightThemeSubStyle.WHITE
+        }
+    )
+
+    var customFrostedHueColor by mutableStateOf(Color(prefs.getInt("pref_light_custom_hue", 0xFFE2E8F0.toInt())))
+    var customDarkFrostedHueColor by mutableStateOf(Color(prefs.getInt("pref_dark_custom_hue", 0xFF2D1B36.toInt())))
+
+    var isFrostedGlassEnabled by mutableStateOf(prefs.getBoolean("pref_frosted_enabled", true))
+    var frostedGlassOpacity by mutableFloatStateOf(prefs.getFloat("pref_frosted_opacity", 0.45f).coerceIn(0.0f, 1.0f))
+
+    fun setDarkSubStyle(style: DarkThemeSubStyle) {
+        darkThemeSubStyle = style
+        managerScope.launch(Dispatchers.IO) {
+            prefs.edit().putString("pref_dark_sub_style", style.name).apply()
+        }
+    }
+
+    fun setLightSubStyle(style: LightThemeSubStyle) {
+        lightThemeSubStyle = style
+        managerScope.launch(Dispatchers.IO) {
+            prefs.edit().putString("pref_light_sub_style", style.name).apply()
+        }
+    }
+
+    fun setCustomFrostedHue(color: Color) {
+        customFrostedHueColor = color
+        lightThemeSubStyle = LightThemeSubStyle.CUSTOM
+        managerScope.launch(Dispatchers.IO) {
+            prefs.edit()
+                .putInt("pref_light_custom_hue", color.toArgb())
+                .putString("pref_light_sub_style", LightThemeSubStyle.CUSTOM.name)
+                .apply()
+        }
+    }
+
+    fun setCustomDarkFrostedHue(color: Color) {
+        customDarkFrostedHueColor = color
+        darkThemeSubStyle = DarkThemeSubStyle.CUSTOM
+        managerScope.launch(Dispatchers.IO) {
+            prefs.edit()
+                .putInt("pref_dark_custom_hue", color.toArgb())
+                .putString("pref_dark_sub_style", DarkThemeSubStyle.CUSTOM.name)
+                .apply()
+        }
+    }
+
+    fun toggleFrostedGlass(enabled: Boolean) {
+        isFrostedGlassEnabled = enabled
+        managerScope.launch(Dispatchers.IO) {
+            prefs.edit().putBoolean("pref_frosted_enabled", enabled).apply()
+        }
+    }
+
+    fun updateFrostedGlassOpacity(opacity: Float) {
+        val clamped = opacity.coerceIn(0.0f, 1.0f)
+        frostedGlassOpacity = clamped
+        managerScope.launch(Dispatchers.IO) {
+            prefs.edit().putFloat("pref_frosted_opacity", clamped).apply()
+        }
+    }
+
+    fun getContrastingTextColor(backgroundColor: Color): Color {
+        val r = backgroundColor.red
+        val g = backgroundColor.green
+        val b = backgroundColor.blue
+        val luminance = 0.299 * r + 0.587 * g + 0.114 * b
+        return if (luminance > 0.55) Color(0xFF0F172A) else Color(0xFFF8FAFC)
+    }
+
+    fun getCurrentBackgroundColor(): Color {
+        return if (isDarkMode) {
+            when (darkThemeSubStyle) {
+                DarkThemeSubStyle.AMOLED_BLACK -> Color(0xFF000000)
+                DarkThemeSubStyle.BLUISH -> Color(0xFF0A0F1D)
+                DarkThemeSubStyle.CUSTOM -> {
+                    val hsv = FloatArray(3)
+                    android.graphics.Color.colorToHSV(customDarkFrostedHueColor.toArgb(), hsv)
+                    val darkSat = (hsv[1] * 0.75f).coerceIn(0.20f, 0.85f)
+                    val darkVal = 0.20f
+                    Color(android.graphics.Color.HSVToColor(floatArrayOf(hsv[0], darkSat, darkVal)))
+                }
+            }
+        } else {
+            when (lightThemeSubStyle) {
+                LightThemeSubStyle.WHITE -> Color(0xFFF8FAFC)
+                LightThemeSubStyle.CREAM -> Color(0xFFFBF8F2)
+                LightThemeSubStyle.CUSTOM -> {
+                    val hsv = FloatArray(3)
+                    android.graphics.Color.colorToHSV(customFrostedHueColor.toArgb(), hsv)
+                    val softSat = (hsv[1] * 0.20f).coerceIn(0.03f, 0.25f)
+                    val softVal = 0.96f
+                    Color(android.graphics.Color.HSVToColor(floatArrayOf(hsv[0], softSat, softVal)))
+                }
+            }
+        }
+    }
+
+    fun getCurrentSurfaceColor(): Color {
+        if (!isFrostedGlassEnabled) {
+            return if (isDarkMode) {
+                when (darkThemeSubStyle) {
+                    DarkThemeSubStyle.AMOLED_BLACK -> Color(0xFF000000)
+                    DarkThemeSubStyle.BLUISH -> Color(0xFF131B2E)
+                    DarkThemeSubStyle.CUSTOM -> Color(0xFF08080C)
+                }
+            } else {
+                when (lightThemeSubStyle) {
+                    LightThemeSubStyle.WHITE -> Color.White
+                    LightThemeSubStyle.CREAM -> Color(0xFFF5EFE6)
+                    LightThemeSubStyle.CUSTOM -> Color.White
+                }
+            }
+        }
+
+        val baseAlpha = (0.20f + (frostedGlassOpacity * 0.75f)).coerceIn(0.15f, 0.95f)
+
+        return if (isDarkMode) {
+            Color.Black.copy(alpha = baseAlpha)
+        } else {
+            when (lightThemeSubStyle) {
+                LightThemeSubStyle.CREAM -> Color(0xFFFFFBF5).copy(alpha = baseAlpha)
+                else -> Color.White.copy(alpha = baseAlpha)
+            }
+        }
+    }
+
+    fun getCurrentDialogColor(): Color {
+        if (!isFrostedGlassEnabled) {
+            return if (isDarkMode) {
+                when (darkThemeSubStyle) {
+                    DarkThemeSubStyle.AMOLED_BLACK -> Color(0xFF000000)
+                    DarkThemeSubStyle.BLUISH -> Color(0xFF131B2E)
+                    DarkThemeSubStyle.CUSTOM -> Color(0xFF0A0A10)
+                }
+            } else {
+                when (lightThemeSubStyle) {
+                    LightThemeSubStyle.CREAM -> Color(0xFFFAF5ED)
+                    else -> Color.White
+                }
+            }
+        }
+
+        val dialogAlpha = (0.40f + (frostedGlassOpacity * 0.55f)).coerceIn(0.40f, 0.98f)
+        return if (isDarkMode) {
+            Color.Black.copy(alpha = dialogAlpha)
+        } else {
+            when (lightThemeSubStyle) {
+                LightThemeSubStyle.CREAM -> Color(0xFFFAF6EE).copy(alpha = dialogAlpha)
+                else -> Color.White.copy(alpha = dialogAlpha)
+            }
+        }
+    }
+
+    fun getGlassBorderBrush(): Brush {
+        if (!isFrostedGlassEnabled) {
+            val fallback = if (isDarkMode) Color(0x33FFFFFF) else Color(0xFFE2E8F0)
+            return Brush.linearGradient(listOf(fallback, fallback))
+        }
+
+        val topAlpha = (0.35f + (1f - frostedGlassOpacity) * 0.45f).coerceIn(0.25f, 0.85f)
+        val botAlpha = (0.08f + frostedGlassOpacity * 0.20f).coerceIn(0.06f, 0.35f)
+
+        return Brush.linearGradient(
+            colors = listOf(
+                Color.White.copy(alpha = topAlpha),
+                Color.White.copy(alpha = botAlpha)
+            ),
+            start = Offset(0f, 0f),
+            end = Offset(400f, 800f)
+        )
+    }
+
+    fun getCurrentTextColor(): Color {
+        return if (isDarkMode) {
+            Color(0xFFF8FAFC)
+        } else {
+            Color(0xFF0F172A)
+        }
+    }
+
+    fun getCurrentBorderColor(): Color {
+        if (!isFrostedGlassEnabled) {
+            return if (isDarkMode) {
+                if (darkThemeSubStyle == DarkThemeSubStyle.AMOLED_BLACK) Color(0x33FFFFFF) else Color(0x22FFFFFF)
+            } else {
+                Color(0xFFE2E8F0)
+            }
+        }
+        val borderAlpha = (0.25f + (frostedGlassOpacity * 0.40f)).coerceIn(0.18f, 0.70f)
+        return Color.White.copy(alpha = borderAlpha)
+    }
+
     var accentColor by mutableStateOf(Color(prefs.getInt("accent_color", 0xFF00B4D8.toInt())))
     val userSavedColorPresets = mutableStateListOf<Color>()
 
@@ -340,10 +551,7 @@ class MusicManager(private val context: Context) {
     var isColorfulPlayer by mutableStateOf(prefs.getBoolean("colorful_player", true))
     var isResumeFirstOnly by mutableStateOf(prefs.getBoolean("resume_first", false))
     var isFadeOnStart by mutableStateOf(prefs.getBoolean("fade_start", false))
-    
-    // Silence Trimming is OFF by default
     var isSilenceTrimmingEnabled by mutableStateOf(prefs.getBoolean("silence_trimming", false))
-    
     var isCrossfadeEnabled by mutableStateOf(prefs.getBoolean("crossfade_enabled", false))
     var crossfadeDuration by mutableFloatStateOf(prefs.getFloat("crossfade_duration", 2.0f))
 
@@ -351,7 +559,6 @@ class MusicManager(private val context: Context) {
     var volumeBoostLevel by mutableFloatStateOf(prefs.getFloat("vol_boost", 100f))
     var isMonoAudio by mutableStateOf(prefs.getBoolean("mono", false))
 
-    // Audio Routing System
     var userSelectedAudioOutput by mutableStateOf(prefs.getString("audio_output_manual", "Auto") ?: "Auto")
     var effectiveAudioOutput by mutableStateOf("Phone")
 
@@ -1201,7 +1408,6 @@ class MusicManager(private val context: Context) {
                     if (duration > 0L) {
                         val remainingMs = duration - p
 
-                        // 1. Crossfade Logic: Fade smoothly out in the last X seconds
                         if (isCrossfadeEnabled) {
                             val fadeWindowMs = (crossfadeDuration * 1000).toLong().coerceIn(1000L, 12000L)
                             if (remainingMs in 1..fadeWindowMs && !isFadingOutForCrossfade) {
@@ -1213,7 +1419,6 @@ class MusicManager(private val context: Context) {
                             }
                         }
 
-                        // 2. Silence Trimming Logic: Skip trailing silent gap without waiting for duration to hit zero
                         if (isSilenceTrimmingEnabled && !isCrossfadeEnabled) {
                             if (remainingMs in 1..800L && player.hasNextMediaItem()) {
                                 playNext()
@@ -1485,7 +1690,6 @@ class MusicManager(private val context: Context) {
         }
     }
 
-    // Instant zero-lag track playback
     fun playSong(song: Song, queue: List<Song>, section: String, initialPositionMs: Long = 0L) {
         val targetIndex = queue.indexOfFirst { it.id == song.id }.coerceAtLeast(0)
 
@@ -2093,8 +2297,8 @@ class MusicManager(private val context: Context) {
         val updatedTime = System.currentTimeMillis()
         val updated = song.copy(playCount = updatedCount, lastPlayed = updatedTime)
 
-        val idx = allSongs.indexOfFirst { it.id == song.id }
-        if (idx != -1) allSongs[idx] = updated
+        val songIdx = allSongs.indexOfFirst { it.id == song.id }
+        if (songIdx != -1) allSongs[songIdx] = updated
         val rawIdx = rawStorageSongs.indexOfFirst { it.id == song.id }
         if (rawIdx != -1) rawStorageSongs[rawIdx] = updated
 
@@ -2262,6 +2466,7 @@ class MusicManager(private val context: Context) {
 
         var resultBitmap: Bitmap? = null
 
+        // 1. Check for manual/custom edited cover first
         if (song.customCoverPath != null) {
             val file = File(song.customCoverPath)
             if (file.exists()) {
@@ -2276,20 +2481,8 @@ class MusicManager(private val context: Context) {
             }
         }
 
-        if (resultBitmap == null) {
-            try {
-                val sArtworkUri = Uri.parse("content://media/external/audio/albumart")
-                val uri = ContentUris.withAppendedId(sArtworkUri, song.albumId)
-                context.contentResolver.openInputStream(uri)?.use { stream ->
-                    val opts = BitmapFactory.Options().apply {
-                        inSampleSize = 2
-                        inPreferredConfig = Bitmap.Config.RGB_565
-                    }
-                    resultBitmap = BitmapFactory.decodeStream(stream, null, opts)
-                }
-            } catch (_: Exception) {}
-        }
-
+        // 2. Direct embedded cover extraction from the file's own ID3/MP4/FLAC metadata
+        //    (Prevents Android MediaStore from applying the same album art to every track sharing a generic album ID)
         if (resultBitmap == null) {
             try {
                 val retriever = MediaMetadataRetriever()
@@ -2306,6 +2499,21 @@ class MusicManager(private val context: Context) {
                     resultBitmap = BitmapFactory.decodeByteArray(artBytes, 0, artBytes.size, opts)
                 }
                 retriever.release()
+            } catch (_: Exception) {}
+        }
+
+        // 3. Fallback to MediaStore album art URI only if the file has no embedded picture
+        if (resultBitmap == null && song.albumId > 0L) {
+            try {
+                val sArtworkUri = Uri.parse("content://media/external/audio/albumart")
+                val uri = ContentUris.withAppendedId(sArtworkUri, song.albumId)
+                context.contentResolver.openInputStream(uri)?.use { stream ->
+                    val opts = BitmapFactory.Options().apply {
+                        inSampleSize = 2
+                        inPreferredConfig = Bitmap.Config.RGB_565
+                    }
+                    resultBitmap = BitmapFactory.decodeStream(stream, null, opts)
+                }
             } catch (_: Exception) {}
         }
 
