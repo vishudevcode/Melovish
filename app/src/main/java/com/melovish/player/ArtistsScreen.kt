@@ -43,6 +43,7 @@ import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
@@ -82,10 +83,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
@@ -444,7 +449,7 @@ object ArtistParsingEngine {
     }
 }
 
-// Root Artist Action Modal Hoisted for Universal Header Blur
+// Root Artist Action Modal
 @UnstableApi
 @Composable
 fun RootArtistActionModal(
@@ -458,6 +463,16 @@ fun RootArtistActionModal(
     val accentColor = manager.accentColor
     var artistToMergeSource by remember { mutableStateOf<ArtistItem?>(null) }
     var artistForCustomImage by remember { mutableStateOf<ArtistItem?>(null) }
+
+    val modalScrollInterceptor = remember {
+        object : NestedScrollConnection {
+            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset = Offset.Zero
+            override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset = available
+        }
+    }
+
+    val dialogSurface = manager.getCurrentDialogColor()
+    val glassBorder = manager.getGlassBorderBrush()
 
     val imagePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
@@ -482,7 +497,8 @@ fun RootArtistActionModal(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(if (manager.isDarkMode) Color(0x66000000) else Color(0x40000000))
+                .background(Color(0x77000000))
+                .nestedScroll(modalScrollInterceptor)
                 .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
                     onDismiss()
                 },
@@ -493,8 +509,8 @@ fun RootArtistActionModal(
                     .fillMaxWidth()
                     .height(550.dp)
                     .clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
-                    .background(manager.getCurrentDialogColor())
-                    .border(1.2.dp, manager.getGlassBorderBrush(), RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
+                    .background(dialogSurface)
+                    .border(1.5.dp, glassBorder, RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
                     .clickable(enabled = false) {}
                     .padding(20.dp)
             ) {
@@ -566,7 +582,8 @@ fun RootArtistActionModal(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(if (manager.isDarkMode) Color(0x66000000) else Color(0x40000000))
+            .background(Color(0x77000000))
+            .nestedScroll(modalScrollInterceptor)
             .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
                 onDismiss()
             },
@@ -576,8 +593,8 @@ fun RootArtistActionModal(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
-                .background(manager.getCurrentDialogColor())
-                .border(1.2.dp, manager.getGlassBorderBrush(), RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
+                .background(dialogSurface)
+                .border(1.5.dp, glassBorder, RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
                 .clickable(enabled = false) {}
                 .padding(22.dp)
         ) {
@@ -585,7 +602,6 @@ fun RootArtistActionModal(
                 Text(artist.name, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = textColor)
                 Spacer(modifier = Modifier.height(4.dp))
 
-                // 1. Pin / Unpin from top
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -605,7 +621,6 @@ fun RootArtistActionModal(
                     Text("Pin / Unpin from top", fontSize = 15.sp, color = textColor, fontWeight = FontWeight.SemiBold)
                 }
 
-                // 2. Change artist photo...
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -617,12 +632,11 @@ fun RootArtistActionModal(
                         .padding(12.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("🖼️", fontSize = 18.sp)
+                    Text("🖼", fontSize = 18.sp)
                     Spacer(modifier = Modifier.width(12.dp))
                     Text("Change artist photo...", fontSize = 15.sp, color = textColor, fontWeight = FontWeight.SemiBold)
                 }
 
-                // 3. Add to Favourite Playlists (Home)
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -639,7 +653,6 @@ fun RootArtistActionModal(
                     Text("Add to Favourite Playlists (Home)", fontSize = 15.sp, color = textColor, fontWeight = FontWeight.SemiBold)
                 }
 
-                // 4. Merge into another artist...
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -655,7 +668,6 @@ fun RootArtistActionModal(
                     Text("Merge into another artist...", fontSize = 15.sp, color = textColor, fontWeight = FontWeight.SemiBold)
                 }
 
-                // 5. Hide artist group
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -689,7 +701,7 @@ fun RootArtistActionModal(
     }
 }
 
-// 1:1 Dynamic Square Artist Card with Specular Glass Highlight Rims
+// 1:1 Dynamic Square Artist Card
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun ArtistSquareCard(
@@ -845,7 +857,7 @@ fun ArtistSquareCard(
 }
 
 // =========================================================================
-// 📌 ARTISTS SCREEN (With Monochromatic Frosted Glass Styling)
+// 📌 ARTISTS SCREEN
 // =========================================================================
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -856,7 +868,8 @@ fun ArtistsScreen(
     listState: LazyListState,
     onArtistClick: (ArtistItem) -> Unit,
     onArtistLongClick: (ArtistItem) -> Unit,
-    onOpenCreateArtist: () -> Unit = {}
+    onOpenCreateArtist: () -> Unit = {},
+    onOpenGridSizeDialog: () -> Unit = {}
 ) {
     val context = LocalContext.current
     remember { ArtistDataManager.init(context) }
@@ -869,7 +882,6 @@ fun ArtistsScreen(
 
     var query by remember { mutableStateOf("") }
     var showSortMenu by remember { mutableStateOf(false) }
-    var showGridSizeDialog by remember { mutableStateOf(false) }
 
     val artistsList = if (manager.parsedArtistsList.isNotEmpty()) {
         manager.parsedArtistsList
@@ -931,7 +943,7 @@ fun ArtistsScreen(
                             .border(1.2.dp, glassBorderBrush, CircleShape)
                             .combinedClickable(
                                 onClick = { manager.cycleNextArtistsViewMode() },
-                                onLongClick = { showGridSizeDialog = true }
+                                onLongClick = onOpenGridSizeDialog
                             ),
                         contentAlignment = Alignment.Center
                     ) {
@@ -987,7 +999,6 @@ fun ArtistsScreen(
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            // Search Bar with High Contrast Text & Cursor
             OutlinedTextField(
                 value = query,
                 onValueChange = { query = it },
@@ -1285,16 +1296,6 @@ fun ArtistsScreen(
             }
         }
     }
-
-    if (showGridSizeDialog) {
-        GridSizeDialog(
-            currentMode = manager.artistsViewMode,
-            isDark = manager.isDarkMode,
-            accent = manager.accentColor,
-            onSelectMode = { manager.updateArtistsViewMode(it) },
-            onDismiss = { showGridSizeDialog = false }
-        )
-    }
 }
 
 // =========================================================================
@@ -1308,19 +1309,16 @@ fun ArtistDetailScreen(
     manager: MusicManager,
     isDark: Boolean,
     onBack: () -> Unit,
-    onSongMenuClick: (Song) -> Unit
+    onSongMenuClick: (Song) -> Unit,
+    onOpenGridSizeDialog: () -> Unit = {},
+    onOpenAddSongsDialog: () -> Unit = {}
 ) {
-    val context = LocalContext.current
     val textColor = manager.getCurrentTextColor()
     val cardBg = manager.getCurrentSurfaceColor()
     val glassBorderBrush = manager.getGlassBorderBrush()
     val accent = manager.accentColor
 
     var showSortMenu by remember { mutableStateOf(false) }
-    var showGridSizeDialog by remember { mutableStateOf(false) }
-    var selectedSongForAction by remember { mutableStateOf<Song?>(null) }
-    var showMoveTargetDialog by remember { mutableStateOf(false) }
-    var showAddSongsDialog by remember { mutableStateOf(false) }
 
     val currentSongs = remember(artistItem.name, manager.parsedArtistsList, ArtistDataManager.refreshTrigger) {
         manager.parsedArtistsList.find { it.name.equals(artistItem.name, ignoreCase = true) }?.songs ?: artistItem.songs
@@ -1338,20 +1336,10 @@ fun ArtistDetailScreen(
         }.toImmutableList()
     }
 
-    val isAnyDetailDialogOpen = showGridSizeDialog || selectedSongForAction != null ||
-            showMoveTargetDialog || showAddSongsDialog
-
-    val animatedDetailBlur by animateDpAsState(
-        targetValue = if (isAnyDetailDialogOpen) 22.dp else 0.dp,
-        animationSpec = tween(durationMillis = 280, easing = FastOutSlowInEasing),
-        label = "detailBlurAnim"
-    )
-
     Box(modifier = Modifier.fillMaxSize()) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .blur(animatedDetailBlur)
                 .padding(horizontal = 16.dp)
         ) {
             Row(
@@ -1375,9 +1363,23 @@ fun ArtistDetailScreen(
                             .clip(CircleShape)
                             .background(cardBg)
                             .border(1.2.dp, glassBorderBrush, CircleShape)
+                            .clickable { onOpenAddSongsDialog() },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        AddTrackActionVector(tint = accent, modifier = Modifier.size(18.dp))
+                    }
+
+                    Spacer(modifier = Modifier.width(6.dp))
+
+                    Box(
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .background(cardBg)
+                            .border(1.2.dp, glassBorderBrush, CircleShape)
                             .combinedClickable(
                                 onClick = { manager.cycleNextArtistInnerViewMode() },
-                                onLongClick = { showGridSizeDialog = true }
+                                onLongClick = onOpenGridSizeDialog
                             ),
                         contentAlignment = Alignment.Center
                     ) {
@@ -1406,20 +1408,6 @@ fun ArtistDetailScreen(
                             DropdownMenuItem(text = { Text("File Size") }, onClick = { manager.setPersistentArtistInnerSort(SongSortOrder.FILE_SIZE); showSortMenu = false })
                             DropdownMenuItem(text = { Text("Newest First") }, onClick = { manager.setPersistentArtistInnerSort(SongSortOrder.NEWEST); showSortMenu = false })
                         }
-                    }
-
-                    Spacer(modifier = Modifier.width(6.dp))
-
-                    Box(
-                        modifier = Modifier
-                            .size(36.dp)
-                            .clip(CircleShape)
-                            .background(cardBg)
-                            .border(1.2.dp, glassBorderBrush, CircleShape)
-                            .clickable { showAddSongsDialog = true },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        AddTrackActionVector(tint = accent, modifier = Modifier.size(18.dp))
                     }
 
                     Spacer(modifier = Modifier.width(6.dp))
@@ -1565,273 +1553,120 @@ fun ArtistDetailScreen(
             }
         }
     }
+}
 
-    if (showGridSizeDialog) {
-        GridSizeDialog(
-            currentMode = manager.artistInnerViewMode,
-            isDark = isDark,
-            accent = manager.accentColor,
-            onSelectMode = { manager.updateArtistInnerViewMode(it) },
-            onDismiss = { showGridSizeDialog = false }
-        )
-    }
+// =========================================================================
+// 📌 ARTIST ADD SONGS DIALOG (Rendered directly at the root level)
+// =========================================================================
 
-    if (selectedSongForAction != null) {
-        val s = selectedSongForAction!!
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(if (isDark) Color(0x66000000) else Color(0x40000000))
-                .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
-                    selectedSongForAction = null
-                },
-            contentAlignment = Alignment.BottomCenter
-        ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
-                    .background(manager.getCurrentDialogColor())
-                    .border(1.2.dp, manager.getGlassBorderBrush(), RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
-                    .clickable(enabled = false) {}
-                    .padding(22.dp)
-            ) {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(s.title, fontSize = 17.sp, fontWeight = FontWeight.Bold, color = textColor, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Spacer(modifier = Modifier.height(4.dp))
+@Composable
+fun ArtistAddSongsDialog(
+    artistName: String,
+    manager: MusicManager,
+    onDismiss: () -> Unit
+) {
+    val context = LocalContext.current
+    val isDark = manager.isDarkMode
+    val textColor = manager.getCurrentTextColor()
+    val cardBg = manager.getCurrentSurfaceColor()
+    val accent = manager.accentColor
 
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
-                            .clickable { showMoveTargetDialog = true }
-                            .padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text("➡️", fontSize = 18.sp)
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Text("Move track to another artist...", fontSize = 15.sp, color = textColor, fontWeight = FontWeight.SemiBold)
-                    }
-
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
-                            .clickable {
-                                ArtistDataManager.removeSongFromArtist(artistItem.name, s.id)
-                                selectedSongForAction = null
-                            }
-                            .padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text("🗑️", fontSize = 18.sp)
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Text("Remove track from this artist", fontSize = 15.sp, color = Color(0xFFEF4444), fontWeight = FontWeight.SemiBold)
-                    }
-
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
-                            .clickable {
-                                val target = s
-                                selectedSongForAction = null
-                                onSongMenuClick(target)
-                            }
-                            .padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text("⚙️", fontSize = 18.sp)
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Text("Other song options...", fontSize = 15.sp, color = textColor, fontWeight = FontWeight.SemiBold)
-                    }
-
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Button(
-                        onClick = { selectedSongForAction = null },
-                        modifier = Modifier.fillMaxWidth().height(48.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = if (isDark) Color(0x22FFFFFF) else Color(0xFFF1F5F9)),
-                        shape = RoundedCornerShape(12.dp)
-                    ) {
-                        Text("Cancel", color = textColor, fontWeight = FontWeight.Bold)
-                    }
-                }
-            }
+    val modalScrollInterceptor = remember {
+        object : NestedScrollConnection {
+            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset = Offset.Zero
+            override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset = available
         }
     }
 
-    if (showMoveTargetDialog && selectedSongForAction != null) {
-        val songToMove = selectedSongForAction!!
-        var destSearch by remember { mutableStateOf("") }
-        val allArtists = manager.parsedArtistsList
-        val destCandidates = allArtists.filter { it.name != artistItem.name && it.name.contains(destSearch, ignoreCase = true) }
-
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(if (isDark) Color(0x66000000) else Color(0x40000000))
-                .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
-                    showMoveTargetDialog = false
-                    selectedSongForAction = null
-                },
-            contentAlignment = Alignment.BottomCenter
-        ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(550.dp)
-                    .clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
-                    .background(manager.getCurrentDialogColor())
-                    .border(1.2.dp, manager.getGlassBorderBrush(), RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
-                    .clickable(enabled = false) {}
-                    .padding(20.dp)
-            ) {
-                Column {
-                    Text("Move '${songToMove.title}' to:", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = textColor)
-                    Spacer(modifier = Modifier.height(10.dp))
-                    OutlinedTextField(
-                        value = destSearch,
-                        onValueChange = { destSearch = it },
-                        placeholder = { Text("Search target artist...") },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true,
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedTextColor = textColor,
-                            unfocusedTextColor = textColor,
-                            focusedContainerColor = cardBg,
-                            unfocusedContainerColor = cardBg,
-                            focusedBorderColor = accent,
-                            unfocusedBorderColor = manager.getCurrentBorderColor(),
-                            cursorColor = accent
-                        )
-                    )
-                    Spacer(modifier = Modifier.height(10.dp))
-
-                    LazyColumn(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        items(
-                            items = destCandidates,
-                            key = { it.name },
-                            contentType = { "move_dest_row" }
-                        ) { target ->
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .background(if (isDark) Color(0x1AFFFFFF) else Color(0xFFF1F5F9))
-                                    .clickable {
-                                        ArtistDataManager.moveSongToArtist(songToMove, artistItem.name, target.name)
-                                        Toast.makeText(context, "Moved to ${target.name}", Toast.LENGTH_SHORT).show()
-                                        showMoveTargetDialog = false
-                                        selectedSongForAction = null
-                                    }
-                                    .padding(12.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text("🎙️", fontSize = 18.sp)
-                                Spacer(modifier = Modifier.width(10.dp))
-                                Text(target.name, color = textColor, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                            }
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(10.dp))
-                    Button(
-                        onClick = {
-                            showMoveTargetDialog = false
-                            selectedSongForAction = null
-                        },
-                        modifier = Modifier.fillMaxWidth().height(48.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = if (isDark) Color(0x22FFFFFF) else Color(0xFFF1F5F9)),
-                        shape = RoundedCornerShape(12.dp)
-                    ) {
-                        Text("Cancel", color = textColor, fontWeight = FontWeight.Bold)
-                    }
-                }
-            }
-        }
+    val currentArtist = remember(artistName, manager.parsedArtistsList, ArtistDataManager.refreshTrigger) {
+        manager.parsedArtistsList.find { it.name.equals(artistName, ignoreCase = true) }
+    }
+    val currentSongIdSet = remember(currentArtist) {
+        currentArtist?.songs?.map { it.id }?.toHashSet() ?: hashSetOf()
     }
 
-    if (showAddSongsDialog) {
-        val context = LocalContext.current
-        var addSongSearch by remember { mutableStateOf("") }
-        val currentSongIdSet = sortedSongs.map { it.id }.toHashSet()
-        val candidates = manager.allSongs.filter {
+    var addSongSearch by remember { mutableStateOf("") }
+    val candidates = remember(addSongSearch, currentSongIdSet, manager.allSongs.size) {
+        manager.allSongs.filter {
             !currentSongIdSet.contains(it.id) &&
             (it.title.contains(addSongSearch, ignoreCase = true) || it.artist.contains(addSongSearch, ignoreCase = true))
         }
+    }
 
+    val dialogSurface = manager.getCurrentDialogColor()
+    val glassBorder = manager.getGlassBorderBrush()
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color(0x77000000))
+            .nestedScroll(modalScrollInterceptor)
+            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
+                onDismiss()
+            },
+        contentAlignment = Alignment.BottomCenter
+    ) {
         Box(
             modifier = Modifier
-                .fillMaxSize()
-                .background(if (isDark) Color(0x66000000) else Color(0x40000000))
-                .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
-                    showAddSongsDialog = false
-                },
-            contentAlignment = Alignment.BottomCenter
+                .fillMaxWidth()
+                .height(600.dp)
+                .clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
+                .background(dialogSurface)
+                .border(1.5.dp, glassBorder, RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
+                .clickable(enabled = false) {}
+                .padding(20.dp)
         ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(600.dp)
-                    .clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
-                    .background(manager.getCurrentDialogColor())
-                    .border(1.2.dp, manager.getGlassBorderBrush(), RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
-                    .clickable(enabled = false) {}
-                    .padding(20.dp)
-            ) {
-                Column {
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                        Text("Add Songs to ${artistItem.name}", fontSize = 17.sp, fontWeight = FontWeight.Bold, color = textColor)
-                        Button(onClick = { showAddSongsDialog = false }, shape = RoundedCornerShape(8.dp)) { Text("Done") }
-                    }
-                    Spacer(modifier = Modifier.height(10.dp))
+            Column {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    Text("Add Songs to $artistName", fontSize = 17.sp, fontWeight = FontWeight.Bold, color = textColor)
+                    Button(onClick = { onDismiss() }, shape = RoundedCornerShape(8.dp)) { Text("Done") }
+                }
+                Spacer(modifier = Modifier.height(10.dp))
 
-                    // Explicit High-Contrast Colors for Add Songs Search Input
-                    OutlinedTextField(
-                        value = addSongSearch,
-                        onValueChange = { addSongSearch = it },
-                        placeholder = { Text("Search songs to add...", color = Color(0xFF64748B)) },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true,
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedTextColor = textColor,
-                            unfocusedTextColor = textColor,
-                            focusedContainerColor = cardBg,
-                            unfocusedContainerColor = cardBg,
-                            focusedBorderColor = accent,
-                            unfocusedBorderColor = manager.getCurrentBorderColor(),
-                            cursorColor = accent
-                        )
+                OutlinedTextField(
+                    value = addSongSearch,
+                    onValueChange = { addSongSearch = it },
+                    placeholder = { Text("Search songs to add...", color = Color(0xFF64748B)) },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = textColor,
+                        unfocusedTextColor = textColor,
+                        focusedContainerColor = cardBg,
+                        unfocusedContainerColor = cardBg,
+                        focusedBorderColor = accent,
+                        unfocusedBorderColor = manager.getCurrentBorderColor(),
+                        cursorColor = accent
                     )
-                    Spacer(modifier = Modifier.height(10.dp))
+                )
+                Spacer(modifier = Modifier.height(10.dp))
 
-                    LazyColumn(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        items(
-                            items = candidates,
-                            key = { it.id },
-                            contentType = { "add_song_candidate_row" }
-                        ) { song ->
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(10.dp))
-                                    .background(if (isDark) Color(0x1AFFFFFF) else Color(0xFFF1F5F9))
-                                    .clickable {
-                                        val list = ArtistDataManager.movedSongMap.getOrPut(artistItem.name) { mutableListOf() }
-                                        if (!list.contains(song.id)) list.add(song.id)
-                                        ArtistDataManager.removedSongMap[artistItem.name]?.remove(song.id)
-                                        ArtistDataManager.refreshTrigger++
-                                        Toast.makeText(context, "Added ${song.title}", Toast.LENGTH_SHORT).show()
-                                    }
-                                    .padding(12.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(song.title, color = textColor, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
-                                    Text("${formatFileSize(song.size)} • ${song.artist}", color = Color(0xFF64748B), fontSize = 11.sp)
+                LazyColumn(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(
+                        items = candidates,
+                        key = { it.id },
+                        contentType = { "add_song_candidate_row" }
+                    ) { song ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(if (isDark) Color(0x1AFFFFFF) else Color(0xFFF1F5F9))
+                                .clickable {
+                                    val list = ArtistDataManager.movedSongMap.getOrPut(artistName) { mutableListOf() }
+                                    if (!list.contains(song.id)) list.add(song.id)
+                                    ArtistDataManager.removedSongMap[artistName]?.remove(song.id)
+                                    ArtistDataManager.refreshTrigger++
+                                    Toast.makeText(context, "Added ${song.title}", Toast.LENGTH_SHORT).show()
                                 }
-                                Text("+ Add", color = accent, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                .padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(song.title, color = textColor, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                                Text("${formatFileSize(song.size)} • ${song.artist}", color = Color(0xFF64748B), fontSize = 11.sp)
                             }
+                            Text("+ Add", color = accent, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
@@ -1859,6 +1694,16 @@ fun CreateArtistDialog(
         WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
     }
 
+    val dialogScrollInterceptor = remember {
+        object : NestedScrollConnection {
+            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset = Offset.Zero
+            override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset = available
+        }
+    }
+
+    val dialogSurface = manager.getCurrentDialogColor()
+    val glassBorder = manager.getGlassBorderBrush()
+
     var artistName by remember { mutableStateOf("") }
     var searchSongQuery by remember { mutableStateOf("") }
     val selectedSongs = remember { mutableStateListOf<Song>() }
@@ -1870,7 +1715,8 @@ fun CreateArtistDialog(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(if (isDark) Color(0x66000000) else Color(0x40000000))
+            .background(Color(0x77000000))
+            .nestedScroll(dialogScrollInterceptor)
             .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
                 onDismiss()
             },
@@ -1882,8 +1728,8 @@ fun CreateArtistDialog(
                 .padding(bottom = bottomInsetPadding)
                 .height(650.dp)
                 .clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
-                .background(manager.getCurrentDialogColor())
-                .border(1.2.dp, manager.getGlassBorderBrush(), RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
+                .background(dialogSurface)
+                .border(1.5.dp, glassBorder, RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
                 .clickable(enabled = false) {}
                 .padding(22.dp)
         ) {
@@ -1891,7 +1737,6 @@ fun CreateArtistDialog(
                 Text("Create New Artist", color = textColor, fontSize = 18.sp, fontWeight = FontWeight.Bold)
                 Spacer(modifier = Modifier.height(10.dp))
 
-                // High-Contrast Input for Artist Name
                 OutlinedTextField(
                     value = artistName,
                     onValueChange = { artistName = it },
@@ -1915,7 +1760,6 @@ fun CreateArtistDialog(
                 Text("Add Songs (${selectedSongs.size} selected):", color = Color(0xFF64748B), fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
                 Spacer(modifier = Modifier.height(6.dp))
 
-                // High-Contrast Input for Song Search in Create Artist Dialog
                 OutlinedTextField(
                     value = searchSongQuery,
                     onValueChange = { searchSongQuery = it },

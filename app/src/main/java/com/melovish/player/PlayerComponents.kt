@@ -31,7 +31,6 @@ import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
-import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -45,6 +44,8 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -78,10 +79,12 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
@@ -105,11 +108,14 @@ import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -121,6 +127,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import java.util.Locale
 import kotlin.math.abs
+import kotlin.math.roundToInt
 
 // Live Animated 4-Bar Equalizer
 @Composable
@@ -703,7 +710,7 @@ fun ReorderDragHandle(tint: Color, modifier: Modifier = Modifier) {
     }
 }
 
-// Full Player Sheet with Smooth Frosted Blur Backdrop & Dynamic Material You
+// Full Player Sheet with Restored Bold Center Controls & Dynamic Material You
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @UnstableApi
 @Composable
@@ -835,7 +842,7 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
     }
 
     val isAnyPlayerDialogOpen = showMenuModal || showSpeedDialog || showSleepDialog ||
-            showEqualizerSheet || showTagEditorDialog || showLyricsDialog || showAddToPlaylistDialog
+            showEqualizerSheet || showTagEditorDialog || showLyricsDialog || showAddToPlaylistDialog || showQueueSheet
 
     val animatedPlayerBlur by animateDpAsState(
         targetValue = if (isAnyPlayerDialogOpen) 22.dp else 0.dp,
@@ -1123,15 +1130,15 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                                 val isThisSongPlaying = manager.isPlaying && (pageSong.id == manager.currentSong?.id)
                                 val iconTint = if (isDark) Color(0xFF0F172A) else Color.White
                                 if (isThisSongPlaying) {
-                                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                        Box(modifier = Modifier.size(3.5.dp, 14.dp).clip(RoundedCornerShape(2.dp)).background(iconTint))
-                                        Box(modifier = Modifier.size(3.5.dp, 14.dp).clip(RoundedCornerShape(2.dp)).background(iconTint))
+                                    Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                                        Box(modifier = Modifier.size(7.5.dp, 28.dp).clip(RoundedCornerShape(4.dp)).background(iconTint))
+                                        Box(modifier = Modifier.size(7.5.dp, 28.dp).clip(RoundedCornerShape(4.dp)).background(iconTint))
                                     }
                                 } else {
                                     Canvas(
                                         modifier = Modifier
-                                            .size(24.dp)
-                                            .offset(x = 1.5.dp)
+                                            .size(28.dp)
+                                            .offset(x = 2.dp)
                                     ) {
                                         val path = Path().apply {
                                             moveTo(size.width * 0.18f, size.height * 0.12f)
@@ -1162,7 +1169,6 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                             )
                         }
 
-                        // Frosted Glass Bottom Control Dock reacting directly to the Opacity Slider
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -1235,7 +1241,6 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
             }
         }
 
-        // Frosted Glass Scrim Layer for Player Modals
         if (isAnyPlayerDialogOpen) {
             Box(
                 modifier = Modifier
@@ -1244,7 +1249,6 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
             )
         }
 
-        // Frosted Glass Menu Modal
         if (showMenuModal) {
             Box(
                 modifier = Modifier
@@ -1291,7 +1295,7 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                         MenuRow("➕", "Add to Playlist", isDark) { showMenuModal = false; showAddToPlaylistDialog = true }
                         MenuRow("⏱️", "Playback Speed", isDark) { showMenuModal = false; showSpeedDialog = true }
 
-                        MenuRow("🗑️", "Delete from Device", isDark, isDanger = true) {
+                        MenuRow("🗑", "Delete from Device", isDark, isDanger = true) {
                             showMenuModal = false
                             manager.deleteSongFromDevice(activeSong)
                             onDismiss()
@@ -1342,7 +1346,7 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
     }
 }
 
-// Queue Sheet with Integrated Material You Tint
+// Queue Sheet with 120Hz Floating Drag, Symmetrical 3-Zone Edge Auto-Scroll & Virtual Hover Swapping
 @OptIn(ExperimentalFoundationApi::class)
 @UnstableApi
 @Composable
@@ -1361,11 +1365,97 @@ fun QueueSheet(
     val listState = rememberLazyListState()
 
     val itemHeightPx = with(density) { 72.dp.toPx() }
-    val edgeScrollThresholdPx = with(density) { 96.dp.toPx() }
+    val edgeZonePx = with(density) { 70.dp.toPx() }
+    val maxScrollSpeedPxPerSec = with(density) { 850.dp.toPx() }
+
+    val tempQueue = remember { mutableStateListOf<Song>() }
+
+    LaunchedEffect(manager.playbackQueue.toList()) {
+        tempQueue.clear()
+        tempQueue.addAll(manager.playbackQueue)
+    }
+
+    LaunchedEffect(Unit) {
+        val curIdx = manager.playbackQueue.indexOfFirst { it.id == manager.currentSong?.id }
+        if (curIdx != -1) {
+            val targetScrollIdx = (curIdx - 1).coerceAtLeast(0)
+            listState.scrollToItem(targetScrollIdx)
+        }
+    }
 
     var draggingSongId by remember { mutableStateOf<Long?>(null) }
-    var draggingIndex by remember { mutableStateOf<Int?>(null) }
-    var draggingOffsetPx by remember { mutableFloatStateOf(0f) }
+    var containerHeightPx by remember { mutableFloatStateOf(0f) }
+    var fingerYInList by remember { mutableFloatStateOf(-1f) }
+    var grabOffsetY by remember { mutableFloatStateOf(itemHeightPx / 2f) }
+
+    // 120Hz VSYNC Auto-Scroll Loop: Continuous non-dropping grip and clean deceleration
+    LaunchedEffect(draggingSongId) {
+        if (draggingSongId != null) {
+            var lastFrameTimeNanos = 0L
+
+            while (draggingSongId != null) {
+                withFrameNanos { currentFrameTimeNanos ->
+                    if (lastFrameTimeNanos == 0L) {
+                        lastFrameTimeNanos = currentFrameTimeNanos
+                        return@withFrameNanos
+                    }
+                    val dt = ((currentFrameTimeNanos - lastFrameTimeNanos) / 1_000_000_000f).coerceIn(0.001f, 0.033f)
+                    lastFrameTimeNanos = currentFrameTimeNanos
+
+                    if (containerHeightPx > (edgeZonePx * 2f)) {
+                        val bottomTriggerY = containerHeightPx - edgeZonePx
+
+                        // True 3-Zone Geometry with Deceleration
+                        val scrollSpeed: Float = when {
+                            // Top Zone: smooth upward scroll, decelerating to 0 as finger pulls down toward dead zone
+                            fingerYInList <= edgeZonePx -> {
+                                val ratio = (1f - (fingerYInList.coerceAtLeast(0f) / edgeZonePx)).coerceIn(0f, 1f)
+                                -(maxScrollSpeedPxPerSec * (ratio * ratio))
+                            }
+                            // Bottom Zone: smooth downward scroll, decelerating to 0 as finger pulls up toward dead zone
+                            fingerYInList >= bottomTriggerY -> {
+                                val distFromBottom = (containerHeightPx - fingerYInList).coerceAtLeast(0f)
+                                val ratio = (1f - (distFromBottom / edgeZonePx)).coerceIn(0f, 1f)
+                                (maxScrollSpeedPxPerSec * (ratio * ratio))
+                            }
+                            // Central Dead Zone: NO auto-scrolling
+                            else -> 0f
+                        }
+
+                        if (scrollSpeed != 0f) {
+                            listState.dispatchRawDelta(scrollSpeed * dt)
+
+                            val currentId = draggingSongId
+                            if (currentId != null) {
+                                val visibleItems = listState.layoutInfo.visibleItemsInfo
+                                val fromIndex = tempQueue.indexOfFirst { it.id == currentId }
+
+                                if (fromIndex != -1 && visibleItems.isNotEmpty()) {
+                                    val targetIndex = when {
+                                        fingerYInList <= edgeZonePx -> visibleItems.first().index
+                                        fingerYInList >= bottomTriggerY -> visibleItems.last().index
+                                        else -> visibleItems.find { item ->
+                                            val itemCenter = item.offset + (item.size / 2f)
+                                            abs(fingerYInList - itemCenter) < (item.size * 0.45f)
+                                        }?.index
+                                    }
+
+                                    if (targetIndex != null) {
+                                        val clampedTarget = targetIndex.coerceIn(0, tempQueue.size - 1)
+                                        if (clampedTarget != fromIndex) {
+                                            manager.triggerHapticFeedback(false)
+                                            val moved = tempQueue.removeAt(fromIndex)
+                                            tempQueue.add(clampedTarget, moved)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
 
     val nestedScrollConnection = remember {
         object : NestedScrollConnection {
@@ -1397,73 +1487,41 @@ fun QueueSheet(
         }
     }
 
-    LaunchedEffect(draggingIndex) {
-        if (draggingIndex != null) {
-            while (draggingIndex != null) {
-                val currentIdx = draggingIndex ?: break
-                val visibleItems = listState.layoutInfo.visibleItemsInfo
-                val draggedItemInfo = visibleItems.find { it.index == currentIdx }
-
-                if (draggedItemInfo != null) {
-                    val currentVisualTop = draggedItemInfo.offset + draggingOffsetPx
-                    val viewportHeight = listState.layoutInfo.viewportSize.height
-
-                    if (currentVisualTop < edgeScrollThresholdPx && currentIdx > 0) {
-                        try {
-                            listState.scrollBy(-20f)
-                        } catch (_: Exception) {}
-                        manager.triggerHapticFeedback(false)
-                        manager.moveQueueItem(currentIdx, currentIdx - 1)
-                        draggingIndex = currentIdx - 1
-                        draggingOffsetPx += itemHeightPx
-                    } else if (currentVisualTop + itemHeightPx > viewportHeight - edgeScrollThresholdPx && currentIdx < manager.playbackQueue.size - 1) {
-                        try {
-                            listState.scrollBy(20f)
-                        } catch (_: Exception) {}
-                        manager.triggerHapticFeedback(false)
-                        manager.moveQueueItem(currentIdx, currentIdx + 1)
-                        draggingIndex = currentIdx + 1
-                        draggingOffsetPx -= itemHeightPx
-                    }
-                }
-                delay(25)
-            }
-        }
-    }
-
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Brush.verticalGradient(listOf(bgTop, bgBottom)))
-            .nestedScroll(nestedScrollConnection)
-            .pointerInput(Unit) {
-                detectVerticalDragGestures { _, dragAmount ->
-                    if (dragAmount > 26f && draggingSongId == null) {
-                        onDismiss()
+            .background(if (isDark) Color(0x66000000) else Color(0x40000000))
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null
+            ) { if (draggingSongId == null) onDismiss() },
+        contentAlignment = Alignment.BottomCenter
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .fillMaxHeight(0.88f)
+                .imePadding()
+                .navigationBarsPadding()
+                .clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
+                .background(manager.getCurrentDialogColor())
+                .border(1.2.dp, manager.getGlassBorderBrush(), RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
+                .nestedScroll(nestedScrollConnection)
+                .pointerInput(Unit) {
+                    detectVerticalDragGestures { _, dragAmount ->
+                        if (dragAmount > 26f && draggingSongId == null) {
+                            onDismiss()
+                        }
                     }
                 }
-            }
-    ) {
-        Column(modifier = Modifier.fillMaxSize()) {
-            val statusBarTopPadding = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(statusBarTopPadding)
-                    .background(bgTop)
-            )
-
-            Column(
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp)
-                    .padding(top = 4.dp, bottom = 14.dp)
-            ) {
+                .clickable(enabled = false) {}
+                .padding(20.dp)
+        ) {
+            Column(modifier = Modifier.fillMaxSize()) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(top = 4.dp, bottom = 12.dp),
+                        .padding(bottom = 12.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -1472,15 +1530,15 @@ fun QueueSheet(
                         Spacer(modifier = Modifier.width(14.dp))
                         Column {
                             Text(
-                                text = "Playing Queue (${manager.playbackQueue.size})",
-                                fontSize = 20.sp,
+                                text = "Playing Queue (${tempQueue.size})",
+                                fontSize = 19.sp,
                                 fontWeight = FontWeight.ExtraBold,
-                                color = textColor
+                                color = manager.getCurrentTextColor()
                             )
                             Text(
                                 text = "Hold and drag bars to reorder tracks",
                                 fontSize = 12.sp,
-                                color = subTextColor
+                                color = Color(0xFF64748B)
                             )
                         }
                     }
@@ -1488,156 +1546,238 @@ fun QueueSheet(
                     Button(
                         onClick = onDismiss,
                         shape = RoundedCornerShape(12.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = surfaceColor)
+                        colors = ButtonDefaults.buttonColors(containerColor = manager.getCurrentSurfaceColor()),
+                        border = androidx.compose.foundation.BorderStroke(1.2.dp, manager.getGlassBorderBrush())
                     ) {
-                        Text("Close", color = textColor, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                        Text("Close", color = manager.getCurrentTextColor(), fontSize = 13.sp, fontWeight = FontWeight.Bold)
                     }
                 }
 
-                LazyColumn(
-                    state = listState,
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                        .onGloballyPositioned { coordinates ->
+                            containerHeightPx = coordinates.size.height.toFloat()
+                        }
                 ) {
-                    itemsIndexed(
-                        items = manager.playbackQueue,
-                        key = { _, song -> song.id },
-                        contentType = { _, _ -> "queue_item_row" }
-                    ) { index, song ->
-                        val isCur = song.id == manager.currentSong?.id
-                        val isDraggingThis = draggingSongId == song.id
+                    LazyColumn(
+                        state = listState,
+                        modifier = Modifier.fillMaxSize(),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        itemsIndexed(
+                            items = tempQueue,
+                            key = { _, song -> song.id },
+                            contentType = { _, _ -> "queue_item_row" }
+                        ) { _, song ->
+                            val isCur = song.id == manager.currentSong?.id
+                            val isBeingDragged = draggingSongId == song.id
+                            var rowTopInParent by remember { mutableFloatStateOf(0f) }
 
-                        val itemElevation = if (isDraggingThis) 24.dp else 0.dp
-                        val itemScale = if (isDraggingThis) 1.04f else 1.0f
-
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .animateItemPlacement(
-                                    animationSpec = spring(
-                                        stiffness = 550f,
-                                        dampingRatio = 0.85f
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .animateItemPlacement(spring(stiffness = 650f, dampingRatio = 0.90f))
+                                    .onGloballyPositioned { coordinates ->
+                                        rowTopInParent = coordinates.positionInParent().y
+                                    }
+                                    .graphicsLayer {
+                                        alpha = if (isBeingDragged) 0.20f else 1f
+                                    }
+                                    .clip(RoundedCornerShape(18.dp))
+                                    .background(
+                                        if (isBeingDragged) accent.copy(alpha = 0.12f)
+                                        else if (isCur) accent.copy(alpha = 0.20f)
+                                        else manager.getCurrentSurfaceColor()
                                     )
-                                )
-                                .zIndex(if (isDraggingThis) 10f else 1f)
-                                .graphicsLayer {
-                                    scaleX = itemScale
-                                    scaleY = itemScale
-                                    if (isDraggingThis) {
-                                        translationY = draggingOffsetPx
+                                    .border(
+                                        width = if (isBeingDragged || isCur) 1.5.dp else 1.2.dp,
+                                        brush = if (isBeingDragged || isCur) Brush.linearGradient(listOf(accent, accent)) else manager.getGlassBorderBrush(),
+                                        shape = RoundedCornerShape(18.dp)
+                                    )
+                                    .clickable {
+                                        if (draggingSongId == null) {
+                                            manager.triggerHapticFeedback(false)
+                                            manager.playSong(song, manager.playbackQueue, manager.currentSectionName)
+                                        }
                                     }
+                                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(28.dp)
+                                        .clip(CircleShape)
+                                        .background(if (isCur) accent.copy(alpha = 0.25f) else Color.Transparent),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = if (isCur) "▶" else "•",
+                                        color = if (isCur) accent else Color(0xFF64748B),
+                                        fontSize = 14.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
                                 }
-                                .shadow(itemElevation, RoundedCornerShape(18.dp))
-                                .clip(RoundedCornerShape(18.dp))
-                                .background(
-                                    if (isCur) accent.copy(alpha = 0.20f)
-                                    else surfaceColor
-                                )
-                                .border(
-                                    width = if (isCur || isDraggingThis) 1.5.dp else 1.dp,
-                                    color = if (isCur || isDraggingThis) accent else Color(0x22FFFFFF),
-                                    shape = RoundedCornerShape(18.dp)
-                                )
-                                .clickable {
-                                    if (draggingSongId == null) {
-                                        manager.triggerHapticFeedback(false)
-                                        manager.playSong(song, manager.playbackQueue, manager.currentSectionName)
+
+                                Spacer(modifier = Modifier.width(10.dp))
+
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = song.title,
+                                        color = if (isCur) accent else manager.getCurrentTextColor(),
+                                        fontSize = 15.sp,
+                                        fontWeight = if (isCur) FontWeight.Bold else FontWeight.SemiBold,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Text(
+                                        text = "${formatFileSize(song.size)} • ${if (song.artist.isNotBlank()) song.artist else "Unknown Artist"}",
+                                        color = Color(0xFF64748B),
+                                        fontSize = 12.sp,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+
+                                Spacer(modifier = Modifier.width(12.dp))
+
+                                Box(
+                                    modifier = Modifier
+                                        .size(48.dp)
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .pointerInput(song.id) {
+                                            detectDragGesturesAfterLongPress(
+                                                onDragStart = { offset ->
+                                                    manager.triggerHapticFeedback(true)
+                                                    draggingSongId = song.id
+                                                    grabOffsetY = offset.y
+                                                    fingerYInList = rowTopInParent + offset.y
+                                                },
+                                                onDrag = { change, dragAmount ->
+                                                    change.consume()
+                                                    fingerYInList += dragAmount.y
+
+                                                    val currentId = draggingSongId
+                                                    val bottomTriggerY = containerHeightPx - edgeZonePx
+                                                    // Process drag hit testing cleanly in the center zone
+                                                    if (currentId != null && fingerYInList > edgeZonePx && fingerYInList < bottomTriggerY) {
+                                                        val visibleItems = listState.layoutInfo.visibleItemsInfo
+                                                        val hitItem = visibleItems.find { item ->
+                                                            val itemCenter = item.offset + (item.size / 2f)
+                                                            abs(fingerYInList - itemCenter) < (item.size * 0.45f)
+                                                        }
+                                                        if (hitItem != null && hitItem.key != currentId) {
+                                                            val fromIndex = tempQueue.indexOfFirst { it.id == currentId }
+                                                            val toIndex = hitItem.index.coerceIn(0, tempQueue.size - 1)
+                                                            if (fromIndex != -1 && fromIndex != toIndex) {
+                                                                manager.triggerHapticFeedback(false)
+                                                                val movedSong = tempQueue.removeAt(fromIndex)
+                                                                tempQueue.add(toIndex, movedSong)
+                                                            }
+                                                        }
+                                                    }
+                                                },
+                                                onDragEnd = {
+                                                    manager.triggerHapticFeedback(true)
+                                                    val finalIndex = tempQueue.indexOfFirst { it.id == song.id }
+                                                    val originalIndex = manager.playbackQueue.indexOfFirst { it.id == song.id }
+                                                    if (finalIndex != -1 && originalIndex != -1 && finalIndex != originalIndex) {
+                                                        manager.moveQueueItem(originalIndex, finalIndex)
+                                                    }
+                                                    draggingSongId = null
+                                                    fingerYInList = -1f
+                                                },
+                                                onDragCancel = {
+                                                    draggingSongId = null
+                                                    fingerYInList = -1f
+                                                }
+                                            )
+                                        },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    ReorderDragHandle(
+                                        tint = if (isCur) accent else Color(0xFF64748B),
+                                        modifier = Modifier.size(24.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // True Independent Floating Overlay Card: Follows finger across the full display
+                    if (draggingSongId != null && fingerYInList >= -150f) {
+                        val draggedSong = tempQueue.find { it.id == draggingSongId }
+                        if (draggedSong != null) {
+                            val floatingTop = (fingerYInList - grabOffsetY).coerceIn(
+                                -20f,
+                                (containerHeightPx - itemHeightPx + 40f).coerceAtLeast(0f)
+                            )
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .offset { IntOffset(0, floatingTop.roundToInt()) }
+                                    .zIndex(100f)
+                                    .graphicsLayer {
+                                        scaleX = 1.04f
+                                        scaleY = 1.04f
                                     }
+                                    .shadow(24.dp, RoundedCornerShape(18.dp), spotColor = accent)
+                                    .clip(RoundedCornerShape(18.dp))
+                                    .background(accent.copy(alpha = 0.28f))
+                                    .background(manager.getCurrentDialogColor())
+                                    .border(1.5.dp, accent, RoundedCornerShape(18.dp))
+                                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(28.dp)
+                                        .clip(CircleShape)
+                                        .background(accent.copy(alpha = 0.35f)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = "▶",
+                                        color = accent,
+                                        fontSize = 14.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
                                 }
-                                .padding(horizontal = 14.dp, vertical = 12.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(28.dp)
-                                    .clip(CircleShape)
-                                    .background(if (isCur) accent.copy(alpha = 0.25f) else Color.Transparent),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    text = if (isCur) "▶" else "•",
-                                    color = if (isCur) accent else subTextColor,
-                                    fontSize = 14.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            }
 
-                            Spacer(modifier = Modifier.width(10.dp))
+                                Spacer(modifier = Modifier.width(10.dp))
 
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = song.title,
-                                    color = textColor,
-                                    fontSize = 15.sp,
-                                    fontWeight = if (isCur) FontWeight.Bold else FontWeight.SemiBold,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                                Spacer(modifier = Modifier.height(2.dp))
-                                Text(
-                                    text = "${formatFileSize(song.size)} • ${if (song.artist.isNotBlank()) song.artist else "Unknown Artist"}",
-                                    color = subTextColor,
-                                    fontSize = 12.sp,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            }
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = draggedSong.title,
+                                        color = accent,
+                                        fontSize = 15.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Text(
+                                        text = "${formatFileSize(draggedSong.size)} • ${if (draggedSong.artist.isNotBlank()) draggedSong.artist else "Unknown Artist"}",
+                                        color = Color(0xFF64748B),
+                                        fontSize = 12.sp,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
 
-                            Spacer(modifier = Modifier.width(12.dp))
+                                Spacer(modifier = Modifier.width(12.dp))
 
-                            Box(
-                                modifier = Modifier
-                                    .size(48.dp)
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .pointerInput(song.id) {
-                                        detectDragGesturesAfterLongPress(
-                                            onDragStart = {
-                                                manager.triggerHapticFeedback(true)
-                                                draggingSongId = song.id
-                                                val currentActualIndex = manager.playbackQueue.indexOfFirst { it.id == song.id }
-                                                draggingIndex = if (currentActualIndex != -1) currentActualIndex else index
-                                                draggingOffsetPx = 0f
-                                            },
-                                            onDrag = { change, dragAmount ->
-                                                change.consume()
-                                                draggingOffsetPx += dragAmount.y
-
-                                                val currentActualIndex = manager.playbackQueue.indexOfFirst { it.id == song.id }
-                                                if (currentActualIndex == -1) return@detectDragGesturesAfterLongPress
-
-                                                val threshold = itemHeightPx * 0.65f
-
-                                                while (draggingOffsetPx > threshold && currentActualIndex < manager.playbackQueue.size - 1) {
-                                                    manager.triggerHapticFeedback(false)
-                                                    manager.moveQueueItem(currentActualIndex, currentActualIndex + 1)
-                                                    draggingIndex = currentActualIndex + 1
-                                                    draggingOffsetPx -= itemHeightPx
-                                                }
-                                                while (draggingOffsetPx < -threshold && currentActualIndex > 0) {
-                                                    manager.triggerHapticFeedback(false)
-                                                    manager.moveQueueItem(currentActualIndex, currentActualIndex - 1)
-                                                    draggingIndex = currentActualIndex - 1
-                                                    draggingOffsetPx += itemHeightPx
-                                                }
-                                            },
-                                            onDragEnd = {
-                                                draggingSongId = null
-                                                draggingIndex = null
-                                                draggingOffsetPx = 0f
-                                            },
-                                            onDragCancel = {
-                                                draggingSongId = null
-                                                draggingIndex = null
-                                                draggingOffsetPx = 0f
-                                            }
-                                        )
-                                    },
-                                contentAlignment = Alignment.Center
-                            ) {
-                                ReorderDragHandle(
-                                    tint = if (isCur || isDraggingThis) accent else subTextColor,
-                                    modifier = Modifier.size(24.dp)
-                                )
+                                Box(
+                                    modifier = Modifier.size(48.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    ReorderDragHandle(
+                                        tint = accent,
+                                        modifier = Modifier.size(24.dp)
+                                    )
+                                }
                             }
                         }
                     }
@@ -1650,12 +1790,13 @@ fun QueueSheet(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(50.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = surfaceColor),
+                    colors = ButtonDefaults.buttonColors(containerColor = manager.getCurrentSurfaceColor()),
+                    border = androidx.compose.foundation.BorderStroke(1.2.dp, manager.getGlassBorderBrush()),
                     shape = RoundedCornerShape(14.dp)
                 ) {
                     Text(
                         text = "Close",
-                        color = textColor,
+                        color = manager.getCurrentTextColor(),
                         fontSize = 15.sp,
                         fontWeight = FontWeight.Bold
                     )

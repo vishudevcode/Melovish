@@ -452,6 +452,8 @@ fun MelovishRootApp(manager: MusicManager) {
     var showRootLightSubStyleDialog by remember { mutableStateOf(false) }
     var rootColorPickerMode by remember { mutableStateOf<String?>(null) }
     var showRootCreateArtistDialog by remember { mutableStateOf(false) }
+    var showRootGridSizeDialog by remember { mutableStateOf(false) }
+    var showRootArtistAddSongsDialog by remember { mutableStateOf(false) }
 
     SideEffect {
         if (activity != null) {
@@ -478,7 +480,7 @@ fun MelovishRootApp(manager: MusicManager) {
     val isAnyRootModalOpen = showRootCreatePlaylistDialog || showRootManagePlaylistsDialog || showRootArrangePlaylistsDialog ||
             rootCustomizingFolder != null || rootCustomizingPlaylist != null || rootSelectedArtistForActions != null ||
             rootSelectedArtistSongForAction != null || showRootDarkSubStyleDialog || showRootLightSubStyleDialog ||
-            rootColorPickerMode != null || showRootCreateArtistDialog ||
+            rootColorPickerMode != null || showRootCreateArtistDialog || showRootGridSizeDialog || showRootArtistAddSongsDialog ||
             isSettingsEqOpen || activeSongForMenu != null || activeTagEditSong != null || activeAddToPlaylistSong != null || activeSongInfo != null
 
     val topBarNestedScrollConnection = remember(isMainTabScreen, isAnyRootModalOpen) {
@@ -507,7 +509,7 @@ fun MelovishRootApp(manager: MusicManager) {
     val canGoBack = showRootCreatePlaylistDialog || showRootManagePlaylistsDialog || showRootArrangePlaylistsDialog ||
             rootCustomizingFolder != null || rootCustomizingPlaylist != null || rootSelectedArtistForActions != null ||
             rootSelectedArtistSongForAction != null || showRootDarkSubStyleDialog || showRootLightSubStyleDialog ||
-            rootColorPickerMode != null || showRootCreateArtistDialog ||
+            rootColorPickerMode != null || showRootCreateArtistDialog || showRootGridSizeDialog || showRootArtistAddSongsDialog ||
             isSettingsEqOpen || isPlayerExpanded || activeScreen == "settings" ||
             activeScreen == "profile" || selectedArtist != null || selectedAlbum != null ||
             selectedPlaylist != null || selectedFolder != null || activeScreen != "home"
@@ -525,6 +527,8 @@ fun MelovishRootApp(manager: MusicManager) {
             showRootLightSubStyleDialog -> showRootLightSubStyleDialog = false
             rootColorPickerMode != null -> rootColorPickerMode = null
             showRootCreateArtistDialog -> showRootCreateArtistDialog = false
+            showRootGridSizeDialog -> showRootGridSizeDialog = false
+            showRootArtistAddSongsDialog -> showRootArtistAddSongsDialog = false
             isSettingsEqOpen -> isSettingsEqOpen = false
             isPlayerExpanded -> isPlayerExpanded = false
             activeScreen == "settings" -> {
@@ -545,7 +549,7 @@ fun MelovishRootApp(manager: MusicManager) {
     val statusBarTopPadding = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
 
     val animatedRootBlur by animateDpAsState(
-        targetValue = if (isAnyRootModalOpen) 20.dp else 0.dp,
+        targetValue = if (isAnyRootModalOpen) 28.dp else 0.dp,
         animationSpec = tween(durationMillis = 280, easing = FastOutSlowInEasing),
         label = "rootBlurAnim"
     )
@@ -618,73 +622,84 @@ fun MelovishRootApp(manager: MusicManager) {
                             }
                         )
                         selectedArtist != null -> {
+                            val curArtist = selectedArtist!!
                             ArtistDetailScreen(
-                                artistItem = selectedArtist!!,
+                                artistItem = curArtist,
                                 manager = manager,
                                 isDark = isDark,
                                 onBack = { selectedArtist = null },
-                                onSongMenuClick = { song ->
-                                    rootSelectedArtistSongForAction = Pair(song, selectedArtist!!.name)
-                                }
+                                onSongMenuClick = { song: Song ->
+                                    rootSelectedArtistSongForAction = Pair(song, curArtist.name)
+                                },
+                                onOpenGridSizeDialog = { showRootGridSizeDialog = true },
+                                onOpenAddSongsDialog = { showRootArtistAddSongsDialog = true }
                             )
                         }
                         selectedAlbum != null -> {
+                            val curAlbum = selectedAlbum!!
                             FilteredSongsScreen(
-                                title = "Album: ${selectedAlbum!!}",
-                                songs = manager.allSongs.filter { it.album.equals(selectedAlbum, ignoreCase = true) }.toImmutableList(),
+                                title = "Album: $curAlbum",
+                                songs = manager.allSongs.filter { it.album.equals(curAlbum, ignoreCase = true) }.toImmutableList(),
                                 manager = manager,
                                 isDark = isDark,
                                 onBack = { selectedAlbum = null },
-                                onSongMenuClick = { activeSongForMenu = it }
+                                onSongMenuClick = { song: Song -> activeSongForMenu = song }
                             )
                         }
                         selectedPlaylist != null -> {
+                            val curPlaylist = selectedPlaylist!!
                             PlaylistDetailScreen(
-                                playlist = selectedPlaylist!!,
+                                playlist = curPlaylist,
                                 manager = manager,
                                 isDark = isDark,
                                 onBack = { selectedPlaylist = null },
-                                onSongMenuClick = { activeSongForMenu = it },
-                                onFolderClick = { folder -> selectedFolder = folder }
+                                onSongMenuClick = { song: Song -> activeSongForMenu = song },
+                                onFolderClick = { folder: String -> selectedFolder = folder },
+                                onOpenGridSizeDialog = { showRootGridSizeDialog = true }
                             )
                         }
                         selectedFolder != null -> {
+                            val curFolder = selectedFolder!!
                             FolderSongsScreen(
-                                folderName = selectedFolder!!,
+                                folderName = curFolder,
                                 manager = manager,
                                 isDark = isDark,
                                 onBack = { selectedFolder = null },
-                                onSongMenuClick = { activeSongForMenu = it }
+                                onSongMenuClick = { song: Song -> activeSongForMenu = song },
+                                onOpenGridSizeDialog = { showRootGridSizeDialog = true }
                             )
                         }
                         activeScreen == "artists" -> ArtistsScreen(
                             manager = manager,
                             listState = artistsListState,
-                            onArtistClick = { artist -> selectedArtist = artist },
-                            onArtistLongClick = { artist -> rootSelectedArtistForActions = artist },
-                            onOpenCreateArtist = { showRootCreateArtistDialog = true }
+                            onArtistClick = { artist: ArtistItem -> selectedArtist = artist },
+                            onArtistLongClick = { artist: ArtistItem -> rootSelectedArtistForActions = artist },
+                            onOpenCreateArtist = { showRootCreateArtistDialog = true },
+                            onOpenGridSizeDialog = { showRootGridSizeDialog = true }
                         )
                         activeScreen == "search" -> SearchScreen(
                             manager = manager,
                             listState = searchListState,
-                            onSongMenuClick = { activeSongForMenu = it }
+                            onSongMenuClick = { song: Song -> activeSongForMenu = song }
                         )
                         activeScreen == "library" -> LibraryScreen(
                             manager = manager,
                             listState = libraryListState,
-                            onFolderClick = { folder -> selectedFolder = folder },
-                            onFolderLongClick = { folder -> rootCustomizingFolder = folder }
+                            onFolderClick = { folder: String -> selectedFolder = folder },
+                            onFolderLongClick = { folder: String -> rootCustomizingFolder = folder },
+                            onOpenGridSizeDialog = { showRootGridSizeDialog = true }
                         )
                         else -> HomeScreen(
                             manager = manager,
                             listState = homeListState,
-                            onPlaylistClick = { pl -> selectedPlaylist = pl },
+                            onPlaylistClick = { pl: Playlist -> selectedPlaylist = pl },
                             onResumeClick = { manager.resumeLastPlayed() },
-                            onSongMenuClick = { activeSongForMenu = it },
+                            onSongMenuClick = { song: Song -> activeSongForMenu = song },
                             onOpenCreatePlaylist = { showRootCreatePlaylistDialog = true },
                             onOpenManagePlaylists = { showRootManagePlaylistsDialog = true },
                             onOpenArrangePlaylists = { showRootArrangePlaylistsDialog = true },
-                            onPlaylistLongClick = { pl -> rootCustomizingPlaylist = pl }
+                            onPlaylistLongClick = { pl: Playlist -> rootCustomizingPlaylist = pl },
+                            onOpenGridSizeDialog = { showRootGridSizeDialog = true }
                         )
                     }
                 }
@@ -717,22 +732,26 @@ fun MelovishRootApp(manager: MusicManager) {
                 }
             }
 
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(statusBarTopPadding + 14.dp)
-                    .align(Alignment.TopCenter)
-                    .background(
-                        Brush.verticalGradient(
-                            colorStops = arrayOf(
-                                0.0f to dynamicBg.copy(alpha = 0.94f),
-                                0.65f to dynamicBg.copy(alpha = 0.60f),
-                                1.0f to Color.Transparent
+            // Top Status Bar: only drawn when NO modal is open, completely removing white patches!
+            if (!isAnyRootModalOpen) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(statusBarTopPadding + 14.dp)
+                        .align(Alignment.TopCenter)
+                        .background(
+                            Brush.verticalGradient(
+                                colorStops = arrayOf(
+                                    0.0f to dynamicBg.copy(alpha = 0.94f),
+                                    0.65f to dynamicBg.copy(alpha = 0.60f),
+                                    1.0f to Color.Transparent
+                                )
                             )
                         )
-                    )
-            )
+                )
+            }
 
+            // Unified, single-pass background scrim covering from edge to edge (including the status bar area)
             AnimatedVisibility(
                 visible = isAnyRootModalOpen,
                 enter = fadeIn(tween(250)),
@@ -741,7 +760,7 @@ fun MelovishRootApp(manager: MusicManager) {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .background(if (isDark) Color(0x66000000) else Color(0x40000000))
+                        .background(if (isDark) Color(0x77000000) else Color(0x4D000000))
                 )
             }
 
@@ -771,6 +790,14 @@ fun MelovishRootApp(manager: MusicManager) {
                 )
             }
 
+            if (showRootArtistAddSongsDialog && selectedArtist != null) {
+                ArtistAddSongsDialog(
+                    artistName = selectedArtist!!.name,
+                    manager = manager,
+                    onDismiss = { showRootArtistAddSongsDialog = false }
+                )
+            }
+
             if (showRootManagePlaylistsDialog) {
                 ManagePlaylistsDialog(
                     manager = manager,
@@ -785,6 +812,33 @@ fun MelovishRootApp(manager: MusicManager) {
                     manager = manager,
                     isDark = isDark,
                     onDismiss = { showRootArrangePlaylistsDialog = false }
+                )
+            }
+
+            if (showRootGridSizeDialog) {
+                val currentMode = when {
+                    selectedArtist != null -> manager.artistInnerViewMode
+                    selectedFolder != null -> manager.folderInnerViewMode
+                    selectedPlaylist != null -> manager.playlistInnerViewMode
+                    activeScreen == "library" -> manager.libraryFoldersViewMode
+                    activeScreen == "artists" -> manager.artistsViewMode
+                    else -> manager.homeViewMode
+                }
+                GridSizeDialog(
+                    currentMode = currentMode,
+                    isDark = isDark,
+                    accent = manager.accentColor,
+                    onSelectMode = { newMode ->
+                        when {
+                            selectedArtist != null -> manager.updateArtistInnerViewMode(newMode)
+                            selectedFolder != null -> manager.updateFolderInnerViewMode(newMode)
+                            selectedPlaylist != null -> manager.updatePlaylistInnerViewMode(newMode)
+                            activeScreen == "library" -> manager.updateLibraryFoldersViewMode(newMode)
+                            activeScreen == "artists" -> manager.updateArtistsViewMode(newMode)
+                            else -> manager.updateHomeViewMode(newMode)
+                        }
+                    },
+                    onDismiss = { showRootGridSizeDialog = false }
                 )
             }
 
@@ -1173,7 +1227,7 @@ fun MelovishRootApp(manager: MusicManager) {
 }
 
 // =========================================================================
-// 📌 HOME SCREEN
+// 📌 HOME SCREEN (With Single-Tap Shuffle Play Icon Next To Sort Button)
 // =========================================================================
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -1188,7 +1242,8 @@ fun HomeScreen(
     onOpenCreatePlaylist: () -> Unit,
     onOpenManagePlaylists: () -> Unit,
     onOpenArrangePlaylists: () -> Unit,
-    onPlaylistLongClick: (Playlist) -> Unit
+    onPlaylistLongClick: (Playlist) -> Unit,
+    onOpenGridSizeDialog: () -> Unit
 ) {
     val isDark = manager.isDarkMode
     val textColor = manager.getCurrentTextColor()
@@ -1197,7 +1252,6 @@ fun HomeScreen(
     val accent = manager.accentColor
 
     var showSortMenu by remember { mutableStateOf(false) }
-    var showGridSizeDialog by remember { mutableStateOf(false) }
 
     val sortedSongs: ImmutableList<Song> = remember(manager.allSongs.toList(), manager.currentSortOrder) {
         manager.getSortedSongs().toImmutableList()
@@ -1382,7 +1436,7 @@ fun HomeScreen(
                                 .border(1.2.dp, glassBorderBrush, CircleShape)
                                 .combinedClickable(
                                     onClick = { manager.cycleNextHomeViewMode() },
-                                    onLongClick = { showGridSizeDialog = true }
+                                    onLongClick = onOpenGridSizeDialog
                                 ),
                             contentAlignment = Alignment.Center
                         ) {
@@ -1412,6 +1466,27 @@ fun HomeScreen(
                                 DropdownMenuItem(text = { Text("By File Size") }, onClick = { manager.setPersistentSongSort(SongSortOrder.FILE_SIZE); showSortMenu = false })
                                 DropdownMenuItem(text = { Text("By Duration") }, onClick = { manager.setPersistentSongSort(SongSortOrder.DURATION); showSortMenu = false })
                             }
+                        }
+
+                        Spacer(modifier = Modifier.width(6.dp))
+
+                        // Shuffle Play Icon (Single tap to shuffle play all songs)
+                        Box(
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(CircleShape)
+                                .background(cardBg)
+                                .border(1.2.dp, accent.copy(alpha = 0.5f), CircleShape)
+                                .clickable {
+                                    val shuffled = sortedSongs.shuffled()
+                                    if (shuffled.isNotEmpty()) {
+                                        manager.triggerHapticFeedback(true)
+                                        manager.playSong(shuffled.first(), shuffled, "All Songs (Shuffle)")
+                                    }
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            ShuffleActionVector(tint = accent, modifier = Modifier.size(22.dp))
                         }
                     }
                 }
@@ -1622,14 +1697,6 @@ fun HomeScreen(
             }
         }
     }
-
-    if (showGridSizeDialog) GridSizeDialog(
-        currentMode = manager.homeViewMode,
-        isDark = isDark,
-        accent = manager.accentColor,
-        onSelectMode = { manager.updateHomeViewMode(it) },
-        onDismiss = { showGridSizeDialog = false }
-    )
 }
 // =========================================================================
 // 📌 LIBRARY SCREEN
@@ -1642,7 +1709,8 @@ fun LibraryScreen(
     manager: MusicManager,
     listState: LazyListState,
     onFolderClick: (String) -> Unit,
-    onFolderLongClick: (String) -> Unit
+    onFolderLongClick: (String) -> Unit,
+    onOpenGridSizeDialog: () -> Unit = {}
 ) {
     val isDark = manager.isDarkMode
     val textColor = manager.getCurrentTextColor()
@@ -1650,7 +1718,6 @@ fun LibraryScreen(
     val glassBorderBrush = manager.getGlassBorderBrush()
     val accent = manager.accentColor
     var showFolderSortMenu by remember { mutableStateOf(false) }
-    var showGridSizeDialog by remember { mutableStateOf(false) }
 
     val sortedFolders: ImmutableList<String> = remember(manager.allSongs.size, manager.currentFolderSortOrder) {
         manager.getSortedFolders().toImmutableList()
@@ -1678,7 +1745,7 @@ fun LibraryScreen(
                             .border(1.2.dp, glassBorderBrush, CircleShape)
                             .combinedClickable(
                                 onClick = { manager.cycleNextLibraryFoldersViewMode() },
-                                onLongClick = { showGridSizeDialog = true }
+                                onLongClick = onOpenGridSizeDialog
                             ),
                         contentAlignment = Alignment.Center
                     ) {
@@ -1916,16 +1983,6 @@ fun LibraryScreen(
             }
         }
     }
-
-    if (showGridSizeDialog) {
-        GridSizeDialog(
-            currentMode = manager.libraryFoldersViewMode,
-            isDark = isDark,
-            accent = manager.accentColor,
-            onSelectMode = { manager.updateLibraryFoldersViewMode(it) },
-            onDismiss = { showGridSizeDialog = false }
-        )
-    }
 }
 
 // =========================================================================
@@ -1940,7 +1997,8 @@ fun PlaylistDetailScreen(
     isDark: Boolean,
     onBack: () -> Unit,
     onSongMenuClick: (Song) -> Unit,
-    onFolderClick: (String) -> Unit
+    onFolderClick: (String) -> Unit,
+    onOpenGridSizeDialog: () -> Unit = {}
 ) {
     val textColor = manager.getCurrentTextColor()
     val cardBg = manager.getCurrentSurfaceColor()
@@ -1948,7 +2006,6 @@ fun PlaylistDetailScreen(
     val accent = manager.accentColor
     var showAddSongsSearchPicker by remember { mutableStateOf(false) }
     var showSortMenu by remember { mutableStateOf(false) }
-    var showGridSizeDialog by remember { mutableStateOf(false) }
 
     val songLookup = remember(manager.allSongs.size) { manager.allSongs.associateBy { it.id } }
     val rawSongsInPlaylist = remember(playlist.songIds, songLookup) {
@@ -1967,10 +2024,10 @@ fun PlaylistDetailScreen(
         }.toImmutableList()
     }
 
-    val isAnyPlaylistInnerDialogOpen = showGridSizeDialog || showAddSongsSearchPicker
+    val isAnyPlaylistInnerDialogOpen = showAddSongsSearchPicker
 
     val animatedPlaylistBlur by animateDpAsState(
-        targetValue = if (isAnyPlaylistInnerDialogOpen) 22.dp else 0.dp,
+        targetValue = if (isAnyPlaylistInnerDialogOpen) 28.dp else 0.dp,
         animationSpec = tween(durationMillis = 280, easing = FastOutSlowInEasing),
         label = "playlistBlurAnim"
     )
@@ -2005,7 +2062,7 @@ fun PlaylistDetailScreen(
                             .border(1.2.dp, glassBorderBrush, CircleShape)
                             .combinedClickable(
                                 onClick = { manager.cycleNextPlaylistInnerViewMode() },
-                                onLongClick = { showGridSizeDialog = true }
+                                onLongClick = onOpenGridSizeDialog
                             ),
                         contentAlignment = Alignment.Center
                     ) {
@@ -2158,16 +2215,6 @@ fun PlaylistDetailScreen(
         }
     }
 
-    if (showGridSizeDialog) {
-        GridSizeDialog(
-            currentMode = manager.playlistInnerViewMode,
-            isDark = isDark,
-            accent = manager.accentColor,
-            onSelectMode = { manager.updatePlaylistInnerViewMode(it) },
-            onDismiss = { showGridSizeDialog = false }
-        )
-    }
-
     if (showAddSongsSearchPicker) {
         PlaylistAddSearchDialog(playlist = playlist, manager = manager, onDismiss = { showAddSongsSearchPicker = false }, onNavigateToFolder = { folder ->
             showAddSongsSearchPicker = false
@@ -2182,14 +2229,20 @@ fun PlaylistDetailScreen(
 
 @UnstableApi
 @Composable
-fun FolderSongsScreen(folderName: String, manager: MusicManager, isDark: Boolean, onBack: () -> Unit, onSongMenuClick: (Song) -> Unit) {
+fun FolderSongsScreen(
+    folderName: String,
+    manager: MusicManager,
+    isDark: Boolean,
+    onBack: () -> Unit,
+    onSongMenuClick: (Song) -> Unit,
+    onOpenGridSizeDialog: () -> Unit = {}
+) {
     val rawSongs = remember(folderName, manager.allSongs.size) { manager.allSongs.filter { it.folderName == folderName } }
     val textColor = manager.getCurrentTextColor()
     val cardBg = manager.getCurrentSurfaceColor()
     val glassBorderBrush = manager.getGlassBorderBrush()
     val accent = manager.accentColor
     var showSortMenu by remember { mutableStateOf(false) }
-    var showGridSizeDialog by remember { mutableStateOf(false) }
 
     val sortedSongs: ImmutableList<Song> = remember(rawSongs, manager.folderInnerSortOrder) {
         when (manager.folderInnerSortOrder) {
@@ -2203,19 +2256,10 @@ fun FolderSongsScreen(folderName: String, manager: MusicManager, isDark: Boolean
         }.toImmutableList()
     }
 
-    val isAnyFolderInnerDialogOpen = showGridSizeDialog
-
-    val animatedFolderBlur by animateDpAsState(
-        targetValue = if (isAnyFolderInnerDialogOpen) 22.dp else 0.dp,
-        animationSpec = tween(durationMillis = 280, easing = FastOutSlowInEasing),
-        label = "folderBlurAnim"
-    )
-
     Box(modifier = Modifier.fillMaxSize()) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .blur(animatedFolderBlur)
                 .padding(horizontal = 16.dp)
         ) {
             Row(
@@ -2241,7 +2285,7 @@ fun FolderSongsScreen(folderName: String, manager: MusicManager, isDark: Boolean
                             .border(1.2.dp, glassBorderBrush, CircleShape)
                             .combinedClickable(
                                 onClick = { manager.cycleNextFolderInnerViewMode() },
-                                onLongClick = { showGridSizeDialog = true }
+                                onLongClick = onOpenGridSizeDialog
                             ),
                         contentAlignment = Alignment.Center
                     ) {
@@ -2382,20 +2426,10 @@ fun FolderSongsScreen(folderName: String, manager: MusicManager, isDark: Boolean
             }
         }
     }
-
-    if (showGridSizeDialog) {
-        GridSizeDialog(
-            currentMode = manager.folderInnerViewMode,
-            isDark = isDark,
-            accent = manager.accentColor,
-            onSelectMode = { manager.updateFolderInnerViewMode(it) },
-            onDismiss = { showGridSizeDialog = false }
-        )
-    }
 }
 
 // =========================================================================
-// 📌 MANAGE PLAYLISTS DIALOG (Isolated Scroll & Symmetrical 3-Zone Bounds)
+// 📌 MANAGE PLAYLISTS DIALOG
 // =========================================================================
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -2427,7 +2461,6 @@ fun ManagePlaylistsDialog(
     var fingerYInList by remember { mutableFloatStateOf(-1f) }
     var grabOffsetY by remember { mutableFloatStateOf(itemHeightPx / 2f) }
 
-    // Intercept scroll deltas to prevent background home screen from moving
     val dialogScrollInterceptor = remember {
         object : NestedScrollConnection {
             override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset = Offset.Zero
@@ -2435,7 +2468,9 @@ fun ManagePlaylistsDialog(
         }
     }
 
-    // 120Hz VSYNC Auto-Scroll Loop with Symmetrical Proportional Bounds
+    val dialogSurface = manager.getCurrentDialogColor()
+    val glassBorder = manager.getGlassBorderBrush()
+
     LaunchedEffect(draggingPlaylistId) {
         if (draggingPlaylistId != null) {
             var lastFrameTimeNanos = 0L
@@ -2452,20 +2487,16 @@ fun ManagePlaylistsDialog(
                     if (containerHeightPx > (edgeZonePx * 2.5f)) {
                         val bottomTriggerY = containerHeightPx - edgeZonePx
 
-                        // True 3-Zone Geometry with Deceleration on Approach to Center
                         val scrollSpeed: Float = when {
-                            // Top Zone: smooth upward scroll, decelerating to 0 as finger pulls down toward dead zone
                             fingerYInList <= edgeZonePx -> {
                                 val ratio = (1f - (fingerYInList.coerceAtLeast(0f) / edgeZonePx)).coerceIn(0f, 1f)
                                 -(maxScrollSpeedPxPerSec * (ratio * ratio))
                             }
-                            // Bottom Zone: smooth downward scroll, decelerating to 0 as finger pulls up toward dead zone
                             fingerYInList >= bottomTriggerY -> {
                                 val distFromBottom = (containerHeightPx - fingerYInList).coerceAtLeast(0f)
                                 val ratio = (1f - (distFromBottom / edgeZonePx)).coerceIn(0f, 1f)
                                 (maxScrollSpeedPxPerSec * (ratio * ratio))
                             }
-                            // Central Dead Zone: NO auto-scrolling
                             else -> 0f
                         }
 
@@ -2507,7 +2538,7 @@ fun ManagePlaylistsDialog(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(if (isDark) Color(0x66000000) else Color(0x40000000))
+            .background(Color(0x77000000))
             .nestedScroll(dialogScrollInterceptor)
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
@@ -2524,8 +2555,8 @@ fun ManagePlaylistsDialog(
                 .imePadding()
                 .navigationBarsPadding()
                 .clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
-                .background(manager.getCurrentDialogColor())
-                .border(1.2.dp, manager.getGlassBorderBrush(), RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
+                .background(dialogSurface)
+                .border(1.5.dp, glassBorder, RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
                 .clickable(enabled = false) {}
                 .padding(22.dp)
         ) {
@@ -2612,12 +2643,7 @@ fun ManagePlaylistsDialog(
                                         modifier = Modifier
                                             .size(34.dp)
                                             .clip(CircleShape)
-                                            .background(Color(0x1AEF4444))
-                                            .clickable {
-                                                manager.triggerHapticFeedback(true)
-                                                tempList.remove(pl)
-                                                manager.removePlaylist(pl)
-                                            },
+                                            .background(Color(0x1AEF4444)),
                                         contentAlignment = Alignment.Center
                                     ) {
                                         Text("🗑", fontSize = 14.sp)
@@ -2683,7 +2709,6 @@ fun ManagePlaylistsDialog(
                         }
                     }
 
-                    // True Independent Floating Overlay Card: Follows finger across the full display
                     if (draggingPlaylistId != null && fingerYInList >= -150f) {
                         val draggedPl = tempList.find { it.id == draggingPlaylistId }
                         if (draggedPl != null) {
@@ -2703,7 +2728,7 @@ fun ManagePlaylistsDialog(
                                     .shadow(24.dp, RoundedCornerShape(14.dp), spotColor = accent)
                                     .clip(RoundedCornerShape(14.dp))
                                     .background(accent.copy(alpha = 0.28f))
-                                    .background(if (isDark) Color(0xFF1E293B) else Color.White)
+                                    .background(dialogSurface)
                                     .border(1.5.dp, accent, RoundedCornerShape(14.dp))
                                     .padding(horizontal = 14.dp, vertical = 10.dp),
                                 verticalAlignment = Alignment.CenterVertically,
@@ -2764,7 +2789,7 @@ fun ManagePlaylistsDialog(
 }
 
 // =========================================================================
-// 📌 CREATE PLAYLIST DIALOG (Zero Gap Keyboard Anchor & High Contrast Text)
+// 📌 CREATE PLAYLIST DIALOG
 // =========================================================================
 
 @Composable
@@ -2784,10 +2809,13 @@ fun CreatePlaylistDialog(manager: MusicManager, onDismiss: () -> Unit) {
         WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
     }
 
+    val dialogSurface = manager.getCurrentDialogColor()
+    val glassBorder = manager.getGlassBorderBrush()
+
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(if (isDark) Color(0x66000000) else Color(0x40000000))
+            .background(Color(0x77000000))
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null
@@ -2799,8 +2827,8 @@ fun CreatePlaylistDialog(manager: MusicManager, onDismiss: () -> Unit) {
                 .fillMaxWidth()
                 .padding(bottom = bottomInsetPadding)
                 .clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
-                .background(manager.getCurrentDialogColor())
-                .border(1.2.dp, manager.getGlassBorderBrush(), RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
+                .background(dialogSurface)
+                .border(1.5.dp, glassBorder, RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
                 .clickable(enabled = false) {}
                 .padding(24.dp)
         ) {
@@ -3156,6 +3184,10 @@ fun GridViewModeVectorIcon(mode: GridViewMode, tint: Color, modifier: Modifier =
     }
 }
 
+// =========================================================================
+// 📌 FROSTED GLASS VIEW OPTIONS (GRID SIZE) DIALOG
+// =========================================================================
+
 @Composable
 fun GridSizeDialog(
     currentMode: GridViewMode,
@@ -3164,11 +3196,15 @@ fun GridSizeDialog(
     onSelectMode: (GridViewMode) -> Unit,
     onDismiss: () -> Unit
 ) {
-    val textColor = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A)
+    val manager = MusicManager.activeInstance
+    val textColor = manager?.getCurrentTextColor() ?: if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A)
+    val dialogBg = manager?.getCurrentDialogColor() ?: if (isDark) Color(0xDD1E293B) else Color(0xEEFFFFFF)
+    val glassBorderBrush = manager?.getGlassBorderBrush() ?: Brush.verticalGradient(listOf(Color.White.copy(0.6f), Color.White.copy(0.15f)))
+
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(if (isDark) Color(0x66000000) else Color(0x40000000))
+            .background(Color(0x77000000))
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null
@@ -3179,7 +3215,8 @@ fun GridSizeDialog(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
-                .background(if (isDark) Color(0xFF1E293B) else Color.White)
+                .background(dialogBg)
+                .border(1.5.dp, glassBorderBrush, RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
                 .clickable(enabled = false) {}
                 .padding(22.dp)
         ) {
@@ -3198,8 +3235,13 @@ fun GridSizeDialog(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(if (isSel) accent.copy(alpha = 0.15f) else Color.Transparent)
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(if (isSel) accent.copy(alpha = 0.16f) else Color.Transparent)
+                            .border(
+                                width = if (isSel) 1.2.dp else 0.dp,
+                                color = if (isSel) accent.copy(alpha = 0.5f) else Color.Transparent,
+                                shape = RoundedCornerShape(14.dp)
+                            )
                             .clickable {
                                 onSelectMode(mode)
                                 onDismiss()
@@ -3233,7 +3275,7 @@ fun GridSizeDialog(
     }
 }
 
-// ArrangePlaylistsDialog logic preserved completely for compatibility
+// ArrangePlaylistsDialog
 @Composable
 fun ArrangePlaylistsDialog(
     manager: MusicManager,
@@ -3266,10 +3308,13 @@ fun FolderColorDialog(
         )
     }
 
+    val dialogBg = manager.getCurrentDialogColor()
+    val glassBorder = manager.getGlassBorderBrush()
+
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(if (isDark) Color(0x66000000) else Color(0x40000000))
+            .background(Color(0x77000000))
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null
@@ -3280,8 +3325,8 @@ fun FolderColorDialog(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
-                .background(manager.getCurrentDialogColor())
-                .border(1.2.dp, manager.getGlassBorderBrush(), RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
+                .background(dialogBg)
+                .border(1.5.dp, glassBorder, RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
                 .clickable(enabled = false) {}
                 .padding(22.dp)
         ) {
@@ -3323,7 +3368,8 @@ fun FolderColorDialog(
                         }
                     }
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -3377,6 +3423,8 @@ fun FavouritePlaylistLongPressDialog(
     onDismiss: () -> Unit
 ) {
     val textColor = manager.getCurrentTextColor()
+    val dialogBg = manager.getCurrentDialogColor()
+    val glassBorder = manager.getGlassBorderBrush()
 
     val preset9Colors = remember {
         listOf(
@@ -3388,7 +3436,7 @@ fun FavouritePlaylistLongPressDialog(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(if (isDark) Color(0x66000000) else Color(0x40000000))
+            .background(Color(0x77000000))
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null
@@ -3399,8 +3447,8 @@ fun FavouritePlaylistLongPressDialog(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
-                .background(manager.getCurrentDialogColor())
-                .border(1.2.dp, manager.getGlassBorderBrush(), RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
+                .background(dialogBg)
+                .border(1.5.dp, glassBorder, RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
                 .clickable(enabled = false) {}
                 .padding(22.dp)
         ) {
@@ -3511,11 +3559,13 @@ fun FolderColourPickerDialog(
 
     val isDark = manager.isDarkMode
     val textColor = manager.getCurrentTextColor()
+    val dialogBg = manager.getCurrentDialogColor()
+    val glassBorder = manager.getGlassBorderBrush()
 
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(if (isDark) Color(0x66000000) else Color(0x40000000))
+            .background(Color(0x77000000))
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null
@@ -3526,8 +3576,8 @@ fun FolderColourPickerDialog(
             modifier = Modifier
                 .fillMaxWidth(0.92f)
                 .clip(RoundedCornerShape(28.dp))
-                .background(manager.getCurrentDialogColor())
-                .border(1.2.dp, manager.getGlassBorderBrush(), RoundedCornerShape(28.dp))
+                .background(dialogBg)
+                .border(1.5.dp, glassBorder, RoundedCornerShape(28.dp))
                 .clickable(enabled = false) {}
                 .padding(20.dp)
         ) {
@@ -3773,10 +3823,13 @@ fun PlaylistAddSearchDialog(playlist: Playlist, manager: MusicManager, onDismiss
     }
     val folders: ImmutableList<String> = remember(manager.allSongs.size) { manager.allSongs.map { it.folderName }.distinct().toImmutableList() }
 
+    val dialogSurface = manager.getCurrentDialogColor()
+    val glassBorder = manager.getGlassBorderBrush()
+
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(if (isDark) Color(0x66000000) else Color(0x40000000))
+            .background(Color(0x77000000))
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null
@@ -3788,8 +3841,8 @@ fun PlaylistAddSearchDialog(playlist: Playlist, manager: MusicManager, onDismiss
                 .fillMaxWidth()
                 .height(600.dp)
                 .clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
-                .background(manager.getCurrentDialogColor())
-                .border(1.2.dp, manager.getGlassBorderBrush(), RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
+                .background(dialogSurface)
+                .border(1.5.dp, glassBorder, RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
                 .padding(20.dp)
         ) {
             Column {
@@ -3939,11 +3992,13 @@ fun SongItemActionModal(
     onDelete: () -> Unit
 ) {
     val textColor = manager.getCurrentTextColor()
+    val dialogSurface = manager.getCurrentDialogColor()
+    val glassBorder = manager.getGlassBorderBrush()
 
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(if (isDark) Color(0x66000000) else Color(0x40000000))
+            .background(Color(0x77000000))
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null
@@ -3954,8 +4009,8 @@ fun SongItemActionModal(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
-                .background(manager.getCurrentDialogColor())
-                .border(1.2.dp, manager.getGlassBorderBrush(), RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
+                .background(dialogSurface)
+                .border(1.5.dp, glassBorder, RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
                 .clickable(enabled = false) {}
                 .padding(22.dp)
         ) {
@@ -4009,10 +4064,13 @@ fun ModalActionRow(icon: String, title: String, color: Color, onClick: () -> Uni
 @Composable
 fun SongInfoDialog(manager: MusicManager, song: Song, isDark: Boolean, onDismiss: () -> Unit) {
     val textColor = manager.getCurrentTextColor()
+    val dialogSurface = manager.getCurrentDialogColor()
+    val glassBorder = manager.getGlassBorderBrush()
+
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(if (isDark) Color(0x66000000) else Color(0x40000000))
+            .background(Color(0x77000000))
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null
@@ -4023,8 +4081,8 @@ fun SongInfoDialog(manager: MusicManager, song: Song, isDark: Boolean, onDismiss
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
-                .background(manager.getCurrentDialogColor())
-                .border(1.2.dp, manager.getGlassBorderBrush(), RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
+                .background(dialogSurface)
+                .border(1.5.dp, glassBorder, RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
                 .clickable(enabled = false) {}
                 .padding(22.dp)
         ) {
@@ -4134,7 +4192,15 @@ fun RecentlyPlayedCard(song: Song, manager: MusicManager, onClick: () -> Unit) {
 @Composable
 fun LiveMechanicalGearIcon(isDark: Boolean, modifier: Modifier = Modifier) {
     val infiniteTransition = rememberInfiniteTransition(label = "gearRotation")
-    val rotation by infiniteTransition.animateFloat(0f, 360f, infiniteRepeatable(tween(12000, easing = LinearEasing)), label = "gearAngle")
+    val rotation by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 12000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "gearAngle"
+    )
 
     Box(
         modifier = modifier

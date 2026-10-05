@@ -57,6 +57,7 @@ import coil.compose.AsyncImage
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.toImmutableList
 import java.io.File
+import java.util.Locale
 
 @UnstableApi
 @Composable
@@ -98,6 +99,11 @@ fun ProfileScreen(manager: MusicManager, onBackClick: () -> Unit) {
     val mostPlayed: ImmutableList<Song> = remember(manager.allSongs.size, manager.historySongs.size) {
         manager.getMostPlayedSongs().toImmutableList()
     }
+    val lessPlayed: ImmutableList<Song> = remember(manager.allSongs.size, manager.historySongs.size) {
+        manager.allSongs.sortedWith(
+            compareBy<Song> { it.playCount }.thenBy { it.title.lowercase(Locale.getDefault()) }
+        ).toImmutableList()
+    }
     val historyList: ImmutableList<Song> = remember(manager.historySongs.size, manager.historySongs.toList()) {
         manager.historySongs.toImmutableList()
     }
@@ -112,7 +118,18 @@ fun ProfileScreen(manager: MusicManager, onBackClick: () -> Unit) {
 
     if (viewingAllType != null) {
         val isMostPlayedView = viewingAllType == "most_played"
-        val fullList = if (isMostPlayedView) mostPlayed else historyList
+        val isLessPlayedView = viewingAllType == "less_played"
+        val fullList = when {
+            isMostPlayedView -> mostPlayed
+            isLessPlayedView -> lessPlayed
+            else -> historyList
+        }
+
+        val pageTitle = when {
+            isMostPlayedView -> "Most Played"
+            isLessPlayedView -> "Less Played"
+            else -> "History"
+        }
 
         Column(modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
             Row(
@@ -131,7 +148,7 @@ fun ProfileScreen(manager: MusicManager, onBackClick: () -> Unit) {
                     Spacer(modifier = Modifier.width(14.dp))
                     Column {
                         Text(
-                            text = if (isMostPlayedView) "Most Played" else "History",
+                            text = pageTitle,
                             fontSize = 20.sp,
                             fontWeight = FontWeight.ExtraBold,
                             color = textColor
@@ -140,7 +157,7 @@ fun ProfileScreen(manager: MusicManager, onBackClick: () -> Unit) {
                     }
                 }
 
-                if (!isMostPlayedView && fullList.isNotEmpty()) {
+                if (!isMostPlayedView && !isLessPlayedView && fullList.isNotEmpty()) {
                     Button(
                         onClick = {
                             manager.triggerHapticFeedback(true)
@@ -177,10 +194,12 @@ fun ProfileScreen(manager: MusicManager, onBackClick: () -> Unit) {
                             manager = manager,
                             isDark = isDark,
                             accent = accent,
-                            showPlayCount = isMostPlayedView,
-                            rank = if (isMostPlayedView) index + 1 else null,
+                            showPlayCount = isMostPlayedView || isLessPlayedView,
+                            rank = if (isMostPlayedView || isLessPlayedView) index + 1 else null,
+                            customEmoji = if (isLessPlayedView) "🧊" else "🔥",
+                            customCountColor = if (isLessPlayedView) Color(0xFF38BDF8) else Color(0xFFEF4444),
                             onClick = {
-                                manager.playSong(song, fullList, if (isMostPlayedView) "Most Played" else "History")
+                                manager.playSong(song, fullList, pageTitle)
                             }
                         )
                     }
@@ -251,7 +270,6 @@ fun ProfileScreen(manager: MusicManager, onBackClick: () -> Unit) {
                     Spacer(modifier = Modifier.height(18.dp))
 
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        // Option A Dynamic Frosted Glass Avatar Container
                         Box(
                             modifier = Modifier
                                 .size(76.dp)
@@ -388,14 +406,75 @@ fun ProfileScreen(manager: MusicManager, onBackClick: () -> Unit) {
                         }
                     } else {
                         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                            mostPlayed.take(5).forEach { song ->
+                            mostPlayed.take(5).forEachIndexed { index, song ->
                                 ProfileSongRow(
                                     song = song,
                                     manager = manager,
                                     isDark = isDark,
                                     accent = accent,
                                     showPlayCount = true,
+                                    rank = index + 1,
+                                    customEmoji = "🔥",
+                                    customCountColor = Color(0xFFEF4444),
                                     onClick = { manager.playSong(song, mostPlayed, "Most Played") }
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            item(key = "profile_less_played", contentType = "analytics_card") {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(24.dp))
+                        .background(cardBg)
+                        .border(1.2.dp, glassBorderBrush, RoundedCornerShape(24.dp))
+                        .padding(20.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text("Less Played", color = textColor, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                            Text("Songs you rarely or haven't listened to.", color = Color(0xFF64748B), fontSize = 12.sp)
+                        }
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(if (isDark) Color(0x1AFFFFFF) else Color(0xFFF1F5F9))
+                                .clickable {
+                                    manager.triggerHapticFeedback(false)
+                                    viewingAllType = "less_played"
+                                }
+                                .padding(horizontal = 12.dp, vertical = 6.dp)
+                        ) {
+                            Text("View all ›", color = textColor, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    if (lessPlayed.isEmpty()) {
+                        Box(modifier = Modifier.fillMaxWidth().height(90.dp), contentAlignment = Alignment.Center) {
+                            Text("No songs found in storage.", color = Color(0xFF64748B), fontSize = 13.sp)
+                        }
+                    } else {
+                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            lessPlayed.take(5).forEachIndexed { index, song ->
+                                ProfileSongRow(
+                                    song = song,
+                                    manager = manager,
+                                    isDark = isDark,
+                                    accent = accent,
+                                    showPlayCount = true,
+                                    rank = index + 1,
+                                    customEmoji = "🧊",
+                                    customCountColor = Color(0xFF38BDF8),
+                                    onClick = { manager.playSong(song, lessPlayed, "Less Played") }
                                 )
                             }
                         }
@@ -507,6 +586,8 @@ fun ProfileSongRow(
     accent: Color,
     showPlayCount: Boolean,
     rank: Int? = null,
+    customEmoji: String = "🔥",
+    customCountColor: Color = Color(0xFFEF4444),
     onClick: () -> Unit
 ) {
     val isPlayingThis = manager.currentSong?.id == song.id
@@ -589,11 +670,11 @@ fun ProfileSongRow(
             LiveAudioWaveEqualizer(isAnimating = manager.isPlaying, accentColor = accent)
         } else if (showPlayCount) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("🔥", fontSize = 12.sp)
+                Text(customEmoji, fontSize = 12.sp)
                 Spacer(modifier = Modifier.width(4.dp))
                 Text(
                     text = "${song.playCount}",
-                    color = Color(0xFFEF4444),
+                    color = customCountColor,
                     fontSize = 13.sp,
                     fontWeight = FontWeight.ExtraBold
                 )

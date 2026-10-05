@@ -976,7 +976,7 @@ private fun AnalogClockDial(
 }
 
 // =========================================================================
-// 4. COMPLETE TAG EDITOR DIALOG WITH FROSTED BACKDROP BLUR
+// 4. COMPLETE TAG EDITOR DIALOG WITH FROSTED BACKDROP BLUR & SPECULAR GLASS
 // =========================================================================
 
 @UnstableApi
@@ -987,8 +987,10 @@ fun TagEditorDialog(
     onDismiss: () -> Unit
 ) {
     val isDark = manager.isDarkMode
-    val textColor = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A)
-    val cardBg = if (isDark) Color(0xFF1E293B) else Color.White
+    val textColor = manager.getCurrentTextColor()
+    val dialogBg = manager.getCurrentDialogColor()
+    val cardBg = manager.getCurrentSurfaceColor()
+    val glassBorderBrush = manager.getGlassBorderBrush()
     val accent = manager.accentColor
 
     var title by remember { mutableStateOf(song.title) }
@@ -1026,7 +1028,6 @@ fun TagEditorDialog(
         }
     }
 
-    // Frosted Glass State: Determines whether cropper, date roller, or clock picker is active
     val isAnyTagEditorSubDialogOpen = rawPickedUriForCrop != null || showWheelDatePicker || showAnalogClockPicker
 
     val animatedTagEditorBlur by animateDpAsState(
@@ -1050,11 +1051,11 @@ fun TagEditorDialog(
                 .fillMaxWidth()
                 .fillMaxHeight(0.88f)
                 .clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
-                .background(cardBg)
+                .background(dialogBg)
+                .border(1.2.dp, glassBorderBrush, RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
                 .clickable(enabled = false) {}
                 .padding(22.dp)
         ) {
-            // Scrollable Content Layer: Blurs when sub-picker dialogs are showing
             Column(
                 modifier = Modifier
                     .fillMaxSize()
@@ -1085,7 +1086,10 @@ fun TagEditorDialog(
                             .size(34.dp)
                             .clip(CircleShape)
                             .background(if (isDark) Color(0x22FFFFFF) else Color(0xFFF1F5F9))
-                            .clickable { onDismiss() },
+                            .clickable {
+                                manager.triggerHapticFeedback(false)
+                                onDismiss()
+                            },
                         contentAlignment = Alignment.Center
                     ) {
                         Text("✕", fontSize = 14.sp, color = textColor, fontWeight = FontWeight.Bold)
@@ -1106,7 +1110,10 @@ fun TagEditorDialog(
                             .clip(RoundedCornerShape(16.dp))
                             .background(Color(0xFF0F172A))
                             .border(1.5.dp, accent.copy(alpha = 0.6f), RoundedCornerShape(16.dp))
-                            .clickable { photoPickerLauncher.launch("image/*") },
+                            .clickable {
+                                manager.triggerHapticFeedback(false)
+                                photoPickerLauncher.launch("image/*")
+                            },
                         contentAlignment = Alignment.Center
                     ) {
                         if (selectedCoverUri != null) {
@@ -1176,8 +1183,15 @@ fun TagEditorDialog(
                     shape = RoundedCornerShape(14.dp),
                     singleLine = true,
                     colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = textColor,
+                        unfocusedTextColor = textColor,
+                        focusedContainerColor = cardBg,
+                        unfocusedContainerColor = cardBg,
                         focusedBorderColor = accent,
-                        unfocusedBorderColor = if (isDark) Color(0x33FFFFFF) else Color(0xFFE2E8F0)
+                        unfocusedBorderColor = accent.copy(alpha = 0.75f),
+                        cursorColor = accent,
+                        focusedLabelColor = accent,
+                        unfocusedLabelColor = accent
                     )
                 )
 
@@ -1191,8 +1205,15 @@ fun TagEditorDialog(
                     shape = RoundedCornerShape(14.dp),
                     singleLine = true,
                     colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = textColor,
+                        unfocusedTextColor = textColor,
+                        focusedContainerColor = cardBg,
+                        unfocusedContainerColor = cardBg,
                         focusedBorderColor = accent,
-                        unfocusedBorderColor = if (isDark) Color(0x33FFFFFF) else Color(0xFFE2E8F0)
+                        unfocusedBorderColor = accent.copy(alpha = 0.75f),
+                        cursorColor = accent,
+                        focusedLabelColor = accent,
+                        unfocusedLabelColor = accent
                     )
                 )
 
@@ -1206,8 +1227,15 @@ fun TagEditorDialog(
                     shape = RoundedCornerShape(14.dp),
                     singleLine = true,
                     colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = textColor,
+                        unfocusedTextColor = textColor,
+                        focusedContainerColor = cardBg,
+                        unfocusedContainerColor = cardBg,
                         focusedBorderColor = accent,
-                        unfocusedBorderColor = if (isDark) Color(0x33FFFFFF) else Color(0xFFE2E8F0)
+                        unfocusedBorderColor = accent.copy(alpha = 0.75f),
+                        cursorColor = accent,
+                        focusedLabelColor = accent,
+                        unfocusedLabelColor = accent
                     )
                 )
 
@@ -1217,7 +1245,7 @@ fun TagEditorDialog(
                     text = "Release Date & Time",
                     fontSize = 12.5.sp,
                     fontWeight = FontWeight.SemiBold,
-                    color = Color(0xFF64748B)
+                    color = accent
                 )
                 Spacer(modifier = Modifier.height(6.dp))
 
@@ -1225,8 +1253,8 @@ fun TagEditorDialog(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(14.dp))
-                        .background(if (isDark) Color(0x1AFFFFFF) else Color(0xFFF1F5F9))
-                        .border(1.dp, if (isDark) Color(0x22FFFFFF) else Color(0xFFE2E8F0), RoundedCornerShape(14.dp))
+                        .background(cardBg)
+                        .border(1.2.dp, accent.copy(alpha = 0.75f), RoundedCornerShape(14.dp))
                         .padding(horizontal = 14.dp, vertical = 12.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
@@ -1242,7 +1270,10 @@ fun TagEditorDialog(
 
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Button(
-                            onClick = { showWheelDatePicker = true },
+                            onClick = {
+                                manager.triggerHapticFeedback(false)
+                                showWheelDatePicker = true
+                            },
                             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32)),
                             shape = RoundedCornerShape(8.dp),
                             contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
@@ -1252,7 +1283,10 @@ fun TagEditorDialog(
                         }
 
                         Button(
-                            onClick = { showAnalogClockPicker = true },
+                            onClick = {
+                                manager.triggerHapticFeedback(false)
+                                showAnalogClockPicker = true
+                            },
                             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF6750A4)),
                             shape = RoundedCornerShape(8.dp),
                             contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
@@ -1267,6 +1301,7 @@ fun TagEditorDialog(
 
                 Button(
                     onClick = {
+                        manager.triggerHapticFeedback(true)
                         manager.requestFileWritePermissionAndSave(
                             song = song,
                             newTitle = title.trim(),
