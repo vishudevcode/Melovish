@@ -196,7 +196,13 @@ class MusicManager(private val context: Context) {
             enableAudioTrackPlaybackParams: Boolean
         ): AudioSink {
             return DefaultAudioSink.Builder(context)
-                .setAudioProcessors(arrayOf(channelMixingAudioProcessor))
+                .setAudioProcessors(
+                    arrayOf(
+                        channelMixingAudioProcessor,
+                        AudioEffectsManager.spatialProcessor,
+                        AudioEffectsManager.lofiProcessor
+                    )
+                )
                 .setEnableFloatOutput(true)
                 .setEnableAudioTrackPlaybackParams(true)
                 .build()
@@ -2482,7 +2488,6 @@ class MusicManager(private val context: Context) {
         }
 
         // 2. Direct embedded cover extraction from the file's own ID3/MP4/FLAC metadata
-        //    (Prevents Android MediaStore from applying the same album art to every track sharing a generic album ID)
         if (resultBitmap == null) {
             try {
                 val retriever = MediaMetadataRetriever()
