@@ -462,12 +462,12 @@ fun MelovishRootApp(manager: MusicManager) {
     var isSettingsEqOpen by remember { mutableStateOf(false) }
     var isMiniPlayerDismissed by remember { mutableStateOf(false) }
 
-    // Centralized Smart Click-Routing: Expands player if current song re-clicked; otherwise plays new song & shows miniplayer
+    // Centralized Smart Click-Routing: Tapping active track expands player; tapping any track always restores MiniPlayer
     val handleSmartSongClick: (Song, List<Song>, String) -> Unit = { song, list, source ->
+        isMiniPlayerDismissed = false
         if (manager.currentSong?.id == song.id) {
             isPlayerExpanded = true
         } else {
-            isMiniPlayerDismissed = false
             manager.playSong(song, list, source)
         }
     }
@@ -763,14 +763,7 @@ fun MelovishRootApp(manager: MusicManager) {
                     }
                 }
 
-                if (manager.currentSong != null && !isPlayerExpanded && !isMiniPlayerDismissed) {
-                    MiniPlayerDock(
-                        manager = manager,
-                        onClick = { isPlayerExpanded = true },
-                        onDismiss = { isMiniPlayerDismissed = true }
-                    )
-                }
-
+                // Bottom Navigation Bar
                 if (isMainTabScreen) {
                     BottomNavBar(
                         manager = manager,
@@ -791,6 +784,22 @@ fun MelovishRootApp(manager: MusicManager) {
                                 activeScreen = tab
                             }
                         }
+                    )
+                }
+            }
+
+            // 🌟 TRUE FLOATING MINIPLAYER (Floats above list content)
+            if (manager.currentSong != null && !isPlayerExpanded && !isMiniPlayerDismissed) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = if (isMainTabScreen) 66.dp else 12.dp)
+                        .zIndex(15f)
+                ) {
+                    MiniPlayerDock(
+                        manager = manager,
+                        onClick = { isPlayerExpanded = true },
+                        onDismiss = { isMiniPlayerDismissed = true }
                     )
                 }
             }
@@ -1334,7 +1343,7 @@ fun HomeScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(horizontal = 16.dp),
-            contentPadding = PaddingValues(bottom = 80.dp),
+            contentPadding = PaddingValues(bottom = 120.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             item(key = "home_recents_section", contentType = "recents_carousel") {
@@ -1824,7 +1833,7 @@ fun LibraryScreen(
                                 .clip(CircleShape)
                                 .background(cardBg)
                                 .border(1.2.dp, glassBorderBrush, CircleShape)
-                            .clickable { showFolderSortMenu = true },
+                                .clickable { showFolderSortMenu = true },
                             contentAlignment = Alignment.Center
                         ) {
                             SortListVector(tint = accent, modifier = Modifier.size(18.dp))
@@ -1847,7 +1856,7 @@ fun LibraryScreen(
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(bottom = 80.dp),
+                        .padding(bottom = 120.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Column(
@@ -1877,7 +1886,7 @@ fun LibraryScreen(
                         LazyColumn(
                             state = listState,
                             modifier = Modifier.fillMaxSize(),
-                            contentPadding = PaddingValues(bottom = 80.dp),
+                            contentPadding = PaddingValues(bottom = 120.dp),
                             verticalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
                             items(
@@ -1913,7 +1922,7 @@ fun LibraryScreen(
                     GridViewMode.GRID_2 -> {
                         LazyVerticalGrid(
                             columns = GridCells.Fixed(2),
-                            contentPadding = PaddingValues(bottom = 80.dp),
+                            contentPadding = PaddingValues(bottom = 120.dp),
                             horizontalArrangement = Arrangement.spacedBy(10.dp),
                             verticalArrangement = Arrangement.spacedBy(10.dp),
                             modifier = Modifier.fillMaxSize()
@@ -1946,7 +1955,7 @@ fun LibraryScreen(
                     GridViewMode.GRID_3 -> {
                         LazyVerticalGrid(
                             columns = GridCells.Fixed(3),
-                            contentPadding = PaddingValues(bottom = 80.dp),
+                            contentPadding = PaddingValues(bottom = 120.dp),
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                             verticalArrangement = Arrangement.spacedBy(8.dp),
                             modifier = Modifier.fillMaxSize()
@@ -1979,7 +1988,7 @@ fun LibraryScreen(
                     GridViewMode.GRID_4 -> {
                         LazyVerticalGrid(
                             columns = GridCells.Fixed(4),
-                            contentPadding = PaddingValues(bottom = 80.dp),
+                            contentPadding = PaddingValues(bottom = 120.dp),
                             horizontalArrangement = Arrangement.spacedBy(6.dp),
                             verticalArrangement = Arrangement.spacedBy(6.dp),
                             modifier = Modifier.fillMaxSize()
@@ -2012,7 +2021,7 @@ fun LibraryScreen(
                     GridViewMode.HERO_GRID -> {
                         LazyVerticalGrid(
                             columns = GridCells.Fixed(2),
-                            contentPadding = PaddingValues(bottom = 80.dp),
+                            contentPadding = PaddingValues(bottom = 120.dp),
                             horizontalArrangement = Arrangement.spacedBy(12.dp),
                             verticalArrangement = Arrangement.spacedBy(12.dp),
                             modifier = Modifier.fillMaxSize()
@@ -2196,7 +2205,7 @@ fun PlaylistDetailScreen(
             } else {
                 when (manager.playlistInnerViewMode) {
                     GridViewMode.LIST -> {
-                        LazyColumn(contentPadding = PaddingValues(bottom = 80.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        LazyColumn(contentPadding = PaddingValues(bottom = 120.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                             items(
                                 items = sortedSongs,
                                 key = { it.id },
@@ -2209,7 +2218,7 @@ fun PlaylistDetailScreen(
                     GridViewMode.GRID_2 -> {
                         LazyVerticalGrid(
                             columns = GridCells.Fixed(2),
-                            contentPadding = PaddingValues(bottom = 80.dp),
+                            contentPadding = PaddingValues(bottom = 120.dp),
                             horizontalArrangement = Arrangement.spacedBy(10.dp),
                             verticalArrangement = Arrangement.spacedBy(10.dp),
                             modifier = Modifier.fillMaxSize()
@@ -2226,7 +2235,7 @@ fun PlaylistDetailScreen(
                     GridViewMode.GRID_3 -> {
                         LazyVerticalGrid(
                             columns = GridCells.Fixed(3),
-                            contentPadding = PaddingValues(bottom = 80.dp),
+                            contentPadding = PaddingValues(bottom = 120.dp),
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                             verticalArrangement = Arrangement.spacedBy(8.dp),
                             modifier = Modifier.fillMaxSize()
@@ -2243,7 +2252,7 @@ fun PlaylistDetailScreen(
                     GridViewMode.GRID_4 -> {
                         LazyVerticalGrid(
                             columns = GridCells.Fixed(4),
-                            contentPadding = PaddingValues(bottom = 80.dp),
+                            contentPadding = PaddingValues(bottom = 120.dp),
                             horizontalArrangement = Arrangement.spacedBy(6.dp),
                             verticalArrangement = Arrangement.spacedBy(6.dp),
                             modifier = Modifier.fillMaxSize()
@@ -2260,7 +2269,7 @@ fun PlaylistDetailScreen(
                     GridViewMode.HERO_GRID -> {
                         LazyVerticalGrid(
                             columns = GridCells.Fixed(2),
-                            contentPadding = PaddingValues(bottom = 80.dp),
+                            contentPadding = PaddingValues(bottom = 120.dp),
                             horizontalArrangement = Arrangement.spacedBy(12.dp),
                             verticalArrangement = Arrangement.spacedBy(12.dp),
                             modifier = Modifier.fillMaxSize()
@@ -2409,7 +2418,7 @@ fun FolderSongsScreen(
             } else {
                 when (manager.folderInnerViewMode) {
                     GridViewMode.LIST -> {
-                        LazyColumn(contentPadding = PaddingValues(bottom = 80.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        LazyColumn(contentPadding = PaddingValues(bottom = 120.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                             items(
                                 items = sortedSongs,
                                 key = { it.id },
@@ -2422,7 +2431,7 @@ fun FolderSongsScreen(
                     GridViewMode.GRID_2 -> {
                         LazyVerticalGrid(
                             columns = GridCells.Fixed(2),
-                            contentPadding = PaddingValues(bottom = 80.dp),
+                            contentPadding = PaddingValues(bottom = 120.dp),
                             horizontalArrangement = Arrangement.spacedBy(10.dp),
                             verticalArrangement = Arrangement.spacedBy(10.dp),
                             modifier = Modifier.fillMaxSize()
@@ -2439,7 +2448,7 @@ fun FolderSongsScreen(
                     GridViewMode.GRID_3 -> {
                         LazyVerticalGrid(
                             columns = GridCells.Fixed(3),
-                            contentPadding = PaddingValues(bottom = 80.dp),
+                            contentPadding = PaddingValues(bottom = 120.dp),
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                             verticalArrangement = Arrangement.spacedBy(8.dp),
                             modifier = Modifier.fillMaxSize()
@@ -2456,7 +2465,7 @@ fun FolderSongsScreen(
                     GridViewMode.GRID_4 -> {
                         LazyVerticalGrid(
                             columns = GridCells.Fixed(4),
-                            contentPadding = PaddingValues(bottom = 80.dp),
+                            contentPadding = PaddingValues(bottom = 120.dp),
                             horizontalArrangement = Arrangement.spacedBy(6.dp),
                             verticalArrangement = Arrangement.spacedBy(6.dp),
                             modifier = Modifier.fillMaxSize()
@@ -2473,7 +2482,7 @@ fun FolderSongsScreen(
                     GridViewMode.HERO_GRID -> {
                         LazyVerticalGrid(
                             columns = GridCells.Fixed(2),
-                            contentPadding = PaddingValues(bottom = 80.dp),
+                            contentPadding = PaddingValues(bottom = 120.dp),
                             horizontalArrangement = Arrangement.spacedBy(12.dp),
                             verticalArrangement = Arrangement.spacedBy(12.dp),
                             modifier = Modifier.fillMaxSize()
@@ -3814,9 +3823,10 @@ fun LibraryFolderSquareCard(
 }
 
 // =========================================================================
-// 📌 SEARCH SCREEN (With AI Mood Playlists Hub & Smart Song Click Routing)
+// 📌 SEARCH SCREEN (With Recent 10 Search History & AI Mood Playlists Hub)
 // =========================================================================
 
+@OptIn(ExperimentalLayoutApi::class)
 @UnstableApi
 @Composable
 fun SearchScreen(
@@ -3826,6 +3836,46 @@ fun SearchScreen(
     onMoodClick: (AudioMood) -> Unit = {},
     onSongClick: (Song, List<Song>) -> Unit = { song, list -> manager.playSong(song, list, "Search Results") }
 ) {
+    val context = LocalContext.current
+    val prefs = remember { context.getSharedPreferences("melovish_search_prefs_v1", Context.MODE_PRIVATE) }
+
+    // Recent 10 Searches state
+    val searchHistory = remember {
+        mutableStateListOf<String>().apply {
+            val savedStr = prefs.getString("recent_search_history", "") ?: ""
+            if (savedStr.isNotBlank()) {
+                addAll(savedStr.split(";;;").filter { it.isNotBlank() }.take(10))
+            }
+        }
+    }
+
+    fun saveHistory(list: List<String>) {
+        val serialized = list.take(10).joinToString(";;;")
+        prefs.edit().putString("recent_search_history", serialized).apply()
+    }
+
+    fun addQueryToHistory(q: String) {
+        val clean = q.trim()
+        if (clean.length >= 2) {
+            searchHistory.remove(clean)
+            searchHistory.add(0, clean)
+            while (searchHistory.size > 10) {
+                searchHistory.removeAt(searchHistory.size - 1)
+            }
+            saveHistory(searchHistory)
+        }
+    }
+
+    fun removeSingleHistory(q: String) {
+        searchHistory.remove(q)
+        saveHistory(searchHistory)
+    }
+
+    fun clearAllHistory() {
+        searchHistory.clear()
+        saveHistory(emptyList())
+    }
+
     var query by remember { mutableStateOf("") }
     val focusRequester = remember { FocusRequester() }
     val keyboardController = LocalSoftwareKeyboardController.current
@@ -3833,6 +3883,17 @@ fun SearchScreen(
     val accent = manager.accentColor
     val textColor = manager.getCurrentTextColor()
     val glassBorderBrush = manager.getGlassBorderBrush()
+
+    // Trigger save on typing commit
+    LaunchedEffect(query) {
+        val q = query.trim()
+        if (q.length >= 2) {
+            delay(1200) // Debounced history record
+            if (query.trim() == q) {
+                addQueryToHistory(q)
+            }
+        }
+    }
 
     val filtered: ImmutableList<Song> = remember(query, manager.allSongs.size) {
         val q = query.trim()
@@ -3864,17 +3925,124 @@ fun SearchScreen(
                 unfocusedBorderColor = manager.getCurrentBorderColor(),
                 cursorColor = accent
             ),
+            trailingIcon = {
+                if (query.isNotEmpty()) {
+                    Text(
+                        text = "✕",
+                        color = Color(0xFF64748B),
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier
+                            .clickable { query = "" }
+                            .padding(8.dp)
+                    )
+                }
+            },
             singleLine = true
         )
         Spacer(modifier = Modifier.height(14.dp))
 
         if (query.isBlank()) {
-            // AI Mood Playlists Hub
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(bottom = 80.dp),
-                verticalArrangement = Arrangement.spacedBy(14.dp)
+                contentPadding = PaddingValues(bottom = 120.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
+                // 1. RECENT SEARCHES (LAST 10 WITH CLEAR OPTION)
+                if (searchHistory.isNotEmpty()) {
+                    item(key = "search_history_section") {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(20.dp))
+                                .background(cardBg)
+                                .border(1.2.dp, glassBorderBrush, RoundedCornerShape(20.dp))
+                                .padding(16.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text("🕒", fontSize = 16.sp)
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = "Recent Searches",
+                                        color = textColor,
+                                        fontSize = 15.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(Color(0x1AEF4444))
+                                        .clickable {
+                                            manager.triggerHapticFeedback(true)
+                                            clearAllHistory()
+                                        }
+                                        .padding(horizontal = 10.dp, vertical = 4.dp)
+                                ) {
+                                    Text(
+                                        text = "Clear All",
+                                        color = Color(0xFFEF4444),
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(12.dp))
+
+                            FlowRow(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                searchHistory.forEach { historyQuery ->
+                                    Row(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(12.dp))
+                                            .background(if (isDark) Color(0x22FFFFFF) else Color(0xFFF1F5F9))
+                                            .border(1.dp, glassBorderBrush, RoundedCornerShape(12.dp))
+                                            .clickable {
+                                                manager.triggerHapticFeedback(false)
+                                                query = historyQuery
+                                                addQueryToHistory(historyQuery)
+                                            }
+                                            .padding(horizontal = 12.dp, vertical = 7.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = historyQuery,
+                                            color = textColor,
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.Medium,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            text = "✕",
+                                            color = Color(0xFF64748B),
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            modifier = Modifier
+                                                .clickable {
+                                                    manager.triggerHapticFeedback(false)
+                                                    removeSingleHistory(historyQuery)
+                                                }
+                                                .padding(2.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // 2. AI MOOD PLAYLISTS HUB
                 item(key = "mood_hub_header") {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -3990,7 +4158,11 @@ fun SearchScreen(
             }
         } else {
             // Live Search Results
-            LazyColumn(state = listState, verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            LazyColumn(
+                state = listState,
+                contentPadding = PaddingValues(bottom = 120.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
                 items(
                     items = filtered,
                     key = { it.id },
@@ -4000,7 +4172,10 @@ fun SearchScreen(
                         song = song,
                         manager = manager,
                         isDark = isDark,
-                        onPlay = { onSongClick(song, filtered) },
+                        onPlay = {
+                            addQueryToHistory(query)
+                            onSongClick(song, filtered)
+                        },
                         onMenuClick = { onSongMenuClick(song) }
                     )
                 }
@@ -4172,7 +4347,10 @@ fun FilteredSongsScreen(
             }
         }
         Spacer(modifier = Modifier.height(14.dp))
-        LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        LazyColumn(
+            contentPadding = PaddingValues(bottom = 120.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
             items(
                 items = songs,
                 key = { it.id },

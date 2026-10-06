@@ -2155,7 +2155,7 @@ fun MenuRow(icon: String, text: String, isDark: Boolean, isDanger: Boolean = fal
     }
 }
 
-// Mini Player Dock with Elevated Floating Island Shadow, Frosted Surface & Swipe-to-Dismiss Gesture
+// Mini Player Dock with Frosted Glass Surface, Floating Island Depth Shadow & Swipe-to-Dismiss Gesture
 @UnstableApi
 @Composable
 fun MiniPlayerDock(
@@ -2177,13 +2177,13 @@ fun MiniPlayerDock(
             .fillMaxWidth()
             .padding(horizontal = 14.dp, vertical = 6.dp)
             .shadow(
-                elevation = 14.dp,
+                elevation = 16.dp,
                 shape = RoundedCornerShape(22.dp),
-                spotColor = accent.copy(alpha = 0.42f),
-                ambientColor = if (isDark) Color.Black.copy(alpha = 0.55f) else Color(0x33000000)
+                spotColor = accent.copy(alpha = 0.50f),
+                ambientColor = if (isDark) Color.Black.copy(alpha = 0.75f) else Color(0x55000000)
             )
             .clip(RoundedCornerShape(22.dp))
-            .background(manager.getCurrentSurfaceColor().copy(alpha = 0.92f))
+            .background(manager.getCurrentSurfaceColor().copy(alpha = 0.94f))
             .border(1.2.dp, manager.getGlassBorderBrush(), RoundedCornerShape(22.dp))
             .pointerInput(manager.isPlaying) {
                 detectVerticalDragGestures { _, dragAmount ->
@@ -2196,24 +2196,53 @@ fun MiniPlayerDock(
                 }
             }
             .clickable { onClick() }
-            .padding(horizontal = 14.dp, vertical = 8.dp)
+            .padding(horizontal = 14.dp, vertical = 9.dp)
     ) {
         Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Box(modifier = Modifier.size(44.dp).clip(RoundedCornerShape(10.dp)).background(Color(0xFF1E293B)), contentAlignment = Alignment.Center) {
+            Box(
+                modifier = Modifier
+                    .size(46.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Color(0xFF1E293B)),
+                contentAlignment = Alignment.Center
+            ) {
                 if (albumArtBitmap != null) {
-                    Image(bitmap = albumArtBitmap!!.asImageBitmap(), contentDescription = "Art", modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                    Image(
+                        bitmap = albumArtBitmap!!.asImageBitmap(),
+                        contentDescription = "Art",
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop
+                    )
                 } else {
                     Text("🎵", fontSize = 20.sp)
                 }
             }
+
             Spacer(modifier = Modifier.width(12.dp))
+
             Column(modifier = Modifier.weight(1f)) {
-                Text(song.title, color = manager.getCurrentTextColor(), fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text("${formatFileSize(song.size)} • ${if (song.artist.isNotBlank()) song.artist else "Melovish"}", color = accent, fontSize = 11.sp, maxLines = 1)
+                Text(
+                    text = song.title,
+                    color = manager.getCurrentTextColor(),
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = "${formatFileSize(song.size)} • ${if (song.artist.isNotBlank()) song.artist else "Melovish"}",
+                    color = accent,
+                    fontSize = 11.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
             }
+
+            Spacer(modifier = Modifier.width(8.dp))
+
             Box(
                 modifier = Modifier
-                    .size(40.dp)
+                    .size(42.dp)
                     .shadow(elevation = 6.dp, shape = CircleShape, spotColor = accent)
                     .clip(CircleShape)
                     .background(accent)
