@@ -119,15 +119,16 @@ fun ProfileScreen(manager: MusicManager, onBackClick: () -> Unit) {
     if (viewingAllType != null) {
         val isMostPlayedView = viewingAllType == "most_played"
         val isLessPlayedView = viewingAllType == "less_played"
-        val fullList = when {
+        val rawList = when {
             isMostPlayedView -> mostPlayed
             isLessPlayedView -> lessPlayed
             else -> historyList
         }
+        val fullList: ImmutableList<Song> = rawList.take(999).toImmutableList()
 
         val pageTitle = when {
             isMostPlayedView -> "Most Played"
-            isLessPlayedView -> "Less Played"
+            isLessPlayedView -> "Least Played"
             else -> "History"
         }
 
@@ -439,8 +440,8 @@ fun ProfileScreen(manager: MusicManager, onBackClick: () -> Unit) {
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Column {
-                            Text("Less Played", color = textColor, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                            Text("Songs you rarely or haven't listened to.", color = Color(0xFF64748B), fontSize = 12.sp)
+                            Text("Least Played", color = textColor, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                            Text("Rarely or haven’t listened songs.", color = Color(0xFF64748B), fontSize = 12.sp)
                         }
                         Box(
                             modifier = Modifier
@@ -474,7 +475,7 @@ fun ProfileScreen(manager: MusicManager, onBackClick: () -> Unit) {
                                     rank = index + 1,
                                     customEmoji = "🧊",
                                     customCountColor = Color(0xFF38BDF8),
-                                    onClick = { manager.playSong(song, lessPlayed, "Less Played") }
+                                    onClick = { manager.playSong(song, lessPlayed, "Least Played") }
                                 )
                             }
                         }

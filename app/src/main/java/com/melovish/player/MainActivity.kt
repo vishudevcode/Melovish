@@ -151,7 +151,9 @@ import androidx.media3.common.util.UnstableApi
 import coil.compose.AsyncImage
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.toImmutableList
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 import java.util.Locale
 import kotlin.math.abs
@@ -402,6 +404,24 @@ fun MelovishRootApp(manager: MusicManager) {
     val activity = context as? Activity
     val systemDark = isSystemInDarkTheme()
 
+    // Initialize the Smart Mood Classifier cache
+    LaunchedEffect(Unit) {
+        SmartMoodClassifier.init(context)
+    }
+
+    // Background offline DSP mood analyzer for unscanned tracks
+    LaunchedEffect(manager.allSongs.size) {
+        if (manager.allSongs.isNotEmpty()) {
+            withContext(Dispatchers.IO) {
+                for (song in manager.allSongs) {
+                    if (!SmartMoodClassifier.profilesCache.containsKey(song.id)) {
+                        SmartMoodClassifier.analyzeAudioTrack(context, song)
+                    }
+                }
+            }
+        }
+    }
+
     val isDark = when (manager.themeMode) {
         "Light" -> false
         "Dark" -> true
@@ -438,6 +458,8 @@ fun MelovishRootApp(manager: MusicManager) {
     var selectedPlaylist by remember { mutableStateOf<Playlist?>(null) }
     var selectedArtist by remember { mutableStateOf<ArtistItem?>(null) }
     var selectedAlbum by remember { mutableStateOf<String?>(null) }
+    var selectedMood by remember { mutableStateOf<AudioMood?>(null) }
+
     var isPlayerExpanded by remember { mutableStateOf(false) }
     var isSettingsEqOpen by remember { mutableStateOf(false) }
 
@@ -475,7 +497,7 @@ fun MelovishRootApp(manager: MusicManager) {
 
     var isTopBarVisible by remember { mutableStateOf(true) }
     val isMainTabScreen = activeScreen in listOf("home", "library", "artists", "search") &&
-            selectedFolder == null && selectedPlaylist == null && selectedArtist == null && selectedAlbum == null
+            selectedFolder == null && selectedPlaylist == null && selectedArtist == null && selectedAlbum == null && selectedMood == null
 
     val isAnyRootModalOpen = showRootCreatePlaylistDialog || showRootManagePlaylistsDialog || showRootArrangePlaylistsDialog ||
             rootCustomizingFolder != null || rootCustomizingPlaylist != null || rootSelectedArtistForActions != null ||
@@ -511,7 +533,7 @@ fun MelovishRootApp(manager: MusicManager) {
             rootSelectedArtistSongForAction != null || showRootDarkSubStyleDialog || showRootLightSubStyleDialog ||
             rootColorPickerMode != null || showRootCreateArtistDialog || showRootGridSizeDialog || showRootArtistAddSongsDialog ||
             isSettingsEqOpen || isPlayerExpanded || activeScreen == "settings" ||
-            activeScreen == "profile" || selectedArtist != null || selectedAlbum != null ||
+            activeScreen == "profile" || selectedMood != null || selectedArtist != null || selectedAlbum != null ||
             selectedPlaylist != null || selectedFolder != null || activeScreen != "home"
 
     BackHandler(enabled = canGoBack) {
@@ -537,6 +559,7 @@ fun MelovishRootApp(manager: MusicManager) {
             activeScreen == "profile" -> {
                 activeScreen = if (previousActiveScreen != "profile") previousActiveScreen else "home"
             }
+            selectedMood != null -> selectedMood = null
             selectedArtist != null -> selectedArtist = null
             selectedAlbum != null -> selectedAlbum = null
             selectedPlaylist != null -> selectedPlaylist = null
@@ -621,6 +644,20 @@ fun MelovishRootApp(manager: MusicManager) {
                                 activeScreen = if (previousActiveScreen != "profile") previousActiveScreen else "home"
                             }
                         )
+                        selectedMood != null -> {
+                            val curMood = selectedMood!!
+                            val moodSongs = remember(curMood, manager.allSongs.size, SmartMoodClassifier.classificationVersion) {
+                                SmartMoodClassifier.getSongsForMood(curMood, manager.allSongs).toImmutableList()
+                            }
+                            FilteredSongsScreen(
+                                title = "${curMood.emoji} ${curMood.title}",
+                                songs = moodSongs,
+                                manager = manager,
+                                isDark = isDark,
+                                onBack = { selectedMood = null },
+                                onSongMenuClick = { song: Song -> activeSongForMenu = song }
+                            )
+                        }
                         selectedArtist != null -> {
                             val curArtist = selectedArtist!!
                             ArtistDetailScreen(
@@ -680,7 +717,8 @@ fun MelovishRootApp(manager: MusicManager) {
                         activeScreen == "search" -> SearchScreen(
                             manager = manager,
                             listState = searchListState,
-                            onSongMenuClick = { song: Song -> activeSongForMenu = song }
+                            onSongMenuClick = { song: Song -> activeSongForMenu = song },
+                            onMoodClick = { mood -> selectedMood = mood }
                         )
                         activeScreen == "library" -> LibraryScreen(
                             manager = manager,
@@ -732,7 +770,7 @@ fun MelovishRootApp(manager: MusicManager) {
                 }
             }
 
-            // Top Status Bar: only drawn when NO modal is open, completely removing white patches!
+            // Top Status Bar Overlay: Only drawn when no modal is open
             if (!isAnyRootModalOpen) {
                 Box(
                     modifier = Modifier
@@ -751,7 +789,7 @@ fun MelovishRootApp(manager: MusicManager) {
                 )
             }
 
-            // Unified, single-pass background scrim covering from edge to edge (including the status bar area)
+            // Backdrop Scrim covering all screen insets including status bar
             AnimatedVisibility(
                 visible = isAnyRootModalOpen,
                 enter = fadeIn(tween(250)),
@@ -1020,7 +1058,7 @@ fun MelovishRootApp(manager: MusicManager) {
                                         .padding(12.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text("➡️", fontSize = 18.sp)
+                                    Text("➡️️", fontSize = 18.sp)
                                     Spacer(modifier = Modifier.width(12.dp))
                                     Text("Move track to another artist...", fontSize = 15.sp, color = manager.getCurrentTextColor(), fontWeight = FontWeight.SemiBold)
                                 }
@@ -1477,13 +1515,13 @@ fun HomeScreen(
                                 .clip(CircleShape)
                                 .background(cardBg)
                                 .border(1.2.dp, accent.copy(alpha = 0.5f), CircleShape)
-                                .clickable {
-                                    val shuffled = sortedSongs.shuffled()
-                                    if (shuffled.isNotEmpty()) {
-                                        manager.triggerHapticFeedback(true)
-                                        manager.playSong(shuffled.first(), shuffled, "All Songs (Shuffle)")
-                                    }
-                                },
+                            .clickable {
+                                val shuffled = sortedSongs.shuffled()
+                                if (shuffled.isNotEmpty()) {
+                                    manager.triggerHapticFeedback(true)
+                                    manager.playSong(shuffled.first(), shuffled, "All Songs (Shuffle)")
+                                }
+                            },
                             contentAlignment = Alignment.Center
                         ) {
                             ShuffleActionVector(tint = accent, modifier = Modifier.size(22.dp))
@@ -3748,20 +3786,25 @@ fun LibraryFolderSquareCard(
     }
 }
 
+// =========================================================================
+// 📌 SEARCH SCREEN (With AI Mood Playlists Hub)
+// =========================================================================
+
 @UnstableApi
 @Composable
-fun SearchScreen(manager: MusicManager, listState: LazyListState, onSongMenuClick: (Song) -> Unit) {
+fun SearchScreen(
+    manager: MusicManager,
+    listState: LazyListState,
+    onSongMenuClick: (Song) -> Unit,
+    onMoodClick: (AudioMood) -> Unit = {}
+) {
     var query by remember { mutableStateOf("") }
     val focusRequester = remember { FocusRequester() }
     val keyboardController = LocalSoftwareKeyboardController.current
     val cardBg = manager.getCurrentSurfaceColor()
     val accent = manager.accentColor
     val textColor = manager.getCurrentTextColor()
-
-    LaunchedEffect(Unit) {
-        focusRequester.requestFocus()
-        keyboardController?.show()
-    }
+    val glassBorderBrush = manager.getGlassBorderBrush()
 
     val filtered: ImmutableList<Song> = remember(query, manager.allSongs.size) {
         val q = query.trim()
@@ -3796,13 +3839,137 @@ fun SearchScreen(manager: MusicManager, listState: LazyListState, onSongMenuClic
             singleLine = true
         )
         Spacer(modifier = Modifier.height(14.dp))
-        LazyColumn(state = listState, verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            items(
-                items = filtered,
-                key = { it.id },
-                contentType = { "search_result_row" }
-            ) { song ->
-                UniversalSongRow(song = song, manager = manager, isDark = isDark, onPlay = { manager.playSong(song, filtered, "Search Results") }, onMenuClick = { onSongMenuClick(song) })
+
+        if (query.isBlank()) {
+            // AI Mood Playlists Hub
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(bottom = 80.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                item(key = "mood_hub_header") {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text(
+                                text = "Smart Mood Playlists",
+                                color = textColor,
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = "Acoustic signal & offline DSP classification",
+                                color = Color(0xFF64748B),
+                                fontSize = 12.sp
+                            )
+                        }
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(accent.copy(alpha = 0.15f))
+                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                        ) {
+                            Text("AI DSP", color = accent, fontSize = 10.sp, fontWeight = FontWeight.Black)
+                        }
+                    }
+                }
+
+                item(key = "mood_grid_container") {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        AudioMood.values().toList().chunked(2).forEach { rowMoods ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                rowMoods.forEach { mood ->
+                                    val count = remember(mood, manager.allSongs.size, SmartMoodClassifier.classificationVersion) {
+                                        SmartMoodClassifier.getSongsForMood(mood, manager.allSongs).size
+                                    }
+                                    val moodColor = Color(mood.colorHex)
+
+                                    Box(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .height(105.dp)
+                                            .clip(RoundedCornerShape(18.dp))
+                                            .background(cardBg)
+                                            .border(
+                                                width = 1.2.dp,
+                                                brush = Brush.linearGradient(
+                                                    listOf(moodColor.copy(alpha = 0.45f), glassBorderBrush.let { Color.Transparent })
+                                                ),
+                                                shape = RoundedCornerShape(18.dp)
+                                            )
+                                            .clickable {
+                                                manager.triggerHapticFeedback(false)
+                                                onMoodClick(mood)
+                                            }
+                                            .padding(12.dp)
+                                    ) {
+                                        Column(
+                                            modifier = Modifier.fillMaxSize(),
+                                            verticalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.Top
+                                            ) {
+                                                Text(mood.emoji, fontSize = 24.sp)
+                                                Box(
+                                                    modifier = Modifier
+                                                        .clip(RoundedCornerShape(6.dp))
+                                                        .background(moodColor.copy(alpha = 0.16f))
+                                                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                                                ) {
+                                                    Text(
+                                                        text = "$count tracks",
+                                                        color = moodColor,
+                                                        fontSize = 10.sp,
+                                                        fontWeight = FontWeight.Bold
+                                                    )
+                                                }
+                                            }
+
+                                            Column {
+                                                Text(
+                                                    text = mood.title,
+                                                    color = textColor,
+                                                    fontSize = 14.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis
+                                                )
+                                                Text(
+                                                    text = mood.subtitle,
+                                                    color = Color(0xFF64748B),
+                                                    fontSize = 10.sp,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                                if (rowMoods.size == 1) Spacer(modifier = Modifier.weight(1f))
+                            }
+                        }
+                    }
+                }
+            }
+        } else {
+            // Live Search Results
+            LazyColumn(state = listState, verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                items(
+                    items = filtered,
+                    key = { it.id },
+                    contentType = { "search_result_row" }
+                ) { song ->
+                    UniversalSongRow(song = song, manager = manager, isDark = isDark, onPlay = { manager.playSong(song, filtered, "Search Results") }, onMenuClick = { onSongMenuClick(song) })
+                }
             }
         }
     }
