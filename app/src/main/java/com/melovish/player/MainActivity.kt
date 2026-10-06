@@ -2596,8 +2596,8 @@ fun ManagePlaylistsDialog(
                                         val clampedTarget = targetIndex.coerceIn(0, tempList.size - 1)
                                         if (clampedTarget != fromIndex) {
                                             manager.triggerHapticFeedback(false)
-                                            val moved = tempList.removeAt(fromIndex)
-                                            tempList.add(clampedTarget, moved)
+                                            val movedItem = tempList.removeAt(fromIndex)
+                                            tempList.add(toIndex, movedItem)
                                         }
                                     }
                                 }
@@ -3826,7 +3826,6 @@ fun LibraryFolderSquareCard(
 // 📌 SEARCH SCREEN (With Recent 10 Search History & AI Mood Playlists Hub)
 // =========================================================================
 
-@OptIn(ExperimentalLayoutApi::class)
 @UnstableApi
 @Composable
 fun SearchScreen(
@@ -3837,9 +3836,9 @@ fun SearchScreen(
     onSongClick: (Song, List<Song>) -> Unit = { song, list -> manager.playSong(song, list, "Search Results") }
 ) {
     val context = LocalContext.current
-    val prefs = remember { context.getSharedPreferences("melovish_search_prefs_v1", Context.MODE_PRIVATE) }
+    val prefs = remember { context.getSharedPreferences("melovish_search_prefs_v1", android.content.Context.MODE_PRIVATE) }
 
-    // Recent 10 Searches state
+    // Last 10 Search History Cache
     val searchHistory = remember {
         mutableStateListOf<String>().apply {
             val savedStr = prefs.getString("recent_search_history", "") ?: ""
@@ -3878,22 +3877,10 @@ fun SearchScreen(
 
     var query by remember { mutableStateOf("") }
     val focusRequester = remember { FocusRequester() }
-    val keyboardController = LocalSoftwareKeyboardController.current
     val cardBg = manager.getCurrentSurfaceColor()
     val accent = manager.accentColor
     val textColor = manager.getCurrentTextColor()
     val glassBorderBrush = manager.getGlassBorderBrush()
-
-    // Trigger save on typing commit
-    LaunchedEffect(query) {
-        val q = query.trim()
-        if (q.length >= 2) {
-            delay(1200) // Debounced history record
-            if (query.trim() == q) {
-                addQueryToHistory(q)
-            }
-        }
-    }
 
     val filtered: ImmutableList<Song> = remember(query, manager.allSongs.size) {
         val q = query.trim()
@@ -3948,7 +3935,7 @@ fun SearchScreen(
                 contentPadding = PaddingValues(bottom = 120.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                // 1. RECENT SEARCHES (LAST 10 WITH CLEAR OPTION)
+                // 1. RECENT 10 SEARCHES WITH CLEAR OPTION
                 if (searchHistory.isNotEmpty()) {
                     item(key = "search_history_section") {
                         Column(
@@ -3995,12 +3982,8 @@ fun SearchScreen(
 
                             Spacer(modifier = Modifier.height(12.dp))
 
-                            FlowRow(
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                verticalArrangement = Arrangement.spacedBy(8.dp),
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                searchHistory.forEach { historyQuery ->
+                            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                items(searchHistory, key = { it }) { historyQuery ->
                                     Row(
                                         modifier = Modifier
                                             .clip(RoundedCornerShape(12.dp))
