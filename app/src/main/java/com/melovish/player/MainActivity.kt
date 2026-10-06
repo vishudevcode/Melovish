@@ -462,10 +462,15 @@ fun MelovishRootApp(manager: MusicManager) {
     var isSettingsEqOpen by remember { mutableStateOf(false) }
     var isMiniPlayerDismissed by remember { mutableStateOf(false) }
 
-    // Centralized Smart Click-Routing: Tapping active track expands player; tapping any track always restores MiniPlayer
+    // Centralized Smart Click-Routing: 
+    // Always resets isMiniPlayerDismissed = false.
+    // If the active track is paused, it resumes immediately from the exact paused timestamp and launches the Full Player Sheet.
     val handleSmartSongClick: (Song, List<Song>, String) -> Unit = { song, list, source ->
         isMiniPlayerDismissed = false
         if (manager.currentSong?.id == song.id) {
+            if (!manager.isPlaying) {
+                manager.togglePlayPause()
+            }
             isPlayerExpanded = true
         } else {
             manager.playSong(song, list, source)
@@ -2596,8 +2601,8 @@ fun ManagePlaylistsDialog(
                                         val clampedTarget = targetIndex.coerceIn(0, tempList.size - 1)
                                         if (clampedTarget != fromIndex) {
                                             manager.triggerHapticFeedback(false)
-                                            val movedItem = tempList.removeAt(fromIndex)
-                                            tempList.add(toIndex, movedItem)
+                                            val moved = tempList.removeAt(fromIndex)
+                                            tempList.add(clampedTarget, moved)
                                         }
                                     }
                                 }
