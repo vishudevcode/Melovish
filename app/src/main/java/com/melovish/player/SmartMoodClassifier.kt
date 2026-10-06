@@ -78,10 +78,10 @@ enum class AudioMood(
 
 data class AudioAcousticProfile(
     val songId: Long,
-    val energyRms: Float,        // 0.0 to 1.0 (Loudness dynamic power)
-    val spectralBrightness: Float, // 0.0 to 1.0 (High frequency presence)
-    val zeroCrossingRate: Float,   // 0.0 to 1.0 (Percussiveness / transients)
-    val estimatedBpm: Int,         // ~50 to 190 BPM
+    val energyRms: Float,
+    val spectralBrightness: Float,
+    val zeroCrossingRate: Float,
+    val estimatedBpm: Int,
     val primaryMood: AudioMood
 )
 
@@ -93,7 +93,6 @@ object SmartMoodClassifier {
     private const val PREFS_NAME = "melovish_smart_moods_cache_v1"
     private var prefs: SharedPreferences? = null
 
-    // Cache of analyzed song profiles: songId -> AudioAcousticProfile
     val profilesCache = mutableStateMapOf<Long, AudioAcousticProfile>()
     var classificationVersion by mutableIntStateOf(0)
 
@@ -144,10 +143,6 @@ object SmartMoodClassifier {
         } catch (_: Exception) {}
     }
 
-    /**
-     * Extracts acoustic signal features from an audio file offline without adding external dependencies.
-     * Decodes a fast 6-second window around 30% of the song using Android's native MediaCodec.
-     */
     suspend fun analyzeAudioTrack(context: Context, song: Song): AudioAcousticProfile = withContext(Dispatchers.IO) {
         profilesCache[song.id]?.let { return@withContext it }
 
@@ -162,7 +157,8 @@ object SmartMoodClassifier {
             extractor = MediaExtractor()
             val uri = Uri.parse(song.uri)
             try {
-                extractor.setDataSource(context, uri, null)
+                // Fixed: Explicit null cast for Map<String, String>? to prevent overload ambiguity
+                extractor.setDataSource(context, uri, null as Map<String, String>?)
             } catch (_: Exception) {
                 if (song.path.isNotBlank()) {
                     extractor.setDataSource(song.path)
@@ -198,12 +194,11 @@ object SmartMoodClassifier {
 
                 extractor.selectTrack(audioTrackIndex)
 
-                // Seek into the meat of the track (30% duration) to avoid quiet intro padding
                 val seekPositionUs = (song.duration * 0.30 * 1000).toLong().coerceAtLeast(0L)
                 extractor.seekTo(seekPositionUs, MediaExtractor.SEEK_TO_CLOSEST_SYNC)
 
                 val bufferInfo = MediaCodec.BufferInfo()
-                val targetSampleLimit = sampleRate * 6 // 6 seconds sample snapshot
+                val targetSampleLimit = sampleRate * 6
                 var totalSamplesCollected = 0
                 var isEos = false
 
@@ -237,7 +232,6 @@ object SmartMoodClassifier {
                             val shortBuffer = outBuffer.asShortBuffer()
                             while (shortBuffer.hasRemaining() && totalSamplesCollected < targetSampleLimit) {
                                 val sample = shortBuffer.get() / 32768.0f
-                                // Skip secondary interleaved channels to obtain mono signal stream
                                 if (channels > 1 && shortBuffer.hasRemaining()) {
                                     for (c in 1 until channels) {
                                         if (shortBuffer.hasRemaining()) shortBuffer.get()
@@ -260,7 +254,6 @@ object SmartMoodClassifier {
                 }
             }
         } catch (_: Exception) {
-            // Graceful fallback for non-standard containers or DRM-locked files
         } finally {
             try { decoder?.stop(); decoder?.release() } catch (_: Exception) {}
             try { extractor?.release() } catch (_: Exception) {}
@@ -277,7 +270,6 @@ object SmartMoodClassifier {
         var estimatedBpm = 100
 
         if (samplesCount > 1024) {
-            // 1. RMS Energy
             var sumSquares = 0.0
             for (i in 0 until samplesCount) {
                 val s = pcmFloats[i]
@@ -285,7 +277,6 @@ object SmartMoodClassifier {
             }
             energyRms = (sqrt(sumSquares / samplesCount).toFloat() * 3.5f).coerceIn(0.05f, 1.0f)
 
-            // 2. Zero-Crossing Rate (ZCR)
             var zeroCrossings = 0
             for (i in 1 until samplesCount) {
                 if ((pcmFloats[i] >= 0f && pcmFloats[i - 1] < 0f) || (pcmFloats[i] < 0f && pcmFloats[i - 1] >= 0f)) {
@@ -294,7 +285,6 @@ object SmartMoodClassifier {
             }
             zeroCrossingRate = (zeroCrossings.toFloat() / samplesCount).coerceIn(0.01f, 0.45f)
 
-            // 3. High-Pass Spectral Brightness Ratio
             var highFreqEnergy = 0.0
             for (i in 1 until samplesCount) {
                 val diff = pcmFloats[i] - pcmFloats[i - 1]
@@ -302,8 +292,7 @@ object SmartMoodClassifier {
             }
             spectralBrightness = (sqrt(highFreqEnergy / samplesCount).toFloat() * 4.0f).coerceIn(0.05f, 1.0f)
 
-            // 4. Onset Rhythm Autocorrelation (BPM Estimation)
-            val windowSize = (sampleRate * 0.05).toInt() // 50ms window
+            val windowSize = (sampleRate * 0.05).toInt()
             val numWindows = samplesCount / windowSize
             if (numWindows > 16) {
                 val envelope = FloatArray(numWindows)
@@ -317,10 +306,9 @@ object SmartMoodClassifier {
                     envelope[w] = (winEnergy / windowSize).toFloat()
                 }
 
-                // Autocorrelation for tempo lags (60 to 180 BPM range)
                 val windowsPerSec = sampleRate.toFloat() / windowSize
-                val minLag = (windowsPerSec * 60f / 185f).toInt() // max 185 BPM
-                val maxLag = (windowsPerSec * 60f / 65f).toInt()  // min 65 BPM
+                val minLag = (windowsPerSec * 60f / 185f).toInt()
+                val maxLag = (windowsPerSec * 60f / 65f).toInt()
 
                 var bestCorr = 0f
                 var bestLag = (minLag + maxLag) / 2
@@ -348,7 +336,6 @@ object SmartMoodClassifier {
         // =========================================================================
 
         val cleanTitle = song.title.lowercase(Locale.getDefault())
-        val cleanArtist = song.artist.lowercase(Locale.getDefault())
 
         val isRomanticSemantic = cleanTitle.contains("love") || cleanTitle.contains("ishq") || cleanTitle.contains("dil") ||
                 cleanTitle.contains("romantic") || cleanTitle.contains("pyaar") || cleanTitle.contains("sanam")
@@ -360,27 +347,21 @@ object SmartMoodClassifier {
                 cleanTitle.contains("dance") || cleanTitle.contains("dj") || cleanTitle.contains("bass")
 
         val classifiedMood: AudioMood = when {
-            // 1. Workout
             isWorkoutSemantic || (energyRms > 0.65f && estimatedBpm >= 122 && zeroCrossingRate > 0.08f) -> {
                 AudioMood.WORKOUT
             }
-            // 2. Party & Dance
             isPartySemantic || (energyRms > 0.58f && spectralBrightness > 0.55f && estimatedBpm >= 115) -> {
                 AudioMood.PARTY
             }
-            // 3. Sad / Melancholic
             isSadSemantic || (energyRms < 0.32f && estimatedBpm <= 95 && spectralBrightness < 0.35f) -> {
                 AudioMood.SAD
             }
-            // 4. Romantic
             isRomanticSemantic || (estimatedBpm in 72..108 && energyRms in 0.30f..0.62f && spectralBrightness in 0.28f..0.65f) -> {
                 AudioMood.ROMANTIC
             }
-            // 5. Study & Focus
             (energyRms < 0.38f && spectralBrightness < 0.40f && zeroCrossingRate < 0.06f) -> {
                 AudioMood.STUDY
             }
-            // 6. Chill (Default Mellow)
             else -> {
                 AudioMood.CHILL
             }
@@ -399,10 +380,6 @@ object SmartMoodClassifier {
         return@withContext profile
     }
 
-    /**
-     * Returns all songs currently matching a designated mood.
-     * Songs with highest energy or relevance in that category bubble to the top.
-     */
     fun getSongsForMood(mood: AudioMood, allSongs: List<Song>): List<Song> {
         val matchingSongIds = profilesCache.filterValues { it.primaryMood == mood }.keys.toSet()
         val matchingSongs = allSongs.filter { matchingSongIds.contains(it.id) }

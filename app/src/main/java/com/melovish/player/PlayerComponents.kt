@@ -1388,7 +1388,6 @@ fun QueueSheet(
     var fingerYInList by remember { mutableFloatStateOf(-1f) }
     var grabOffsetY by remember { mutableFloatStateOf(itemHeightPx / 2f) }
 
-    // 120Hz VSYNC Auto-Scroll Loop: Continuous non-dropping grip and clean deceleration
     LaunchedEffect(draggingSongId) {
         if (draggingSongId != null) {
             var lastFrameTimeNanos = 0L
@@ -1405,20 +1404,16 @@ fun QueueSheet(
                     if (containerHeightPx > (edgeZonePx * 2f)) {
                         val bottomTriggerY = containerHeightPx - edgeZonePx
 
-                        // True 3-Zone Geometry with Deceleration
                         val scrollSpeed: Float = when {
-                            // Top Zone: smooth upward scroll, decelerating to 0 as finger pulls down toward dead zone
                             fingerYInList <= edgeZonePx -> {
                                 val ratio = (1f - (fingerYInList.coerceAtLeast(0f) / edgeZonePx)).coerceIn(0f, 1f)
                                 -(maxScrollSpeedPxPerSec * (ratio * ratio))
                             }
-                            // Bottom Zone: smooth downward scroll, decelerating to 0 as finger pulls up toward dead zone
                             fingerYInList >= bottomTriggerY -> {
                                 val distFromBottom = (containerHeightPx - fingerYInList).coerceAtLeast(0f)
                                 val ratio = (1f - (distFromBottom / edgeZonePx)).coerceIn(0f, 1f)
                                 (maxScrollSpeedPxPerSec * (ratio * ratio))
                             }
-                            // Central Dead Zone: NO auto-scrolling
                             else -> 0f
                         }
 
@@ -1661,7 +1656,6 @@ fun QueueSheet(
 
                                                     val currentId = draggingSongId
                                                     val bottomTriggerY = containerHeightPx - edgeZonePx
-                                                    // Process drag hit testing cleanly in the center zone
                                                     if (currentId != null && fingerYInList > edgeZonePx && fingerYInList < bottomTriggerY) {
                                                         val visibleItems = listState.layoutInfo.visibleItemsInfo
                                                         val hitItem = visibleItems.find { item ->
@@ -1706,7 +1700,6 @@ fun QueueSheet(
                         }
                     }
 
-                    // True Independent Floating Overlay Card: Follows finger across the full display
                     if (draggingSongId != null && fingerYInList >= -150f) {
                         val draggedSong = tempQueue.find { it.id == draggingSongId }
                         if (draggedSong != null) {
@@ -2162,10 +2155,14 @@ fun MenuRow(icon: String, text: String, isDark: Boolean, isDanger: Boolean = fal
     }
 }
 
-// Mini Player Dock with Frosted Specular Border & Uniform Clean Background
+// Mini Player Dock with Elevated Floating Island Shadow, Frosted Surface & Swipe-to-Dismiss Gesture
 @UnstableApi
 @Composable
-fun MiniPlayerDock(manager: MusicManager, onClick: () -> Unit) {
+fun MiniPlayerDock(
+    manager: MusicManager,
+    onClick: () -> Unit,
+    onDismiss: () -> Unit = {}
+) {
     val song = manager.currentSong ?: return
     val accent = manager.accentColor
     val isDark = manager.isDarkMode
@@ -2178,15 +2175,23 @@ fun MiniPlayerDock(manager: MusicManager, onClick: () -> Unit) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 6.dp)
+            .padding(horizontal = 14.dp, vertical = 6.dp)
+            .shadow(
+                elevation = 14.dp,
+                shape = RoundedCornerShape(22.dp),
+                spotColor = accent.copy(alpha = 0.42f),
+                ambientColor = if (isDark) Color.Black.copy(alpha = 0.55f) else Color(0x33000000)
+            )
             .clip(RoundedCornerShape(22.dp))
-            .background(manager.getCurrentBackgroundColor().copy(alpha = 0.85f))
-            .background(manager.getCurrentSurfaceColor())
+            .background(manager.getCurrentSurfaceColor().copy(alpha = 0.92f))
             .border(1.2.dp, manager.getGlassBorderBrush(), RoundedCornerShape(22.dp))
-            .pointerInput(Unit) {
+            .pointerInput(manager.isPlaying) {
                 detectVerticalDragGestures { _, dragAmount ->
-                    if (dragAmount < -24f) {
+                    if (dragAmount < -22f) {
                         onClick()
+                    } else if (dragAmount > 32f && !manager.isPlaying) {
+                        manager.triggerHapticFeedback(false)
+                        onDismiss()
                     }
                 }
             }

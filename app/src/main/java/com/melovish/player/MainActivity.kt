@@ -404,12 +404,10 @@ fun MelovishRootApp(manager: MusicManager) {
     val activity = context as? Activity
     val systemDark = isSystemInDarkTheme()
 
-    // Initialize the Smart Mood Classifier cache
     LaunchedEffect(Unit) {
         SmartMoodClassifier.init(context)
     }
 
-    // Background offline DSP mood analyzer for unscanned tracks
     LaunchedEffect(manager.allSongs.size) {
         if (manager.allSongs.isNotEmpty()) {
             withContext(Dispatchers.IO) {
@@ -462,6 +460,17 @@ fun MelovishRootApp(manager: MusicManager) {
 
     var isPlayerExpanded by remember { mutableStateOf(false) }
     var isSettingsEqOpen by remember { mutableStateOf(false) }
+    var isMiniPlayerDismissed by remember { mutableStateOf(false) }
+
+    // Centralized Smart Click-Routing: Expands player if current song re-clicked; otherwise plays new song & shows miniplayer
+    val handleSmartSongClick: (Song, List<Song>, String) -> Unit = { song, list, source ->
+        if (manager.currentSong?.id == song.id) {
+            isPlayerExpanded = true
+        } else {
+            isMiniPlayerDismissed = false
+            manager.playSong(song, list, source)
+        }
+    }
 
     var showRootCreatePlaylistDialog by remember { mutableStateOf(false) }
     var showRootManagePlaylistsDialog by remember { mutableStateOf(false) }
@@ -655,7 +664,8 @@ fun MelovishRootApp(manager: MusicManager) {
                                 manager = manager,
                                 isDark = isDark,
                                 onBack = { selectedMood = null },
-                                onSongMenuClick = { song: Song -> activeSongForMenu = song }
+                                onSongMenuClick = { song: Song -> activeSongForMenu = song },
+                                onSongClick = { song -> handleSmartSongClick(song, moodSongs, "${curMood.emoji} ${curMood.title}") }
                             )
                         }
                         selectedArtist != null -> {
@@ -674,13 +684,17 @@ fun MelovishRootApp(manager: MusicManager) {
                         }
                         selectedAlbum != null -> {
                             val curAlbum = selectedAlbum!!
+                            val albumSongs = remember(curAlbum, manager.allSongs.size) {
+                                manager.allSongs.filter { it.album.equals(curAlbum, ignoreCase = true) }.toImmutableList()
+                            }
                             FilteredSongsScreen(
                                 title = "Album: $curAlbum",
-                                songs = manager.allSongs.filter { it.album.equals(curAlbum, ignoreCase = true) }.toImmutableList(),
+                                songs = albumSongs,
                                 manager = manager,
                                 isDark = isDark,
                                 onBack = { selectedAlbum = null },
-                                onSongMenuClick = { song: Song -> activeSongForMenu = song }
+                                onSongMenuClick = { song: Song -> activeSongForMenu = song },
+                                onSongClick = { song -> handleSmartSongClick(song, albumSongs, "Album: $curAlbum") }
                             )
                         }
                         selectedPlaylist != null -> {
@@ -691,6 +705,7 @@ fun MelovishRootApp(manager: MusicManager) {
                                 isDark = isDark,
                                 onBack = { selectedPlaylist = null },
                                 onSongMenuClick = { song: Song -> activeSongForMenu = song },
+                                onSongClick = { song, songs -> handleSmartSongClick(song, songs, curPlaylist.name) },
                                 onFolderClick = { folder: String -> selectedFolder = folder },
                                 onOpenGridSizeDialog = { showRootGridSizeDialog = true }
                             )
@@ -703,6 +718,7 @@ fun MelovishRootApp(manager: MusicManager) {
                                 isDark = isDark,
                                 onBack = { selectedFolder = null },
                                 onSongMenuClick = { song: Song -> activeSongForMenu = song },
+                                onSongClick = { song, songs -> handleSmartSongClick(song, songs, curFolder) },
                                 onOpenGridSizeDialog = { showRootGridSizeDialog = true }
                             )
                         }
@@ -718,7 +734,8 @@ fun MelovishRootApp(manager: MusicManager) {
                             manager = manager,
                             listState = searchListState,
                             onSongMenuClick = { song: Song -> activeSongForMenu = song },
-                            onMoodClick = { mood -> selectedMood = mood }
+                            onMoodClick = { mood -> selectedMood = mood },
+                            onSongClick = { song, songs -> handleSmartSongClick(song, songs, "Search Results") }
                         )
                         activeScreen == "library" -> LibraryScreen(
                             manager = manager,
@@ -731,7 +748,11 @@ fun MelovishRootApp(manager: MusicManager) {
                             manager = manager,
                             listState = homeListState,
                             onPlaylistClick = { pl: Playlist -> selectedPlaylist = pl },
-                            onResumeClick = { manager.resumeLastPlayed() },
+                            onResumeClick = {
+                                isMiniPlayerDismissed = false
+                                manager.resumeLastPlayed()
+                            },
+                            onSongClick = { song, songs -> handleSmartSongClick(song, songs, "All Songs") },
                             onSongMenuClick = { song: Song -> activeSongForMenu = song },
                             onOpenCreatePlaylist = { showRootCreatePlaylistDialog = true },
                             onOpenManagePlaylists = { showRootManagePlaylistsDialog = true },
@@ -742,8 +763,12 @@ fun MelovishRootApp(manager: MusicManager) {
                     }
                 }
 
-                if (manager.currentSong != null && !isPlayerExpanded) {
-                    MiniPlayerDock(manager = manager, onClick = { isPlayerExpanded = true })
+                if (manager.currentSong != null && !isPlayerExpanded && !isMiniPlayerDismissed) {
+                    MiniPlayerDock(
+                        manager = manager,
+                        onClick = { isPlayerExpanded = true },
+                        onDismiss = { isMiniPlayerDismissed = true }
+                    )
                 }
 
                 if (isMainTabScreen) {
@@ -1058,7 +1083,7 @@ fun MelovishRootApp(manager: MusicManager) {
                                         .padding(12.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text("➡️️", fontSize = 18.sp)
+                                    Text("➡", fontSize = 18.sp)
                                     Spacer(modifier = Modifier.width(12.dp))
                                     Text("Move track to another artist...", fontSize = 15.sp, color = manager.getCurrentTextColor(), fontWeight = FontWeight.SemiBold)
                                 }
@@ -1265,7 +1290,7 @@ fun MelovishRootApp(manager: MusicManager) {
 }
 
 // =========================================================================
-// 📌 HOME SCREEN (With Single-Tap Shuffle Play Icon Next To Sort Button)
+// 📌 HOME SCREEN (With Smart Click Song Routing & Single-Tap Shuffle Play)
 // =========================================================================
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -1276,6 +1301,7 @@ fun HomeScreen(
     listState: LazyListState,
     onPlaylistClick: (Playlist) -> Unit,
     onResumeClick: () -> Unit,
+    onSongClick: (Song, List<Song>) -> Unit,
     onSongMenuClick: (Song) -> Unit,
     onOpenCreatePlaylist: () -> Unit,
     onOpenManagePlaylists: () -> Unit,
@@ -1350,7 +1376,7 @@ fun HomeScreen(
                             RecentlyPlayedCard(
                                 song = song,
                                 manager = manager,
-                                onClick = { manager.playSong(song, manager.historySongs, "Recently Played") }
+                                onClick = { onSongClick(song, manager.historySongs) }
                             )
                         }
                     }
@@ -1508,20 +1534,19 @@ fun HomeScreen(
 
                         Spacer(modifier = Modifier.width(6.dp))
 
-                        // Shuffle Play Icon (Single tap to shuffle play all songs)
                         Box(
                             modifier = Modifier
                                 .size(36.dp)
                                 .clip(CircleShape)
                                 .background(cardBg)
                                 .border(1.2.dp, accent.copy(alpha = 0.5f), CircleShape)
-                            .clickable {
-                                val shuffled = sortedSongs.shuffled()
-                                if (shuffled.isNotEmpty()) {
-                                    manager.triggerHapticFeedback(true)
-                                    manager.playSong(shuffled.first(), shuffled, "All Songs (Shuffle)")
-                                }
-                            },
+                                .clickable {
+                                    val shuffled = sortedSongs.shuffled()
+                                    if (shuffled.isNotEmpty()) {
+                                        manager.triggerHapticFeedback(true)
+                                        onSongClick(shuffled.first(), shuffled)
+                                    }
+                                },
                             contentAlignment = Alignment.Center
                         ) {
                             ShuffleActionVector(tint = accent, modifier = Modifier.size(22.dp))
@@ -1606,7 +1631,7 @@ fun HomeScreen(
                                 song = song,
                                 manager = manager,
                                 isDark = isDark,
-                                onPlay = { manager.playSong(song, sortedSongs, "All Songs") },
+                                onPlay = { onSongClick(song, sortedSongs) },
                                 onMenuClick = { onSongMenuClick(song) }
                             )
                         }
@@ -1623,7 +1648,7 @@ fun HomeScreen(
                                             song = song,
                                             manager = manager,
                                             isDark = isDark,
-                                            onPlay = { manager.playSong(song, sortedSongs, "All Songs") },
+                                            onPlay = { onSongClick(song, sortedSongs) },
                                             onMenuClick = { onSongMenuClick(song) }
                                         )
                                     }
@@ -1644,7 +1669,7 @@ fun HomeScreen(
                                             song = song,
                                             manager = manager,
                                             isDark = isDark,
-                                            onPlay = { manager.playSong(song, sortedSongs, "All Songs") },
+                                            onPlay = { onSongClick(song, sortedSongs) },
                                             onMenuClick = { onSongMenuClick(song) }
                                         )
                                     }
@@ -1665,7 +1690,7 @@ fun HomeScreen(
                                             song = song,
                                             manager = manager,
                                             isDark = isDark,
-                                            onPlay = { manager.playSong(song, sortedSongs, "All Songs") },
+                                            onPlay = { onSongClick(song, sortedSongs) },
                                             onMenuClick = { onSongMenuClick(song) }
                                         )
                                     }
@@ -1686,7 +1711,7 @@ fun HomeScreen(
                                             song = song,
                                             manager = manager,
                                             isDark = isDark,
-                                            onPlay = { manager.playSong(song, sortedSongs, "All Songs") },
+                                            onPlay = { onSongClick(song, sortedSongs) },
                                             onMenuClick = { onSongMenuClick(song) }
                                         )
                                     }
@@ -1799,7 +1824,7 @@ fun LibraryScreen(
                                 .clip(CircleShape)
                                 .background(cardBg)
                                 .border(1.2.dp, glassBorderBrush, CircleShape)
-                                .clickable { showFolderSortMenu = true },
+                            .clickable { showFolderSortMenu = true },
                             contentAlignment = Alignment.Center
                         ) {
                             SortListVector(tint = accent, modifier = Modifier.size(18.dp))
@@ -2035,6 +2060,7 @@ fun PlaylistDetailScreen(
     isDark: Boolean,
     onBack: () -> Unit,
     onSongMenuClick: (Song) -> Unit,
+    onSongClick: (Song, List<Song>) -> Unit,
     onFolderClick: (String) -> Unit,
     onOpenGridSizeDialog: () -> Unit = {}
 ) {
@@ -2176,7 +2202,7 @@ fun PlaylistDetailScreen(
                                 key = { it.id },
                                 contentType = { "playlist_song_row" }
                             ) { song ->
-                                UniversalSongRow(song = song, manager = manager, isDark = isDark, onPlay = { manager.playSong(song, sortedSongs, playlist.name) }, onMenuClick = { onSongMenuClick(song) })
+                                UniversalSongRow(song = song, manager = manager, isDark = isDark, onPlay = { onSongClick(song, sortedSongs) }, onMenuClick = { onSongMenuClick(song) })
                             }
                         }
                     }
@@ -2193,7 +2219,7 @@ fun PlaylistDetailScreen(
                                 key = { it.id },
                                 contentType = { "playlist_song_card_2" }
                             ) { song ->
-                                SquareAlbumOverlayCard(song = song, manager = manager, isDark = isDark, onPlay = { manager.playSong(song, sortedSongs, playlist.name) }, onMenuClick = { onSongMenuClick(song) })
+                                SquareAlbumOverlayCard(song = song, manager = manager, isDark = isDark, onPlay = { onSongClick(song, sortedSongs) }, onMenuClick = { onSongMenuClick(song) })
                             }
                         }
                     }
@@ -2210,7 +2236,7 @@ fun PlaylistDetailScreen(
                                 key = { it.id },
                                 contentType = { "playlist_song_card_3" }
                             ) { song ->
-                                SquareAlbumOverlayCard(song = song, manager = manager, isDark = isDark, onPlay = { manager.playSong(song, sortedSongs, playlist.name) }, onMenuClick = { onSongMenuClick(song) })
+                                SquareAlbumOverlayCard(song = song, manager = manager, isDark = isDark, onPlay = { onSongClick(song, sortedSongs) }, onMenuClick = { onSongMenuClick(song) })
                             }
                         }
                     }
@@ -2227,7 +2253,7 @@ fun PlaylistDetailScreen(
                                 key = { it.id },
                                 contentType = { "playlist_song_card_4" }
                             ) { song ->
-                                SquareAlbumOverlayCard(song = song, manager = manager, isDark = isDark, onPlay = { manager.playSong(song, sortedSongs, playlist.name) }, onMenuClick = { onSongMenuClick(song) })
+                                SquareAlbumOverlayCard(song = song, manager = manager, isDark = isDark, onPlay = { onSongClick(song, sortedSongs) }, onMenuClick = { onSongMenuClick(song) })
                             }
                         }
                     }
@@ -2244,7 +2270,7 @@ fun PlaylistDetailScreen(
                                 key = { it.id },
                                 contentType = { "playlist_song_card_hero" }
                             ) { song ->
-                                HeroAlbumCard(song = song, manager = manager, isDark = isDark, onPlay = { manager.playSong(song, sortedSongs, playlist.name) }, onMenuClick = { onSongMenuClick(song) })
+                                HeroAlbumCard(song = song, manager = manager, isDark = isDark, onPlay = { onSongClick(song, sortedSongs) }, onMenuClick = { onSongMenuClick(song) })
                             }
                         }
                     }
@@ -2273,6 +2299,7 @@ fun FolderSongsScreen(
     isDark: Boolean,
     onBack: () -> Unit,
     onSongMenuClick: (Song) -> Unit,
+    onSongClick: (Song, List<Song>) -> Unit,
     onOpenGridSizeDialog: () -> Unit = {}
 ) {
     val rawSongs = remember(folderName, manager.allSongs.size) { manager.allSongs.filter { it.folderName == folderName } }
@@ -2364,7 +2391,7 @@ fun FolderSongsScreen(
                             .border(1.2.dp, accent.copy(alpha = 0.5f), CircleShape)
                             .clickable {
                                 val shuffled = sortedSongs.shuffled()
-                                if (shuffled.isNotEmpty()) manager.playSong(shuffled.first(), shuffled, folderName)
+                                if (shuffled.isNotEmpty()) onSongClick(shuffled.first(), shuffled)
                             },
                         contentAlignment = Alignment.Center
                     ) {
@@ -2388,7 +2415,7 @@ fun FolderSongsScreen(
                                 key = { it.id },
                                 contentType = { "folder_inner_row" }
                             ) { song ->
-                                UniversalSongRow(song = song, manager = manager, isDark = isDark, onPlay = { manager.playSong(song, sortedSongs, folderName) }, onMenuClick = { onSongMenuClick(song) })
+                                UniversalSongRow(song = song, manager = manager, isDark = isDark, onPlay = { onSongClick(song, sortedSongs) }, onMenuClick = { onSongMenuClick(song) })
                             }
                         }
                     }
@@ -2405,7 +2432,7 @@ fun FolderSongsScreen(
                                 key = { it.id },
                                 contentType = { "folder_inner_card_2" }
                             ) { song ->
-                                SquareAlbumOverlayCard(song = song, manager = manager, isDark = isDark, onPlay = { manager.playSong(song, sortedSongs, folderName) }, onMenuClick = { onSongMenuClick(song) })
+                                SquareAlbumOverlayCard(song = song, manager = manager, isDark = isDark, onPlay = { onSongClick(song, sortedSongs) }, onMenuClick = { onSongMenuClick(song) })
                             }
                         }
                     }
@@ -2422,7 +2449,7 @@ fun FolderSongsScreen(
                                 key = { it.id },
                                 contentType = { "folder_inner_card_3" }
                             ) { song ->
-                                SquareAlbumOverlayCard(song = song, manager = manager, isDark = isDark, onPlay = { manager.playSong(song, sortedSongs, folderName) }, onMenuClick = { onSongMenuClick(song) })
+                                SquareAlbumOverlayCard(song = song, manager = manager, isDark = isDark, onPlay = { onSongClick(song, sortedSongs) }, onMenuClick = { onSongMenuClick(song) })
                             }
                         }
                     }
@@ -2439,7 +2466,7 @@ fun FolderSongsScreen(
                                 key = { it.id },
                                 contentType = { "folder_inner_card_4" }
                             ) { song ->
-                                SquareAlbumOverlayCard(song = song, manager = manager, isDark = isDark, onPlay = { manager.playSong(song, sortedSongs, folderName) }, onMenuClick = { onSongMenuClick(song) })
+                                SquareAlbumOverlayCard(song = song, manager = manager, isDark = isDark, onPlay = { onSongClick(song, sortedSongs) }, onMenuClick = { onSongMenuClick(song) })
                             }
                         }
                     }
@@ -2456,7 +2483,7 @@ fun FolderSongsScreen(
                                 key = { it.id },
                                 contentType = { "folder_inner_card_hero" }
                             ) { song ->
-                                HeroAlbumCard(song = song, manager = manager, isDark = isDark, onPlay = { manager.playSong(song, sortedSongs, folderName) }, onMenuClick = { onSongMenuClick(song) })
+                                HeroAlbumCard(song = song, manager = manager, isDark = isDark, onPlay = { onSongClick(song, sortedSongs) }, onMenuClick = { onSongMenuClick(song) })
                             }
                         }
                     }
@@ -3787,7 +3814,7 @@ fun LibraryFolderSquareCard(
 }
 
 // =========================================================================
-// 📌 SEARCH SCREEN (With AI Mood Playlists Hub)
+// 📌 SEARCH SCREEN (With AI Mood Playlists Hub & Smart Song Click Routing)
 // =========================================================================
 
 @UnstableApi
@@ -3796,7 +3823,8 @@ fun SearchScreen(
     manager: MusicManager,
     listState: LazyListState,
     onSongMenuClick: (Song) -> Unit,
-    onMoodClick: (AudioMood) -> Unit = {}
+    onMoodClick: (AudioMood) -> Unit = {},
+    onSongClick: (Song, List<Song>) -> Unit = { song, list -> manager.playSong(song, list, "Search Results") }
 ) {
     var query by remember { mutableStateOf("") }
     val focusRequester = remember { FocusRequester() }
@@ -3968,7 +3996,13 @@ fun SearchScreen(
                     key = { it.id },
                     contentType = { "search_result_row" }
                 ) { song ->
-                    UniversalSongRow(song = song, manager = manager, isDark = isDark, onPlay = { manager.playSong(song, filtered, "Search Results") }, onMenuClick = { onSongMenuClick(song) })
+                    UniversalSongRow(
+                        song = song,
+                        manager = manager,
+                        isDark = isDark,
+                        onPlay = { onSongClick(song, filtered) },
+                        onMenuClick = { onSongMenuClick(song) }
+                    )
                 }
             }
         }
@@ -4118,7 +4152,15 @@ fun PlaylistAddSearchDialog(playlist: Playlist, manager: MusicManager, onDismiss
 
 @UnstableApi
 @Composable
-fun FilteredSongsScreen(title: String, songs: ImmutableList<Song>, manager: MusicManager, isDark: Boolean, onBack: () -> Unit, onSongMenuClick: (Song) -> Unit) {
+fun FilteredSongsScreen(
+    title: String,
+    songs: ImmutableList<Song>,
+    manager: MusicManager,
+    isDark: Boolean,
+    onBack: () -> Unit,
+    onSongMenuClick: (Song) -> Unit,
+    onSongClick: (Song) -> Unit = { song -> manager.playSong(song, songs, title) }
+) {
     val textColor = manager.getCurrentTextColor()
     Column(modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
         Row(modifier = Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 2.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -4136,7 +4178,13 @@ fun FilteredSongsScreen(title: String, songs: ImmutableList<Song>, manager: Musi
                 key = { it.id },
                 contentType = { "filtered_song_row" }
             ) { song ->
-                UniversalSongRow(song = song, manager = manager, isDark = isDark, onPlay = { manager.playSong(song, songs, title) }, onMenuClick = { onSongMenuClick(song) })
+                UniversalSongRow(
+                    song = song,
+                    manager = manager,
+                    isDark = isDark,
+                    onPlay = { onSongClick(song) },
+                    onMenuClick = { onSongMenuClick(song) }
+                )
             }
         }
     }
