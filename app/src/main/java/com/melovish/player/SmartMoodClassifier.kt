@@ -13,6 +13,7 @@ import androidx.compose.runtime.setValue
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
+import java.io.File
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.util.Locale
@@ -155,14 +156,32 @@ object SmartMoodClassifier {
 
         try {
             extractor = MediaExtractor()
-            val uri = Uri.parse(song.uri)
-            try {
-                // Fixed: Explicit null cast for Map<String, String>? to prevent overload ambiguity
-                extractor.setDataSource(context, uri, null as Map<String, String>?)
-            } catch (_: Exception) {
-                if (song.path.isNotBlank()) {
+            var dataSourceSet = false
+
+            // Strategy 1: Direct file path
+            if (song.path.isNotBlank() && File(song.path).exists()) {
+                try {
                     extractor.setDataSource(song.path)
-                }
+                    dataSourceSet = true
+                } catch (_: Exception) {}
+            }
+
+            // Strategy 2: FileDescriptor via ContentResolver (Guaranteed compile & runtime safety)
+            if (!dataSourceSet && song.uri.toString().isNotBlank()) {
+                try {
+                    val uri = if (song.uri is Uri) song.uri else Uri.parse(song.uri.toString())
+                    context.contentResolver.openFileDescriptor(uri, "r")?.use { pfd ->
+                        extractor.setDataSource(pfd.fileDescriptor)
+                        dataSourceSet = true
+                    }
+                } catch (_: Exception) {}
+            }
+
+            if (!dataSourceSet && song.path.isNotBlank()) {
+                try {
+                    extractor.setDataSource(song.path)
+                    dataSourceSet = true
+                } catch (_: Exception) {}
             }
 
             var audioTrackIndex = -1
