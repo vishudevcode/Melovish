@@ -370,7 +370,7 @@ fun DefaultProfileAvatar(
             val bodyPath = Path().apply {
                 moveTo(w * 0.16f, h * 0.88f)
                 cubicTo(w * 0.16f, h * 0.66f, w * 0.28f, h * 0.49f, w * 0.50f, h * 0.49f)
-                cubicTo(w * 0.72f, h * 0.49f, w * 0.84f, h * 0.66f, w * 0.84f, h * 0.88f)
+                cubicTo(w * 0.72f, h * 0.66f, w * 0.84f, h * 0.66f, w * 0.84f, h * 0.88f)
                 cubicTo(w * 0.76f, h * 0.95f, w * 0.24f, h * 0.95f, w * 0.16f, h * 0.88f)
                 close()
             }
@@ -2168,7 +2168,7 @@ fun MiniPlayerDock(
     val isDark = manager.isDarkMode
     val textColor = manager.getCurrentTextColor()
 
-    // 1. Exact Dialog-grade frosted background (same color & opacity formula as modal sheets in Image 2)[span_0](start_span)[span_0](end_span)
+    // 1. Direct Dialog-grade background: identical formula, opacity & tint as bottom modal sheets (Image 2)[span_0](start_span)[span_0](end_span)
     val dialogSurfaceBg = manager.getCurrentDialogColor()
     val glassBorderBrush = manager.getGlassBorderBrush()
 
@@ -2177,8 +2177,8 @@ fun MiniPlayerDock(
         if (albumArtBitmap == null) albumArtBitmap = manager.loadAlbumArtAsync(song)
     }
 
-    // 2. Fading slight dark grayish ambient shadow all around for a true elevated floating look
-    val ambientShadowColor = if (isDark) Color(0x66000000) else Color(0x2E0F172A)
+    // 2. Fading slight dark grayish ambient shadow all around for a soft, realistic floating lift
+    val ambientShadowColor = if (isDark) Color(0x66000000) else Color(0x33000000)
 
     Box(
         modifier = Modifier
