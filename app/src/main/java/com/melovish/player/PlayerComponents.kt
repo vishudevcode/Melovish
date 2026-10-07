@@ -28,6 +28,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
@@ -106,6 +107,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.input.pointer.PointerInputChange
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -1268,7 +1270,7 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                         .border(1.2.dp, manager.getGlassBorderBrush(), RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
                         .clickable(enabled = false) {}
                         .padding(22.dp)
-                ) {
+        ) {
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text(
                             text = "${activeSong.title} - ${if (activeSong.artist.isNotBlank()) activeSong.artist else "Unknown"}",
@@ -1464,13 +1466,7 @@ fun QueueSheet(
                 return Offset.Zero
             }
 
-            override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
-                if (available.y > 15f && draggingSongId == null) {
-                    onDismiss()
-                    return available
-                }
-                return Offset.Zero
-            }
+            override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset = available
 
             override suspend fun onPreFling(available: Velocity): Velocity {
                 if (available.y > 350f && listState.firstVisibleItemIndex == 0 && draggingSongId == null) {
@@ -2155,7 +2151,7 @@ fun MenuRow(icon: String, text: String, isDark: Boolean, isDanger: Boolean = fal
     }
 }
 
-// Mini Player Dock with Frosted Glass Surface, Floating Island Depth Shadow & Swipe-to-Dismiss Gesture
+// Mini Player Dock with Frosted Glass Surface, Floating Island Depth Shadow, Swipe-to-Dismiss Gesture & Built-in Progress Slider
 @UnstableApi
 @Composable
 fun MiniPlayerDock(
@@ -2172,19 +2168,29 @@ fun MiniPlayerDock(
         if (albumArtBitmap == null) albumArtBitmap = manager.loadAlbumArtAsync(song)
     }
 
+    var isScrubbing by remember { mutableStateOf(false) }
+    var scrubFraction by remember { mutableFloatStateOf(0f) }
+
+    val currentPosition = manager.currentPosition
+    val duration = manager.duration.coerceAtLeast(1L)
+    val progressFraction = if (isScrubbing) {
+        scrubFraction
+    } else {
+        (currentPosition.toFloat() / duration.toFloat()).coerceIn(0f, 1f)
+    }
+
+    // Outer Floating Container with Ambient Elevation Shadow
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 14.dp, vertical = 6.dp)
             .shadow(
-                elevation = 16.dp,
-                shape = RoundedCornerShape(22.dp),
-                spotColor = accent.copy(alpha = 0.50f),
-                ambientColor = if (isDark) Color.Black.copy(alpha = 0.75f) else Color(0x55000000)
+                elevation = 22.dp,
+                shape = RoundedCornerShape(26.dp),
+                spotColor = accent.copy(alpha = 0.55f),
+                ambientColor = if (isDark) Color.Black.copy(alpha = 0.85f) else Color(0x66000000)
             )
-            .clip(RoundedCornerShape(22.dp))
-            .background(manager.getCurrentSurfaceColor().copy(alpha = 0.94f))
-            .border(1.2.dp, manager.getGlassBorderBrush(), RoundedCornerShape(22.dp))
+            .clip(RoundedCornerShape(26.dp))
             .pointerInput(manager.isPlaying) {
                 detectVerticalDragGestures { _, dragAmount ->
                     if (dragAmount < -22f) {
@@ -2196,82 +2202,209 @@ fun MiniPlayerDock(
                 }
             }
             .clickable { onClick() }
-            .padding(horizontal = 14.dp, vertical = 9.dp)
     ) {
-        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                modifier = Modifier
-                    .size(46.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(Color(0xFF1E293B)),
-                contentAlignment = Alignment.Center
-            ) {
-                if (albumArtBitmap != null) {
-                    Image(
-                        bitmap = albumArtBitmap!!.asImageBitmap(),
-                        contentDescription = "Art",
-                        modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Crop
+        // LAYER 1: Optical Frosted Substrate (Diffuses underlying scrolling content)
+        Box(
+            modifier = Modifier
+                .matchParentSize()
+                .background(
+                    if (isDark) {
+                        Color(0xFF0F172A).copy(alpha = if (manager.isFrostedGlassEnabled) 0.76f else 0.95f)
+                    } else {
+                        Color(0xFFFFFFFF).copy(alpha = if (manager.isFrostedGlassEnabled) 0.78f else 0.96f)
+                    }
+                )
+                .background(
+                    Brush.verticalGradient(
+                        colors = if (isDark) {
+                            listOf(
+                                Color.White.copy(alpha = 0.14f),
+                                Color.Black.copy(alpha = 0.45f)
+                            )
+                        } else {
+                            listOf(
+                                Color.White.copy(alpha = 0.70f),
+                                Color(0xFFE2E8F0).copy(alpha = 0.50f)
+                            )
+                        }
                     )
-                } else {
-                    Text("🎵", fontSize = 20.sp)
+                )
+        )
+
+        // LAYER 2: Specular Rim Highlight Border
+        Box(
+            modifier = Modifier
+                .matchParentSize()
+                .border(
+                    width = 1.4.dp,
+                    brush = manager.getGlassBorderBrush(),
+                    shape = RoundedCornerShape(26.dp)
+                )
+        )
+
+        // LAYER 3: Sharp Foreground Controls + Embedded Frosted Slider
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = 14.dp, end = 14.dp, top = 10.dp, bottom = 6.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(46.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(Color(0xFF1E293B)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (albumArtBitmap != null) {
+                        Image(
+                            bitmap = albumArtBitmap!!.asImageBitmap(),
+                            contentDescription = "Art",
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop
+                        )
+                    } else {
+                        Text("🎵", fontSize = 20.sp)
+                    }
+                }
+
+                Spacer(modifier = Modifier.width(12.dp))
+
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = song.title,
+                        color = manager.getCurrentTextColor(),
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = "${formatFileSize(song.size)} • ${if (song.artist.isNotBlank()) song.artist else "Melovish"}",
+                        color = accent,
+                        fontSize = 11.5.sp,
+                        fontWeight = FontWeight.Medium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+
+                Spacer(modifier = Modifier.width(8.dp))
+
+                Box(
+                    modifier = Modifier
+                        .size(42.dp)
+                        .shadow(elevation = 6.dp, shape = CircleShape, spotColor = accent)
+                        .clip(CircleShape)
+                        .background(accent)
+                        .border(1.2.dp, Color.White.copy(alpha = 0.30f), CircleShape)
+                        .clickable {
+                            manager.triggerHapticFeedback(true)
+                            manager.togglePlayPause()
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (manager.isPlaying) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Box(modifier = Modifier.size(3.5.dp, 14.dp).clip(RoundedCornerShape(2.dp)).background(Color.White))
+                            Box(modifier = Modifier.size(3.5.dp, 14.dp).clip(RoundedCornerShape(2.dp)).background(Color.White))
+                        }
+                    } else {
+                        Canvas(
+                            modifier = Modifier
+                                .size(16.dp)
+                                .offset(x = 1.2.dp)
+                        ) {
+                            val path = Path().apply {
+                                moveTo(size.width * 0.18f, size.height * 0.12f)
+                                lineTo(size.width * 0.88f, size.height * 0.50f)
+                                lineTo(size.width * 0.18f, size.height * 0.88f)
+                                close()
+                            }
+                            drawPath(path, color = Color.White)
+                        }
+                    }
                 }
             }
 
-            Spacer(modifier = Modifier.width(12.dp))
+            Spacer(modifier = Modifier.height(8.dp))
 
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = song.title,
-                    color = manager.getCurrentTextColor(),
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Text(
-                    text = "${formatFileSize(song.size)} • ${if (song.artist.isNotBlank()) song.artist else "Melovish"}",
-                    color = accent,
-                    fontSize = 11.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-
-            Spacer(modifier = Modifier.width(8.dp))
-
+            // 🎚️ Embedded Frosted Glass Progress Slider
             Box(
                 modifier = Modifier
-                    .size(42.dp)
-                    .shadow(elevation = 6.dp, shape = CircleShape, spotColor = accent)
-                    .clip(CircleShape)
-                    .background(accent)
-                    .border(1.2.dp, Color.White.copy(alpha = 0.25f), CircleShape)
-                    .clickable {
-                        manager.triggerHapticFeedback(true)
-                        manager.togglePlayPause()
+                    .fillMaxWidth()
+                    .height(14.dp)
+                    .pointerInput(duration) {
+                        detectDragGestures(
+                            onDragStart = { offset ->
+                                isScrubbing = true
+                                manager.triggerHapticFeedback(false)
+                                val frac = (offset.x / size.width).coerceIn(0f, 1f)
+                                scrubFraction = frac
+                            },
+                            onDrag = { change: PointerInputChange, _ ->
+                                change.consume()
+                                val frac = (change.position.x / size.width).coerceIn(0f, 1f)
+                                scrubFraction = frac
+                            },
+                            onDragEnd = {
+                                val targetMs = (scrubFraction * duration).toLong()
+                                manager.seekTo(targetMs)
+                                manager.triggerHapticFeedback(true)
+                                isScrubbing = false
+                            },
+                            onDragCancel = {
+                                isScrubbing = false
+                            }
+                        )
                     },
                 contentAlignment = Alignment.Center
             ) {
-                if (manager.isPlaying) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Box(modifier = Modifier.size(3.5.dp, 14.dp).clip(RoundedCornerShape(2.dp)).background(Color.White))
-                        Box(modifier = Modifier.size(3.5.dp, 14.dp).clip(RoundedCornerShape(2.dp)).background(Color.White))
+                Canvas(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(4.dp)
+                ) {
+                    val trackHeight = size.height
+                    val totalWidth = size.width
+                    val activeWidth = totalWidth * progressFraction
+
+                    // Inactive track (frosted acrylic backing)
+                    drawRoundRect(
+                        color = if (isDark) Color(0x33FFFFFF) else Color(0x22000000),
+                        size = Size(totalWidth, trackHeight),
+                        cornerRadius = CornerRadius(trackHeight / 2f, trackHeight / 2f)
+                    )
+
+                    // Active solid accent fill
+                    drawRoundRect(
+                        color = accent,
+                        size = Size(activeWidth, trackHeight),
+                        cornerRadius = CornerRadius(trackHeight / 2f, trackHeight / 2f)
+                    )
+
+                    // Prominent anchor tick dots at 25% intervals
+                    for (i in 0..4) {
+                        val anchorX = (i / 4f) * totalWidth
+                        val isFilled = anchorX <= activeWidth
+                        val dotRadius = 2.dp.toPx()
+
+                        drawCircle(
+                            color = if (isFilled) Color.White.copy(alpha = 0.90f) else accent.copy(alpha = 0.40f),
+                            radius = dotRadius,
+                            center = Offset(anchorX, trackHeight / 2f)
+                        )
                     }
-                } else {
-                    Canvas(
-                        modifier = Modifier
-                            .size(16.dp)
-                            .offset(x = 1.2.dp)
-                    ) {
-                        val path = Path().apply {
-                            moveTo(size.width * 0.18f, size.height * 0.12f)
-                            lineTo(size.width * 0.88f, size.height * 0.50f)
-                            lineTo(size.width * 0.18f, size.height * 0.88f)
-                            close()
-                        }
-                        drawPath(path, color = Color.White)
-                    }
+
+                    // Scrubber thumb bead on active head
+                    drawCircle(
+                        color = Color.White,
+                        radius = 4.5.dp.toPx(),
+                        center = Offset(activeWidth.coerceIn(0f, totalWidth), trackHeight / 2f)
+                    )
                 }
             }
         }
