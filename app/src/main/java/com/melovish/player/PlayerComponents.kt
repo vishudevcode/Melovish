@@ -370,7 +370,7 @@ fun DefaultProfileAvatar(
             val bodyPath = Path().apply {
                 moveTo(w * 0.16f, h * 0.88f)
                 cubicTo(w * 0.16f, h * 0.66f, w * 0.28f, h * 0.49f, w * 0.50f, h * 0.49f)
-                cubicTo(w * 0.72f, h * 0.66f, w * 0.84f, h * 0.66f, w * 0.84f, h * 0.88f)
+                cubicTo(w * 0.72f, h * 0.49f, w * 0.84f, h * 0.66f, w * 0.84f, h * 0.88f)
                 cubicTo(w * 0.76f, h * 0.95f, w * 0.24f, h * 0.95f, w * 0.16f, h * 0.88f)
                 close()
             }
@@ -2155,7 +2155,7 @@ fun MenuRow(icon: String, text: String, isDark: Boolean, isDanger: Boolean = fal
     }
 }
 
-// 🌟 Mini Player Dock with Dialog-Grade Frosted Glass Surface & Floating Depth Shadow
+// Mini Player Dock with Frosted Glass Surface, Floating Island Depth Shadow & Swipe-to-Dismiss Gesture
 @UnstableApi
 @Composable
 fun MiniPlayerDock(
@@ -2166,33 +2166,25 @@ fun MiniPlayerDock(
     val song = manager.currentSong ?: return
     val accent = manager.accentColor
     val isDark = manager.isDarkMode
-    val textColor = manager.getCurrentTextColor()
-
-    // 1. Direct Dialog-grade background: identical formula, opacity & tint as bottom modal sheets (Image 2)[span_0](start_span)[span_0](end_span)
-    val dialogSurfaceBg = manager.getCurrentDialogColor()
-    val glassBorderBrush = manager.getGlassBorderBrush()
 
     var albumArtBitmap by remember(song.id) { mutableStateOf(manager.getCachedAlbumArt(song.id)) }
     LaunchedEffect(song.id) {
         if (albumArtBitmap == null) albumArtBitmap = manager.loadAlbumArtAsync(song)
     }
 
-    // 2. Fading slight dark grayish ambient shadow all around for a soft, realistic floating lift
-    val ambientShadowColor = if (isDark) Color(0x66000000) else Color(0x33000000)
-
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 6.dp)
+            .padding(horizontal = 14.dp, vertical = 6.dp)
             .shadow(
-                elevation = 14.dp,
-                shape = RoundedCornerShape(26.dp),
-                spotColor = ambientShadowColor,
-                ambientColor = ambientShadowColor
+                elevation = 16.dp,
+                shape = RoundedCornerShape(22.dp),
+                spotColor = accent.copy(alpha = 0.50f),
+                ambientColor = if (isDark) Color.Black.copy(alpha = 0.75f) else Color(0x55000000)
             )
-            .clip(RoundedCornerShape(26.dp))
-            .background(dialogSurfaceBg)
-            .border(1.2.dp, glassBorderBrush, RoundedCornerShape(26.dp))
+            .clip(RoundedCornerShape(22.dp))
+            .background(manager.getCurrentSurfaceColor().copy(alpha = 0.94f))
+            .border(1.2.dp, manager.getGlassBorderBrush(), RoundedCornerShape(22.dp))
             .pointerInput(manager.isPlaying) {
                 detectVerticalDragGestures { _, dragAmount ->
                     if (dragAmount < -22f) {
@@ -2204,18 +2196,14 @@ fun MiniPlayerDock(
                 }
             }
             .clickable { onClick() }
-            .padding(horizontal = 14.dp, vertical = 10.dp)
+            .padding(horizontal = 14.dp, vertical = 9.dp)
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            // Album Art Thumbnail
+        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Box(
                 modifier = Modifier
                     .size(46.dp)
-                    .clip(RoundedCornerShape(13.dp))
-                    .background(if (isDark) Color(0xFF1E293B) else Color(0xFFE2E8F0)),
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Color(0xFF1E293B)),
                 contentAlignment = Alignment.Center
             ) {
                 if (albumArtBitmap != null) {
@@ -2232,21 +2220,19 @@ fun MiniPlayerDock(
 
             Spacer(modifier = Modifier.width(12.dp))
 
-            // Track Title & Details (Clean & readable against dense frosted background)
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = song.title,
-                    color = textColor,
-                    fontSize = 14.5.sp,
+                    color = manager.getCurrentTextColor(),
+                    fontSize = 14.sp,
                     fontWeight = FontWeight.Bold,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
-                Spacer(modifier = Modifier.height(2.dp))
                 Text(
                     text = "${formatFileSize(song.size)} • ${if (song.artist.isNotBlank()) song.artist else "Melovish"}",
-                    color = Color(0xFF64748B),
-                    fontSize = 11.5.sp,
+                    color = accent,
+                    fontSize = 11.sp,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -2254,13 +2240,13 @@ fun MiniPlayerDock(
 
             Spacer(modifier = Modifier.width(8.dp))
 
-            // Play / Pause Floating Circle Action Button
             Box(
                 modifier = Modifier
                     .size(42.dp)
-                    .shadow(elevation = 4.dp, shape = CircleShape, spotColor = accent.copy(alpha = 0.5f))
+                    .shadow(elevation = 6.dp, shape = CircleShape, spotColor = accent)
                     .clip(CircleShape)
                     .background(accent)
+                    .border(1.2.dp, Color.White.copy(alpha = 0.25f), CircleShape)
                     .clickable {
                         manager.triggerHapticFeedback(true)
                         manager.togglePlayPause()
