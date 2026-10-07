@@ -15,10 +15,13 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -55,6 +58,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
@@ -73,6 +77,7 @@ import coil.compose.AsyncImage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import java.io.File
+import kotlin.math.abs
 import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.roundToInt
@@ -770,7 +775,7 @@ fun SettingsScreen(
                 }
             }
 
-            // 5. 🌟 Custom Audio Effects Section
+            // 5. 🌟 Custom Audio Effects Section (Directly Below Audio)
             item(key = "custom_audio_effects_section", contentType = "custom_dsp_card") {
                 AudioEffectsSettingsSection(
                     manager = manager,
@@ -778,7 +783,7 @@ fun SettingsScreen(
                 )
             }
 
-            // 6. Frosted Glass Styling Section (Solid Accent Bar + Underneath Dots)
+            // 6. Frosted Glass Styling Section (100% Solid Slider with Accent Color Dots & Opaque Indicator Clearance)
             item(key = "frosted_glass_section", contentType = "frosted_glass_card") {
                 Column(
                     modifier = Modifier
@@ -824,36 +829,78 @@ fun SettingsScreen(
                                     fontWeight = FontWeight.Bold
                                 )
                             }
-                            Spacer(modifier = Modifier.height(4.dp))
+                            Spacer(modifier = Modifier.height(6.dp))
 
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .height(34.dp),
+                                    .height(38.dp)
+                                    .pointerInput(Unit) {
+                                        awaitEachGesture {
+                                            val down = awaitFirstDown(requireUnconsumed = false)
+                                            val trackPadding = 8.dp.toPx()
+                                            val usableW = (size.width - (trackPadding * 2)).coerceAtLeast(1f)
+
+                                            fun processPosition(rawX: Float) {
+                                                val rawFraction = ((rawX - trackPadding) / usableW).coerceIn(0f, 1f)
+                                                // 5% magnetic snapping
+                                                val snappedStep = (rawFraction * 20f).roundToInt() / 20f
+                                                val diff = abs(rawFraction - snappedStep)
+                                                val finalFrac = if (diff < 0.022f) snappedStep else rawFraction
+
+                                                val oldPercent = (manager.frostedGlassOpacity * 100).toInt()
+                                                val newPercent = (finalFrac * 100).toInt()
+                                                if (newPercent != oldPercent && newPercent % 5 == 0) {
+                                                    manager.triggerHapticFeedback(newPercent % 25 == 0)
+                                                }
+                                                manager.updateFrostedGlassOpacity(finalFrac)
+                                            }
+
+                                            processPosition(down.position.x)
+
+                                            while (true) {
+                                                val event = awaitPointerEvent()
+                                                val change = event.changes.firstOrNull() ?: break
+                                                if (change.pressed) {
+                                                    change.consume()
+                                                    processPosition(change.position.x)
+                                                } else {
+                                                    break
+                                                }
+                                            }
+                                        }
+                                    },
                                 contentAlignment = Alignment.Center
                             ) {
-                                Canvas(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(34.dp)
-                                        .padding(horizontal = 10.dp)
-                                ) {
+                                Canvas(modifier = Modifier.fillMaxSize()) {
                                     val centerY = size.height / 2f
-                                    val trackWidth = size.width
-                                    val currentFraction = manager.frostedGlassOpacity
+                                    val trackPadding = 8.dp.toPx()
+                                    val trackWidth = size.width - (trackPadding * 2)
+                                    val trackHeight = 12.dp.toPx()
+                                    val trackRadius = trackHeight / 2f
 
+                                    val currentFraction = manager.frostedGlassOpacity.coerceIn(0f, 1f)
+                                    val thumbCenterX = trackPadding + (currentFraction * trackWidth)
+
+                                    // 1. Draw Inactive Background Track (Light Gray)[span_0](start_span)[span_0](end_span)
+                                    val inactiveColor = if (isDark) Color(0xFF1E293B) else Color(0xFFE2E8F0)
+                                    drawRoundRect(
+                                        color = inactiveColor,
+                                        topLeft = Offset(trackPadding, centerY - (trackHeight / 2f)),
+                                        size = Size(trackWidth, trackHeight),
+                                        cornerRadius = CornerRadius(trackRadius, trackRadius)
+                                    )
+
+                                    // 2. Draw Magnetic Dots in ACCENT COLOR (Ahead of thumb)
                                     for (i in 0..20) {
-                                        val frac = i / 20f
-                                        if (frac >= currentFraction) {
-                                            val dotX = frac * trackWidth
-                                            val isProminent = i == 0 || i == 5 || i == 10 || i == 15 || i == 20
-                                            val dotRadius = if (isProminent) 3.5.dp.toPx() else 1.8.dp.toPx()
+                                        val dotFraction = i / 20f
+                                        val dotX = trackPadding + (dotFraction * trackWidth)
 
-                                            val dotColor = if (isProminent) {
-                                                if (isDark) Color(0xFF64748B) else Color(0xFF94A3B8)
-                                            } else {
-                                                if (isDark) Color(0xFF334155) else Color(0xFFCBD5E1)
-                                            }
+                                        if (dotX > thumbCenterX + 4.dp.toPx()) {
+                                            val isProminent = (i % 5 == 0) // 0%, 25%, 50%, 75%, 100%
+                                            val dotRadius = if (isProminent) 2.8.dp.toPx() else 1.6.dp.toPx()
+                                            // Bold accent for prominent steps, subtle accent for 5% steps
+                                            val dotColor = if (isProminent) accent else accent.copy(alpha = 0.55f)
 
                                             drawCircle(
                                                 color = dotColor,
@@ -862,37 +909,50 @@ fun SettingsScreen(
                                             )
                                         }
                                     }
-                                }
 
-                                Slider(
-                                    value = manager.frostedGlassOpacity,
-                                    onValueChange = { newOpacity ->
-                                        val oldInt = (manager.frostedGlassOpacity * 100).toInt()
-                                        val newInt = (newOpacity * 100).toInt()
-                                        if (newInt != oldInt && newInt % 5 == 0) {
-                                            manager.triggerHapticFeedback(false)
-                                        }
-                                        manager.updateFrostedGlassOpacity(newOpacity)
-                                    },
-                                    valueRange = 0.0f..1.0f,
-                                    modifier = Modifier.fillMaxWidth(),
-                                    colors = SliderDefaults.colors(
-                                        thumbColor = accent,
-                                        activeTrackColor = accent,
-                                        inactiveTrackColor = if (isDark) Color(0x22FFFFFF) else Color(0x33000000)
+                                    // 3. Draw 100% Solid Opaque Accent Progress Fill (Covers dots cleanly)[span_1](start_span)[span_1](end_span)[span_2](start_span)[span_2](end_span)
+                                    val fillWidth = (thumbCenterX - trackPadding).coerceAtLeast(0f)
+                                    if (fillWidth > 0f) {
+                                        drawRoundRect(
+                                            color = accent,
+                                            topLeft = Offset(trackPadding, centerY - (trackHeight / 2f)),
+                                            size = Size(fillWidth, trackHeight),
+                                            cornerRadius = CornerRadius(trackRadius, trackRadius)
+                                        )
+                                    }
+
+                                    // 4. White Opaque Clearance Buffers on both sides of Indicator Thumb[span_3](start_span)[span_3](end_span)
+                                    val bufferWidth = 3.dp.toPx()
+                                    val thumbIndicatorWidth = 4.dp.toPx()
+                                    val thumbHeight = 22.dp.toPx()
+
+                                    drawRoundRect(
+                                        color = Color.White,
+                                        topLeft = Offset(thumbCenterX - (thumbIndicatorWidth / 2f) - bufferWidth, centerY - (thumbHeight / 2f) - 1.dp.toPx()),
+                                        size = Size(thumbIndicatorWidth + (bufferWidth * 2), thumbHeight + 2.dp.toPx()),
+                                        cornerRadius = CornerRadius(4.dp.toPx(), 4.dp.toPx())
                                     )
-                                )
+
+                                    // 5. Draw Vertical Indicator Thumb Line[span_4](start_span)[span_4](end_span)[span_5](start_span)[span_5](end_span)
+                                    drawRoundRect(
+                                        color = accent,
+                                        topLeft = Offset(thumbCenterX - (thumbIndicatorWidth / 2f), centerY - (thumbHeight / 2f)),
+                                        size = Size(thumbIndicatorWidth, thumbHeight),
+                                        cornerRadius = CornerRadius(2.dp.toPx(), 2.dp.toPx())
+                                    )
+                                }
                             }
 
+                            // Coordinate-locked bottom labels with 50% "Frosted" dead center
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(horizontal = 4.dp)
+                                    .padding(horizontal = 8.dp)
                             ) {
                                 Text(
                                     text = "Clear",
                                     color = Color(0xFF64748B),
-                                    fontSize = 10.5.sp,
+                                    fontSize = 11.sp,
                                     fontWeight = FontWeight.Bold,
                                     modifier = Modifier.align(Alignment.CenterStart)
                                 )
@@ -900,7 +960,7 @@ fun SettingsScreen(
                                 Text(
                                     text = "Frosted",
                                     color = Color(0xFF64748B),
-                                    fontSize = 10.5.sp,
+                                    fontSize = 11.sp,
                                     fontWeight = FontWeight.Bold,
                                     textAlign = TextAlign.Center,
                                     modifier = Modifier.align(Alignment.Center)
@@ -909,7 +969,7 @@ fun SettingsScreen(
                                 Text(
                                     text = "Opaque",
                                     color = Color(0xFF64748B),
-                                    fontSize = 10.5.sp,
+                                    fontSize = 11.sp,
                                     fontWeight = FontWeight.Bold,
                                     modifier = Modifier.align(Alignment.CenterEnd)
                                 )
@@ -946,7 +1006,7 @@ fun SettingsScreen(
                 }
             }
 
-            // 8. Content Manager Section (At Very Bottom Below Haptics)
+            // 8. 📁 Content Manager Section (Moved Below Haptics & Feedback)
             item(key = "content_manager_section", contentType = "content_manager_card") {
                 Column(
                     modifier = Modifier
@@ -1318,7 +1378,7 @@ fun ManageHiddenFoldersFullScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(18.dp))
-                            .background(if (isDark) Color(0x1AE53935) else Color.White)
+                            .background(if (isDark) Color(0x1AEE53935) else Color.White)
                             .border(1.2.dp, Color(0x66E53935), RoundedCornerShape(18.dp))
                             .clickable {
                                 manager.triggerHapticFeedback(false)
@@ -1469,7 +1529,7 @@ fun ManageHiddenAudioFullScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(18.dp))
-                            .background(if (isDark) Color(0x1AEE53935) else Color.White)
+                            .background(if (isDark) Color(0x1AE53935) else Color.White)
                             .border(1.2.dp, Color(0x66E53935), RoundedCornerShape(18.dp))
                             .clickable {
                                 manager.triggerHapticFeedback(false)
