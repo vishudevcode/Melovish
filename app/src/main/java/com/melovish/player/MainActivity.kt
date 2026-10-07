@@ -460,11 +460,7 @@ fun MelovishRootApp(manager: MusicManager) {
     var selectedArtist by remember { mutableStateOf<ArtistItem?>(null) }
     var selectedAlbum by remember { mutableStateOf<String?>(null) }
     var selectedMood by remember { mutableStateOf<AudioMood?>(null) }
-
-    // Persistent filter state for Mood BPM/Energy dialog
-    var moodMinBpm by remember { mutableIntStateOf(0) }
-    var moodMinEnergy by remember { mutableIntStateOf(0) }
-    var showMoodFilterDialog by remember { mutableStateOf(false) }
+    var moodSortOrder by remember { mutableStateOf(SongSortOrder.A_TO_Z) }
 
     var isPlayerExpanded by remember { mutableStateOf(false) }
     var isSettingsEqOpen by remember { mutableStateOf(false) }
@@ -495,6 +491,7 @@ fun MelovishRootApp(manager: MusicManager) {
     var showRootCreateArtistDialog by remember { mutableStateOf(false) }
     var showRootGridSizeDialog by remember { mutableStateOf(false) }
     var showRootArtistAddSongsDialog by remember { mutableStateOf(false) }
+    var showMoodFilterDialog by remember { mutableStateOf(false) }
 
     SideEffect {
         if (activity != null) {
@@ -580,11 +577,7 @@ fun MelovishRootApp(manager: MusicManager) {
             activeScreen == "profile" -> {
                 activeScreen = if (previousActiveScreen != "profile") previousActiveScreen else "home"
             }
-            selectedMood != null -> {
-                selectedMood = null
-                moodMinBpm = 0
-                moodMinEnergy = 0
-            }
+            selectedMood != null -> selectedMood = null
             selectedArtist != null -> selectedArtist = null
             selectedAlbum != null -> selectedAlbum = null
             selectedPlaylist != null -> selectedPlaylist = null
@@ -671,30 +664,44 @@ fun MelovishRootApp(manager: MusicManager) {
                         )
                         selectedMood != null -> {
                             val curMood = selectedMood!!
-                            val moodSongs = remember(curMood, manager.allSongs.size, SmartMoodClassifier.classificationVersion, moodMinBpm, moodMinEnergy) {
-                                SmartMoodClassifier.getFilteredSongsForMood(curMood, manager.allSongs, moodMinBpm, moodMinEnergy).toImmutableList()
+                            val rawMoodSongs = remember(curMood, manager.allSongs.size, SmartMoodClassifier.classificationVersion) {
+                                SmartMoodClassifier.getSongsForMood(curMood, manager.allSongs)
                             }
+                            val sortedMoodSongs = remember(rawMoodSongs, moodSortOrder) {
+                                when (moodSortOrder) {
+                                    SongSortOrder.A_TO_Z -> rawMoodSongs.sortedBy { it.title.lowercase(Locale.getDefault()) }
+                                    SongSortOrder.Z_TO_A -> rawMoodSongs.sortedByDescending { it.title.lowercase(Locale.getDefault()) }
+                                    SongSortOrder.DURATION -> rawMoodSongs.sortedByDescending { it.duration }
+                                    SongSortOrder.FILE_SIZE -> rawMoodSongs.sortedByDescending { it.size }
+                                    SongSortOrder.NEWEST -> rawMoodSongs.sortedByDescending { it.id }
+                                    SongSortOrder.OLDEST -> rawMoodSongs.sortedBy { it.id }
+                                    SongSortOrder.ARTIST -> rawMoodSongs.sortedBy { it.artist.lowercase(Locale.getDefault()) }
+                                }.toImmutableList()
+                            }
+
                             FilteredSongsScreen(
                                 title = "${curMood.emoji} ${curMood.title}",
-                                songs = moodSongs,
+                                songs = sortedMoodSongs,
                                 manager = manager,
                                 isDark = isDark,
-                                onBack = {
-                                    selectedMood = null
-                                    moodMinBpm = 0
-                                    moodMinEnergy = 0
-                                },
+                                currentViewMode = manager.homeViewMode,
+                                onBack = { selectedMood = null },
                                 onSongMenuClick = { song: Song -> activeSongForMenu = song },
-                                onSongClick = { song -> handleSmartSongClick(song, moodSongs, "${curMood.emoji} ${curMood.title}") },
+                                onSongClick = { song -> handleSmartSongClick(song, sortedMoodSongs, "${curMood.emoji} ${curMood.title}") },
                                 extraHeaderActions = {
                                     MoodHeaderActionButtons(
                                         accent = manager.accentColor,
                                         cardBg = manager.getCurrentSurfaceColor(),
                                         glassBorder = manager.getGlassBorderBrush(),
-                                        isFilterActive = (moodMinBpm > 0 || moodMinEnergy > 0),
+                                        isFilterActive = (SmartMoodClassifier.getSavedMinBpm(curMood) != curMood.defaultMinBpm ||
+                                                          SmartMoodClassifier.getSavedMinEnergy(curMood) != curMood.defaultMinEnergy),
+                                        currentViewMode = manager.homeViewMode,
                                         onOpenFilterDialog = { showMoodFilterDialog = true },
+                                        onCycleViewMode = { manager.cycleNextHomeViewMode() },
+                                        onOpenGridSizeDialog = { showRootGridSizeDialog = true },
+                                        onSelectSortOrder = { newSort -> moodSortOrder = newSort },
                                         onShuffleClick = {
-                                            val shuffled = moodSongs.shuffled()
+                                            val shuffled = sortedMoodSongs.shuffled()
                                             if (shuffled.isNotEmpty()) {
                                                 manager.triggerHapticFeedback(true)
                                                 manager.playSong(shuffled.first(), shuffled, "${curMood.emoji} ${curMood.title}")
@@ -770,11 +777,7 @@ fun MelovishRootApp(manager: MusicManager) {
                             manager = manager,
                             listState = searchListState,
                             onSongMenuClick = { song: Song -> activeSongForMenu = song },
-                            onMoodClick = { mood ->
-                                selectedMood = mood
-                                moodMinBpm = 0
-                                moodMinEnergy = 0
-                            },
+                            onMoodClick = { mood -> selectedMood = mood },
                             onSongClick = { song, songs -> handleSmartSongClick(song, songs, "Search Results") }
                         )
                         activeScreen == "library" -> LibraryScreen(
@@ -803,7 +806,6 @@ fun MelovishRootApp(manager: MusicManager) {
                     }
                 }
 
-                // Bottom Navigation Bar
                 if (isMainTabScreen) {
                     BottomNavBar(
                         manager = manager,
@@ -828,7 +830,6 @@ fun MelovishRootApp(manager: MusicManager) {
                 }
             }
 
-            // 🌟 TRUE FLOATING MINIPLAYER DOCK
             if (manager.currentSong != null && !isPlayerExpanded && !isMiniPlayerDismissed) {
                 Box(
                     modifier = Modifier
@@ -844,7 +845,6 @@ fun MelovishRootApp(manager: MusicManager) {
                 }
             }
 
-            // Top Status Bar Overlay
             if (!isAnyRootModalOpen) {
                 Box(
                     modifier = Modifier
@@ -863,7 +863,6 @@ fun MelovishRootApp(manager: MusicManager) {
                 )
             }
 
-            // Backdrop Scrim covering all screen insets including status bar
             AnimatedVisibility(
                 visible = isAnyRootModalOpen,
                 enter = fadeIn(tween(250)),
@@ -888,25 +887,21 @@ fun MelovishRootApp(manager: MusicManager) {
                 EqualizerSheet(manager = manager, onDismiss = { isSettingsEqOpen = false })
             }
 
-            if (showMoodFilterDialog) {
+            if (showMoodFilterDialog && selectedMood != null) {
+                val curMood = selectedMood!!
                 MoodBpmEnergyFilterDialog(
-                    initialMinBpm = moodMinBpm,
-                    initialMinEnergy = moodMinEnergy,
+                    mood = curMood,
+                    initialMinBpm = SmartMoodClassifier.getSavedMinBpm(curMood),
+                    initialMaxBpm = SmartMoodClassifier.getSavedMaxBpm(curMood),
+                    initialMinEnergy = SmartMoodClassifier.getSavedMinEnergy(curMood),
+                    initialMaxEnergy = SmartMoodClassifier.getSavedMaxEnergy(curMood),
                     isDark = isDark,
                     accent = manager.accentColor,
                     textColor = manager.getCurrentTextColor(),
                     dialogColor = manager.getCurrentDialogColor(),
                     glassBorder = manager.getGlassBorderBrush(),
-                    onApply = { appliedBpm, appliedEnergy ->
-                        moodMinBpm = appliedBpm
-                        moodMinEnergy = appliedEnergy
-                        showMoodFilterDialog = false
-                    },
-                    onReset = {
-                        moodMinBpm = 0
-                        moodMinEnergy = 0
-                        showMoodFilterDialog = false
-                    },
+                    onApply = { _, _, _, _ -> showMoodFilterDialog = false },
+                    onReset = { showMoodFilterDialog = false },
                     onDismiss = { showMoodFilterDialog = false }
                 )
             }
