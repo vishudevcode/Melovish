@@ -783,7 +783,7 @@ fun SettingsScreen(
                 )
             }
 
-            // 6. Frosted Glass Styling Section (100% Solid Slider with Accent Color Dots & Opaque Indicator Clearance)
+            // 6. Frosted Glass Styling Section (100% Solid Slider with Dynamic Container-Color Buffer)
             item(key = "frosted_glass_section", contentType = "frosted_glass_card") {
                 Column(
                     modifier = Modifier
@@ -882,7 +882,7 @@ fun SettingsScreen(
                                     val currentFraction = manager.frostedGlassOpacity.coerceIn(0f, 1f)
                                     val thumbCenterX = trackPadding + (currentFraction * trackWidth)
 
-                                    // 1. Draw Inactive Background Track (Light Gray)[span_0](start_span)[span_0](end_span)
+                                    // 1. Draw Inactive Background Track (Light Gray)
                                     val inactiveColor = if (isDark) Color(0xFF1E293B) else Color(0xFFE2E8F0)
                                     drawRoundRect(
                                         color = inactiveColor,
@@ -891,7 +891,7 @@ fun SettingsScreen(
                                         cornerRadius = CornerRadius(trackRadius, trackRadius)
                                     )
 
-                                    // 2. Draw Magnetic Dots in ACCENT COLOR (Ahead of thumb)
+                                    // 2. Draw Magnetic Dots in ACCENT COLOR (Ahead of thumb indicator)
                                     for (i in 0..20) {
                                         val dotFraction = i / 20f
                                         val dotX = trackPadding + (dotFraction * trackWidth)
@@ -899,7 +899,6 @@ fun SettingsScreen(
                                         if (dotX > thumbCenterX + 4.dp.toPx()) {
                                             val isProminent = (i % 5 == 0) // 0%, 25%, 50%, 75%, 100%
                                             val dotRadius = if (isProminent) 2.8.dp.toPx() else 1.6.dp.toPx()
-                                            // Bold accent for prominent steps, subtle accent for 5% steps
                                             val dotColor = if (isProminent) accent else accent.copy(alpha = 0.55f)
 
                                             drawCircle(
@@ -910,7 +909,7 @@ fun SettingsScreen(
                                         }
                                     }
 
-                                    // 3. Draw 100% Solid Opaque Accent Progress Fill (Covers dots cleanly)[span_1](start_span)[span_1](end_span)[span_2](start_span)[span_2](end_span)
+                                    // 3. Draw 100% Solid Opaque Accent Progress Fill (Covers dots cleanly)
                                     val fillWidth = (thumbCenterX - trackPadding).coerceAtLeast(0f)
                                     if (fillWidth > 0f) {
                                         drawRoundRect(
@@ -921,19 +920,19 @@ fun SettingsScreen(
                                         )
                                     }
 
-                                    // 4. White Opaque Clearance Buffers on both sides of Indicator Thumb[span_3](start_span)[span_3](end_span)
-                                    val bufferWidth = 3.dp.toPx()
+                                    // 4. Dynamic Clearance Buffers on both sides of Indicator Thumb matching card container color (cardBg)
+                                    val bufferWidth = 3.5.dp.toPx()
                                     val thumbIndicatorWidth = 4.dp.toPx()
                                     val thumbHeight = 22.dp.toPx()
 
                                     drawRoundRect(
-                                        color = Color.White,
+                                        color = cardBg,
                                         topLeft = Offset(thumbCenterX - (thumbIndicatorWidth / 2f) - bufferWidth, centerY - (thumbHeight / 2f) - 1.dp.toPx()),
                                         size = Size(thumbIndicatorWidth + (bufferWidth * 2), thumbHeight + 2.dp.toPx()),
                                         cornerRadius = CornerRadius(4.dp.toPx(), 4.dp.toPx())
                                     )
 
-                                    // 5. Draw Vertical Indicator Thumb Line[span_4](start_span)[span_4](end_span)[span_5](start_span)[span_5](end_span)
+                                    // 5. Draw Vertical Indicator Thumb Line
                                     drawRoundRect(
                                         color = accent,
                                         topLeft = Offset(thumbCenterX - (thumbIndicatorWidth / 2f), centerY - (thumbHeight / 2f)),
@@ -1378,7 +1377,7 @@ fun ManageHiddenFoldersFullScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(18.dp))
-                            .background(if (isDark) Color(0x1AEE53935) else Color.White)
+                            .background(if (isDark) Color(0x1AE53935) else Color.White)
                             .border(1.2.dp, Color(0x66E53935), RoundedCornerShape(18.dp))
                             .clickable {
                                 manager.triggerHapticFeedback(false)
