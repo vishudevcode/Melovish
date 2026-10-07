@@ -2602,8 +2602,8 @@ fun ManagePlaylistsDialog(
                                         val clampedTarget = targetIndex.coerceIn(0, tempList.size - 1)
                                         if (clampedTarget != fromIndex) {
                                             manager.triggerHapticFeedback(false)
-                                            val movedItem = tempList.removeAt(fromIndex)
-                                            tempList.add(clampedTarget, movedItem)
+                                            val moved = tempList.removeAt(fromIndex)
+                                            tempList.add(clampedTarget, moved)
                                         }
                                     }
                                 }
@@ -3552,7 +3552,7 @@ fun FavouritePlaylistLongPressDialog(
 
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        presetColors.take(5).forEach { color ->
+                        preset9Colors.take(5).forEach { color ->
                             Box(
                                 modifier = Modifier
                                     .size(38.dp)
@@ -3567,7 +3567,7 @@ fun FavouritePlaylistLongPressDialog(
                         }
                     }
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                        presetColors.drop(5).take(4).forEach { color ->
+                        preset9Colors.drop(5).take(4).forEach { color ->
                             Box(
                                 modifier = Modifier
                                     .size(38.dp)
