@@ -4398,6 +4398,7 @@ fun FilteredSongsScreen(
     onBack: () -> Unit,
     onSongMenuClick: (Song) -> Unit,
     onSongClick: (Song) -> Unit = { song -> manager.playSong(song, songs, title) },
+    currentViewMode: GridViewMode = GridViewMode.LIST,
     extraHeaderActions: (@Composable () -> Unit)? = null
 ) {
     val textColor = manager.getCurrentTextColor()
@@ -4421,22 +4422,85 @@ fun FilteredSongsScreen(
             }
         }
         Spacer(modifier = Modifier.height(14.dp))
-        LazyColumn(
-            contentPadding = PaddingValues(bottom = 120.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            items(
-                items = songs,
-                key = { it.id },
-                contentType = { "filtered_song_row" }
-            ) { song ->
-                UniversalSongRow(
-                    song = song,
-                    manager = manager,
-                    isDark = isDark,
-                    onPlay = { onSongClick(song) },
-                    onMenuClick = { onSongMenuClick(song) }
-                )
+
+        if (songs.isEmpty()) {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Text("No songs match the current mood filters.", color = Color(0xFF64748B), fontSize = 13.sp)
+            }
+        } else {
+            when (currentViewMode) {
+                GridViewMode.LIST -> {
+                    LazyColumn(
+                        contentPadding = PaddingValues(bottom = 120.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        items(
+                            items = songs,
+                            key = { it.id },
+                            contentType = { "filtered_song_row" }
+                        ) { song ->
+                            UniversalSongRow(
+                                song = song,
+                                manager = manager,
+                                isDark = isDark,
+                                onPlay = { onSongClick(song) },
+                                onMenuClick = { onSongMenuClick(song) }
+                            )
+                        }
+                    }
+                }
+                GridViewMode.GRID_2 -> {
+                    LazyVerticalGrid(
+                        columns = GridCells.Fixed(2),
+                        contentPadding = PaddingValues(bottom = 120.dp),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                        modifier = Modifier.fillMaxSize()
+                    ) {
+                        items(items = songs, key = { it.id }) { song ->
+                            SquareAlbumOverlayCard(song = song, manager = manager, isDark = isDark, onPlay = { onSongClick(song) }, onMenuClick = { onSongMenuClick(song) })
+                        }
+                    }
+                }
+                GridViewMode.GRID_3 -> {
+                    LazyVerticalGrid(
+                        columns = GridCells.Fixed(3),
+                        contentPadding = PaddingValues(bottom = 120.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.fillMaxSize()
+                    ) {
+                        items(items = songs, key = { it.id }) { song ->
+                            SquareAlbumOverlayCard(song = song, manager = manager, isDark = isDark, onPlay = { onSongClick(song) }, onMenuClick = { onSongMenuClick(song) })
+                        }
+                    }
+                }
+                GridViewMode.GRID_4 -> {
+                    LazyVerticalGrid(
+                        columns = GridCells.Fixed(4),
+                        contentPadding = PaddingValues(bottom = 120.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                        modifier = Modifier.fillMaxSize()
+                    ) {
+                        items(items = songs, key = { it.id }) { song ->
+                            SquareAlbumOverlayCard(song = song, manager = manager, isDark = isDark, onPlay = { onSongClick(song) }, onMenuClick = { onSongMenuClick(song) })
+                        }
+                    }
+                }
+                GridViewMode.HERO_GRID -> {
+                    LazyVerticalGrid(
+                        columns = GridCells.Fixed(2),
+                        contentPadding = PaddingValues(bottom = 120.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                        modifier = Modifier.fillMaxSize()
+                    ) {
+                        items(items = songs, key = { it.id }) { song ->
+                            HeroAlbumCard(song = song, manager = manager, isDark = isDark, onPlay = { onSongClick(song) }, onMenuClick = { onSongMenuClick(song) })
+                        }
+                    }
+                }
             }
         }
     }
