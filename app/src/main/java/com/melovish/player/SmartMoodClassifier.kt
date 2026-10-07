@@ -33,6 +33,13 @@ enum class AudioMood(
     val emoji: String,
     val colorHex: Long
 ) {
+    PARTY(
+        id = "mood_party",
+        title = "Party & Dance",
+        subtitle = "Upbeat dance tracks, heavy rhythm & club beats.",
+        emoji = "🎉",
+        colorHex = 0xFFFF2A85
+    ),
     WORKOUT(
         id = "mood_workout",
         title = "Workout",
@@ -40,12 +47,19 @@ enum class AudioMood(
         emoji = "⚡",
         colorHex = 0xFFFF453A
     ),
-    PARTY(
-        id = "mood_party",
-        title = "Party & Dance",
-        subtitle = "Upbeat dance tracks, heavy rhythm & club beats.",
-        emoji = "🎉",
-        colorHex = 0xFFFF2A85
+    NINETIES(
+        id = "mood_nineties",
+        title = "90's Old Songs",
+        subtitle = "Evergreen 90s melodies, golden era duets & sweet nostalgia.",
+        emoji = "📻",
+        colorHex = 0xFFF59E0B
+    ),
+    RETRO_SIXTIES(
+        id = "mood_retro_sixties",
+        title = "60's Old Songs",
+        subtitle = "Timeless vintage classics, retro instruments & soul legends.",
+        emoji = "🎙️",
+        colorHex = 0xFFD97706
     ),
     ROMANTIC(
         id = "mood_romantic",
@@ -91,7 +105,7 @@ data class AudioAcousticProfile(
 // =========================================================================
 
 object SmartMoodClassifier {
-    private const val PREFS_NAME = "melovish_smart_moods_cache_v1"
+    private const val PREFS_NAME = "melovish_smart_moods_cache_v2"
     private var prefs: SharedPreferences? = null
 
     val profilesCache = mutableStateMapOf<Long, AudioAcousticProfile>()
@@ -166,7 +180,7 @@ object SmartMoodClassifier {
                 } catch (_: Exception) {}
             }
 
-            // Strategy 2: FileDescriptor via ContentResolver (Guaranteed compile & runtime safety)
+            // Strategy 2: FileDescriptor via ContentResolver
             if (!dataSourceSet && song.uri.toString().isNotBlank()) {
                 try {
                     val uri = if (song.uri is Uri) song.uri else Uri.parse(song.uri.toString())
@@ -213,7 +227,8 @@ object SmartMoodClassifier {
 
                 extractor.selectTrack(audioTrackIndex)
 
-                val seekPositionUs = (song.duration * 0.30 * 1000).toLong().coerceAtLeast(0L)
+                // Sample chorus/drop at 35% position
+                val seekPositionUs = (song.duration * 0.35 * 1000).toLong().coerceAtLeast(0L)
                 extractor.seekTo(seekPositionUs, MediaExtractor.SEEK_TO_CLOSEST_SYNC)
 
                 val bufferInfo = MediaCodec.BufferInfo()
@@ -344,42 +359,125 @@ object SmartMoodClassifier {
                 }
 
                 if (bestLag > 0) {
-                    val calcBpm = ((windowsPerSec * 60f) / bestLag).toInt()
+                    var calcBpm = ((windowsPerSec * 60f) / bestLag).toInt()
+                    // Normalize octave tempo error (e.g. 60bpm -> 120bpm)
+                    if (calcBpm in 60..75 && energyRms > 0.45f) calcBpm *= 2
                     estimatedBpm = calcBpm.coerceIn(65, 185)
                 }
             }
         }
 
         // =========================================================================
-        // 🧠 ACOUSTIC + SEMANTIC MULTI-VECTOR DECISION TREE
+        // 🧠 HYBRID MULTI-VECTOR DECISION ENGINE (DSP + METADATA + FOLDERS)
         // =========================================================================
 
         val cleanTitle = song.title.lowercase(Locale.getDefault())
+        val cleanFolder = song.folderName.lowercase(Locale.getDefault())
+        val cleanArtist = song.artist.lowercase(Locale.getDefault())
+        val cleanAlbum = song.album.lowercase(Locale.getDefault())
+        val cleanPath = song.path.lowercase(Locale.getDefault())
+        val releaseYear = song.releaseDate.toIntOrNull() ?: 0
 
-        val isRomanticSemantic = cleanTitle.contains("love") || cleanTitle.contains("ishq") || cleanTitle.contains("dil") ||
-                cleanTitle.contains("romantic") || cleanTitle.contains("pyaar") || cleanTitle.contains("sanam")
-        val isSadSemantic = cleanTitle.contains("sad") || cleanTitle.contains("juda") || cleanTitle.contains("dard") ||
-                cleanTitle.contains("alone") || cleanTitle.contains("cry") || cleanTitle.contains("broken")
-        val isWorkoutSemantic = cleanTitle.contains("gym") || cleanTitle.contains("workout") || cleanTitle.contains("fit") ||
-                cleanTitle.contains("power") || cleanTitle.contains("hard") || cleanTitle.contains("motivation")
-        val isPartySemantic = cleanTitle.contains("remix") || cleanTitle.contains("club") || cleanTitle.contains("party") ||
-                cleanTitle.contains("dance") || cleanTitle.contains("dj") || cleanTitle.contains("bass")
+        // Combined string for comprehensive pattern matching
+        val metadataBlob = "$cleanTitle $cleanFolder $cleanArtist $cleanAlbum $cleanPath"
 
+        // 1. ERA & RETRO HEURISTICS (60s & 90s)
+        val is60sRetroSemantic = cleanFolder.contains("60s") || cleanFolder.contains("70s") || cleanFolder.contains("50s") ||
+                cleanFolder.contains("retro") || cleanFolder.contains("purane") || cleanFolder.contains("golden") ||
+                cleanFolder.contains("evergreen") || (cleanFolder.contains("old") && !cleanFolder.contains("90")) ||
+                cleanTitle.contains("retro") || cleanTitle.contains("60s") || cleanTitle.contains("70s") ||
+                cleanArtist.contains("kishore kumar") || cleanArtist.contains("mohammed rafi") || cleanArtist.contains("lata mangeshkar") ||
+                cleanArtist.contains("mukesh") || cleanArtist.contains("asha bhosle") || cleanArtist.contains("r.d. burman") ||
+                cleanArtist.contains("rd burman") || cleanArtist.contains("manna dey") || cleanArtist.contains("hemant kumar") ||
+                (releaseYear in 1950..1979)
+
+        val is90sSemantic = cleanFolder.contains("90s") || cleanFolder.contains("90's") || cleanFolder.contains("nineties") ||
+                cleanTitle.contains("90s") || cleanTitle.contains("90's") ||
+                cleanArtist.contains("kumar sanu") || cleanArtist.contains("alka yagnik") || cleanArtist.contains("udit narayan") ||
+                cleanArtist.contains("anuradha paudwal") || cleanArtist.contains("abhijeet") || cleanArtist.contains("sonu nigam") ||
+                cleanArtist.contains("kavita krishnamurthy") || cleanArtist.contains("bappi lahiri") || cleanArtist.contains("nadeem shravan") ||
+                cleanArtist.contains("jatin lalit") || (releaseYear in 1980..1999)
+
+        // 2. FOLDER-PRIORITIZED MOODS (Guarantees entire folders like "Party" or "Workout" match)
+        val isPartyFolder = cleanFolder.contains("party") || cleanFolder.contains("dance") || cleanFolder.contains("club") ||
+                cleanFolder.contains("dj") || cleanFolder.contains("remix") || cleanFolder.contains("edm") || cleanFolder.contains("bhangra")
+        val isWorkoutFolder = cleanFolder.contains("workout") || cleanFolder.contains("gym") || cleanFolder.contains("fitness") || cleanFolder.contains("power")
+        val isRomanticFolder = cleanFolder.contains("romantic") || cleanFolder.contains("love") || cleanFolder.contains("couple") || cleanFolder.contains("valentine")
+        val isSadFolder = cleanFolder.contains("sad") || cleanFolder.contains("dard") || cleanFolder.contains("breakup") || cleanFolder.contains("heartbreak") || cleanFolder.contains("alone")
+        val isStudyFolder = cleanFolder.contains("study") || cleanFolder.contains("focus") || cleanFolder.contains("instrumental") || cleanFolder.contains("ambient") || cleanFolder.contains("meditation")
+        val isChillFolder = cleanFolder.contains("chill") || cleanFolder.contains("relax") || cleanFolder.contains("peace") || cleanFolder.contains("sleep") || cleanFolder.contains("lofi") || cleanFolder.contains("lo-fi")
+
+        // 3. TITLE & CONTENT KEYWORDS
+        val isPartyKeyword = metadataBlob.contains("party") || metadataBlob.contains("dance") || metadataBlob.contains("club") ||
+                metadataBlob.contains("remix") || metadataBlob.contains("dj") || metadataBlob.contains("mashup") ||
+                metadataBlob.contains("dhol") || metadataBlob.contains("bass") || metadataBlob.contains("beat") ||
+                metadataBlob.contains("nach") || metadataBlob.contains("thumka") || metadataBlob.contains("electronic")
+        val isWorkoutKeyword = metadataBlob.contains("workout") || metadataBlob.contains("gym") || metadataBlob.contains("motivation") ||
+                metadataBlob.contains("fit") || metadataBlob.contains("beast") || metadataBlob.contains("trap") || metadataBlob.contains("power")
+        val isRomanticKeyword = metadataBlob.contains("love") || metadataBlob.contains("ishq") || metadataBlob.contains("dil") ||
+                metadataBlob.contains("pyaar") || metadataBlob.contains("mohabbat") || metadataBlob.contains("deewana") ||
+                metadataBlob.contains("romantic") || metadataBlob.contains("sanam") || metadataBlob.contains("humsafar") || metadataBlob.contains("jaan")
+        val isSadKeyword = metadataBlob.contains("sad") || metadataBlob.contains("dard") || metadataBlob.contains("juda") ||
+                metadataBlob.contains("bewafa") || metadataBlob.contains("rooth") || metadataBlob.contains("tanha") ||
+                metadataBlob.contains("alone") || metadataBlob.contains("cry") || metadataBlob.contains("broken") || metadataBlob.contains("tears")
+        val isStudyKeyword = metadataBlob.contains("study") || metadataBlob.contains("focus") || metadataBlob.contains("piano") ||
+                metadataBlob.contains("acoustic guitar") || metadataBlob.contains("calm") || metadataBlob.contains("instrumental")
+        val isChillKeyword = metadataBlob.contains("lofi") || metadataBlob.contains("lo-fi") || metadataBlob.contains("chill") ||
+                metadataBlob.contains("relax") || metadataBlob.contains("rain") || metadataBlob.contains("night") || metadataBlob.contains("slowed")
+
+        // 4. DECISION HIERARCHY
         val classifiedMood: AudioMood = when {
-            isWorkoutSemantic || (energyRms > 0.65f && estimatedBpm >= 122 && zeroCrossingRate > 0.08f) -> {
-                AudioMood.WORKOUT
+            // Priority 1: Era Specific Matching
+            is60sRetroSemantic -> {
+                AudioMood.RETRO_SIXTIES
             }
-            isPartySemantic || (energyRms > 0.58f && spectralBrightness > 0.55f && estimatedBpm >= 115) -> {
+            is90sSemantic -> {
+                AudioMood.NINETIES
+            }
+
+            // Priority 2: Direct Folder Ownership
+            isPartyFolder -> {
                 AudioMood.PARTY
             }
-            isSadSemantic || (energyRms < 0.32f && estimatedBpm <= 95 && spectralBrightness < 0.35f) -> {
-                AudioMood.SAD
+            isWorkoutFolder -> {
+                AudioMood.WORKOUT
             }
-            isRomanticSemantic || (estimatedBpm in 72..108 && energyRms in 0.30f..0.62f && spectralBrightness in 0.28f..0.65f) -> {
+            isRomanticFolder -> {
                 AudioMood.ROMANTIC
             }
-            (energyRms < 0.38f && spectralBrightness < 0.40f && zeroCrossingRate < 0.06f) -> {
+            isSadFolder -> {
+                AudioMood.SAD
+            }
+            isStudyFolder -> {
                 AudioMood.STUDY
+            }
+            isChillFolder -> {
+                AudioMood.CHILL
+            }
+
+            // Priority 3: Keyword + Acoustic Hybrid
+            isPartyKeyword || (energyRms >= 0.44f && estimatedBpm >= 110) || (energyRms >= 0.52f && spectralBrightness >= 0.45f) -> {
+                AudioMood.PARTY
+            }
+            isWorkoutKeyword || (energyRms >= 0.50f && estimatedBpm >= 120 && zeroCrossingRate >= 0.07f) -> {
+                AudioMood.WORKOUT
+            }
+            isSadKeyword || (energyRms <= 0.35f && estimatedBpm <= 96 && spectralBrightness <= 0.38f) -> {
+                AudioMood.SAD
+            }
+            isRomanticKeyword || (estimatedBpm in 70..112 && energyRms in 0.28f..0.65f) -> {
+                AudioMood.ROMANTIC
+            }
+            isStudyKeyword || (energyRms <= 0.34f && spectralBrightness <= 0.38f && zeroCrossingRate <= 0.06f) -> {
+                AudioMood.STUDY
+            }
+            isChillKeyword || (energyRms <= 0.42f && estimatedBpm in 65..95) -> {
+                AudioMood.CHILL
+            }
+
+            // Fallback: Energy-based distribution
+            energyRms >= 0.48f -> {
+                AudioMood.PARTY
             }
             else -> {
                 AudioMood.CHILL
@@ -404,10 +502,12 @@ object SmartMoodClassifier {
         val matchingSongs = allSongs.filter { matchingSongIds.contains(it.id) }
 
         return when (mood) {
-            AudioMood.WORKOUT -> matchingSongs.sortedByDescending { profilesCache[it.id]?.energyRms ?: 0f }
             AudioMood.PARTY -> matchingSongs.sortedByDescending { profilesCache[it.id]?.estimatedBpm ?: 0 }
-            AudioMood.SAD -> matchingSongs.sortedBy { profilesCache[it.id]?.energyRms ?: 1f }
+            AudioMood.WORKOUT -> matchingSongs.sortedByDescending { profilesCache[it.id]?.energyRms ?: 0f }
+            AudioMood.NINETIES -> matchingSongs.sortedByDescending { it.playCount }
+            AudioMood.RETRO_SIXTIES -> matchingSongs.sortedBy { it.title.lowercase(Locale.getDefault()) }
             AudioMood.ROMANTIC -> matchingSongs.sortedByDescending { it.playCount }
+            AudioMood.SAD -> matchingSongs.sortedBy { profilesCache[it.id]?.energyRms ?: 1f }
             AudioMood.STUDY -> matchingSongs.sortedBy { profilesCache[it.id]?.zeroCrossingRate ?: 1f }
             AudioMood.CHILL -> matchingSongs.sortedByDescending { it.duration }
         }
