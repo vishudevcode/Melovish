@@ -21,7 +21,6 @@ import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -46,7 +45,6 @@ import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -55,7 +53,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.CornerRadius
@@ -775,7 +772,7 @@ fun SettingsScreen(
                 }
             }
 
-            // 5. 🌟 Custom Audio Effects Section (Directly Below Audio)
+            // 5. Custom Audio Effects Section
             item(key = "custom_audio_effects_section", contentType = "custom_dsp_card") {
                 AudioEffectsSettingsSection(
                     manager = manager,
@@ -783,7 +780,7 @@ fun SettingsScreen(
                 )
             }
 
-            // 6. Frosted Glass Styling Section (100% Solid Slider with Dynamic Container-Color Buffer)
+            // 6. Frosted Glass Styling Section (Restored Two-Segment Slider With Clean Gap)
             item(key = "frosted_glass_section", contentType = "frosted_glass_card") {
                 Column(
                     modifier = Modifier
@@ -843,7 +840,6 @@ fun SettingsScreen(
 
                                             fun processPosition(rawX: Float) {
                                                 val rawFraction = ((rawX - trackPadding) / usableW).coerceIn(0f, 1f)
-                                                // 5% magnetic snapping
                                                 val snappedStep = (rawFraction * 20f).roundToInt() / 20f
                                                 val diff = abs(rawFraction - snappedStep)
                                                 val finalFrac = if (diff < 0.022f) snappedStep else rawFraction
@@ -882,57 +878,56 @@ fun SettingsScreen(
                                     val currentFraction = manager.frostedGlassOpacity.coerceIn(0f, 1f)
                                     val thumbCenterX = trackPadding + (currentFraction * trackWidth)
 
-                                    // 1. Draw Inactive Background Track (Light Gray)
-                                    val inactiveColor = if (isDark) Color(0xFF1E293B) else Color(0xFFE2E8F0)
-                                    drawRoundRect(
-                                        color = inactiveColor,
-                                        topLeft = Offset(trackPadding, centerY - (trackHeight / 2f)),
-                                        size = Size(trackWidth, trackHeight),
-                                        cornerRadius = CornerRadius(trackRadius, trackRadius)
-                                    )
+                                    val thumbIndicatorWidth = 4.dp.toPx()
+                                    val thumbHeight = 22.dp.toPx()
+                                    // True air gap flanking the thumb (no background underneath)
+                                    val clearanceGap = 4.5.dp.toPx()
 
-                                    // 2. Draw Magnetic Dots in ACCENT COLOR (Ahead of thumb indicator)
-                                    for (i in 0..20) {
-                                        val dotFraction = i / 20f
-                                        val dotX = trackPadding + (dotFraction * trackWidth)
-
-                                        if (dotX > thumbCenterX + 4.dp.toPx()) {
-                                            val isProminent = (i % 5 == 0) // 0%, 25%, 50%, 75%, 100%
-                                            val dotRadius = if (isProminent) 2.8.dp.toPx() else 1.6.dp.toPx()
-                                            val dotColor = if (isProminent) accent else accent.copy(alpha = 0.55f)
-
-                                            drawCircle(
-                                                color = dotColor,
-                                                radius = dotRadius,
-                                                center = Offset(dotX, centerY)
-                                            )
-                                        }
-                                    }
-
-                                    // 3. Draw 100% Solid Opaque Accent Progress Fill (Covers dots cleanly)
-                                    val fillWidth = (thumbCenterX - trackPadding).coerceAtLeast(0f)
-                                    if (fillWidth > 0f) {
+                                    // 1. ACTIVE SEGMENT (Solid Accent, ends cleanly before the thumb)
+                                    val activeEndX = (thumbCenterX - (thumbIndicatorWidth / 2f) - clearanceGap).coerceAtLeast(trackPadding)
+                                    val activeFillWidth = activeEndX - trackPadding
+                                    if (activeFillWidth > 0f) {
                                         drawRoundRect(
                                             color = accent,
                                             topLeft = Offset(trackPadding, centerY - (trackHeight / 2f)),
-                                            size = Size(fillWidth, trackHeight),
+                                            size = Size(activeFillWidth, trackHeight),
                                             cornerRadius = CornerRadius(trackRadius, trackRadius)
                                         )
                                     }
 
-                                    // 4. Dynamic Clearance Buffers on both sides of Indicator Thumb matching card container color (cardBg)
-                                    val bufferWidth = 3.5.dp.toPx()
-                                    val thumbIndicatorWidth = 4.dp.toPx()
-                                    val thumbHeight = 22.dp.toPx()
+                                    // 2. INACTIVE SEGMENT (Gray track, starts cleanly after the thumb)
+                                    val inactiveStartX = (thumbCenterX + (thumbIndicatorWidth / 2f) + clearanceGap).coerceAtMost(trackPadding + trackWidth)
+                                    val inactiveWidth = (trackPadding + trackWidth) - inactiveStartX
+                                    if (inactiveWidth > 0f) {
+                                        val inactiveColor = if (isDark) Color(0xFF1E293B) else Color(0xFFE2E8F0)
+                                        drawRoundRect(
+                                            color = inactiveColor,
+                                            topLeft = Offset(inactiveStartX, centerY - (trackHeight / 2f)),
+                                            size = Size(inactiveWidth, trackHeight),
+                                            cornerRadius = CornerRadius(trackRadius, trackRadius)
+                                        )
 
-                                    drawRoundRect(
-                                        color = cardBg,
-                                        topLeft = Offset(thumbCenterX - (thumbIndicatorWidth / 2f) - bufferWidth, centerY - (thumbHeight / 2f) - 1.dp.toPx()),
-                                        size = Size(thumbIndicatorWidth + (bufferWidth * 2), thumbHeight + 2.dp.toPx()),
-                                        cornerRadius = CornerRadius(4.dp.toPx(), 4.dp.toPx())
-                                    )
+                                        // 3. MAGNETIC ACCENT DOTS (Drawn strictly within inactive track)
+                                        for (i in 0..20) {
+                                            val dotFraction = i / 20f
+                                            val dotX = trackPadding + (dotFraction * trackWidth)
 
-                                    // 5. Draw Vertical Indicator Thumb Line
+                                            // Only render dots that lie comfortably inside the inactive segment
+                                            if (dotX >= inactiveStartX + 2.dp.toPx()) {
+                                                val isProminent = (i % 5 == 0)
+                                                val dotRadius = if (isProminent) 2.6.dp.toPx() else 1.5.dp.toPx()
+                                                val dotColor = if (isProminent) accent else accent.copy(alpha = 0.55f)
+
+                                                drawCircle(
+                                                    color = dotColor,
+                                                    radius = dotRadius,
+                                                    center = Offset(dotX, centerY)
+                                                )
+                                            }
+                                        }
+                                    }
+
+                                    // 4. VERTICAL INDICATOR THUMB LINE (Floats freely in the gap)
                                     drawRoundRect(
                                         color = accent,
                                         topLeft = Offset(thumbCenterX - (thumbIndicatorWidth / 2f), centerY - (thumbHeight / 2f)),
@@ -942,7 +937,6 @@ fun SettingsScreen(
                                 }
                             }
 
-                            // Coordinate-locked bottom labels with 50% "Frosted" dead center
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -1005,7 +999,7 @@ fun SettingsScreen(
                 }
             }
 
-            // 8. 📁 Content Manager Section (Moved Below Haptics & Feedback)
+            // 8. Content Manager Section (Bottom)
             item(key = "content_manager_section", contentType = "content_manager_card") {
                 Column(
                     modifier = Modifier
