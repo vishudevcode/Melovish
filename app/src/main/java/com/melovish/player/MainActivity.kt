@@ -794,22 +794,13 @@ fun MelovishRootApp(manager: MusicManager) {
                 }
             }
 
-            // 🌟 TRUE FLOATING MINIPLAYER (Frosted Dialog-Style Container & Dynamic Glass Visibility Slider Control)
+            // 🌟 TRUE FLOATING MINIPLAYER DOCK (Dialog-Box Frosted Aesthetic with Real-Time Visibility Control)
             if (manager.currentSong != null && !isPlayerExpanded && !isMiniPlayerDismissed) {
                 Box(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
-                        .padding(horizontal = 14.dp)
                         .padding(bottom = if (isMainTabScreen) 66.dp else 12.dp)
                         .zIndex(15f)
-                        .shadow(
-                            elevation = 16.dp,
-                            shape = RoundedCornerShape(26.dp),
-                            spotColor = manager.accentColor.copy(alpha = 0.35f)
-                        )
-                        .clip(RoundedCornerShape(26.dp))
-                        .background(manager.getCurrentDialogColor())
-                        .border(1.5.dp, manager.getGlassBorderBrush(), RoundedCornerShape(26.dp))
                 ) {
                     MiniPlayerDock(
                         manager = manager,
@@ -4756,4 +4747,3 @@ fun UniversalSongRow(song: Song, manager: MusicManager, isDark: Boolean, onPlay:
         }
     }
 }
-

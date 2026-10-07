@@ -2155,7 +2155,7 @@ fun MenuRow(icon: String, text: String, isDark: Boolean, isDanger: Boolean = fal
     }
 }
 
-// Mini Player Dock with Frosted Glass Surface, Floating Island Depth Shadow & Swipe-to-Dismiss Gesture
+// Mini Player Dock with Dialog-Container Frosted Depth Blur Surface, Top-Lit Glass Border & Swipe-to-Dismiss Gesture
 @UnstableApi
 @Composable
 fun MiniPlayerDock(
@@ -2179,11 +2179,11 @@ fun MiniPlayerDock(
             .shadow(
                 elevation = 16.dp,
                 shape = RoundedCornerShape(22.dp),
-                spotColor = accent.copy(alpha = 0.50f),
-                ambientColor = if (isDark) Color.Black.copy(alpha = 0.75f) else Color(0x55000000)
+                spotColor = accent.copy(alpha = 0.35f),
+                ambientColor = if (isDark) Color.Black.copy(alpha = 0.70f) else Color(0x44000000)
             )
             .clip(RoundedCornerShape(22.dp))
-            .background(manager.getCurrentSurfaceColor().copy(alpha = 0.94f))
+            .background(manager.getCurrentDialogColor())
             .border(1.2.dp, manager.getGlassBorderBrush(), RoundedCornerShape(22.dp))
             .pointerInput(manager.isPlaying) {
                 detectVerticalDragGestures { _, dragAmount ->
