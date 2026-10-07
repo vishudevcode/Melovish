@@ -2602,8 +2602,8 @@ fun ManagePlaylistsDialog(
                                         val clampedTarget = targetIndex.coerceIn(0, tempList.size - 1)
                                         if (clampedTarget != fromIndex) {
                                             manager.triggerHapticFeedback(false)
-                                            val moved = tempList.removeAt(fromIndex)
-                                            tempList.add(clampedTarget, moved)
+                                            val movedItem = tempList.removeAt(fromIndex)
+                                            tempList.add(clampedTarget, movedItem)
                                         }
                                     }
                                 }
@@ -3552,7 +3552,7 @@ fun FavouritePlaylistLongPressDialog(
 
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        preset9Colors.take(5).forEach { color ->
+                        presetColors.take(5).forEach { color ->
                             Box(
                                 modifier = Modifier
                                     .size(38.dp)
@@ -3567,7 +3567,7 @@ fun FavouritePlaylistLongPressDialog(
                         }
                     }
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                        preset9Colors.drop(5).take(4).forEach { color ->
+                        presetColors.drop(5).take(4).forEach { color ->
                             Box(
                                 modifier = Modifier
                                     .size(38.dp)
@@ -4166,167 +4166,6 @@ fun SearchScreen(
                         },
                         onMenuClick = { onSongMenuClick(song) }
                     )
-                }
-            }
-        }
-    }
-}
-
-// =========================================================================
-// 📌 SETTINGS SCREEN (With Custom Audio Effects Section Integrated)
-// =========================================================================
-
-@Composable
-fun SettingsScreen(
-    manager: MusicManager,
-    onBackClick: () -> Unit,
-    onOpenProfile: () -> Unit,
-    onOpenEqualizer: () -> Unit,
-    onDarkSubStyleClick: () -> Unit,
-    onLightSubStyleClick: () -> Unit,
-    onOpenAccentPicker: () -> Unit
-) {
-    val isDark = manager.isDarkMode
-    val textColor = manager.getCurrentTextColor()
-    val cardBg = manager.getCurrentSurfaceColor()
-    val glassBorderBrush = manager.getGlassBorderBrush()
-    val accent = manager.accentColor
-
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(horizontal = 16.dp)
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 8.dp, bottom = 12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            GlassBackButton(isDark = isDark, onClick = onBackClick)
-            Spacer(modifier = Modifier.width(14.dp))
-            Text("Settings", fontSize = 22.sp, fontWeight = FontWeight.Bold, color = textColor)
-        }
-
-        LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(bottom = 120.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
-        ) {
-            // 1. Theme and Personalization Section
-            item {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(20.dp))
-                        .background(cardBg)
-                        .border(1.2.dp, glassBorderBrush, RoundedCornerShape(20.dp))
-                        .padding(18.dp)
-                ) {
-                    Text("Appearance & Theme", color = textColor, fontSize = 17.sp, fontWeight = FontWeight.Bold)
-                    Spacer(modifier = Modifier.height(14.dp))
-                    
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { onOpenAccentPicker() }
-                            .padding(vertical = 8.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text("Accent Color", color = textColor, fontSize = 15.sp)
-                        Box(
-                            modifier = Modifier
-                                .size(28.dp)
-                                .clip(CircleShape)
-                                .background(accent)
-                                .border(2.dp, Color.White, CircleShape)
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.height(10.dp))
-
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable {
-                                if (isDark) onDarkSubStyleClick() else onLightSubStyleClick()
-                            }
-                            .padding(vertical = 8.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text("Theme Atmosphere Tint", color = textColor, fontSize = 15.sp)
-                        Text(if (isDark) manager.darkThemeSubStyle else manager.lightThemeSubStyle, color = accent, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                    }
-                }
-            }
-
-            // 2. Audio & Sound Settings Section
-            item {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(20.dp))
-                        .background(cardBg)
-                        .border(1.2.dp, glassBorderBrush, RoundedCornerShape(20.dp))
-                        .padding(18.dp)
-                ) {
-                    Text("Audio & Equalizer", color = textColor, fontSize = 17.sp, fontWeight = FontWeight.Bold)
-                    Spacer(modifier = Modifier.height(14.dp))
-
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { onOpenEqualizer() }
-                            .padding(vertical = 8.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column {
-                            Text("Graphic Equalizer", color = textColor, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-                            Text(if (manager.isEqEnabled) manager.selectedEqPreset else "Off", color = Color(0xFF64748B), fontSize = 12.sp)
-                        }
-                        Text("🎚️", fontSize = 18.sp)
-                    }
-                }
-            }
-
-            // 3. 🌟 CUSTOM AUDIO EFFECTS SECTION (3D Spatial Orbit & Lo-Fi Vinyl)
-            item {
-                AudioEffectsSettingsSection(
-                    manager = manager,
-                    isDark = isDark
-                )
-            }
-
-            // 4. Content Manager & Storage Section
-            item {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(20.dp))
-                        .background(cardBg)
-                        .border(1.2.dp, glassBorderBrush, RoundedCornerShape(20.dp))
-                        .padding(18.dp)
-                ) {
-                    Text("Content Manager & Library", color = textColor, fontSize = 17.sp, fontWeight = FontWeight.Bold)
-                    Spacer(modifier = Modifier.height(14.dp))
-
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { manager.scanStorage() }
-                            .padding(vertical = 8.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column {
-                            Text("Rescan Media Storage", color = textColor, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-                            Text("${manager.allSongs.size} tracks indexed", color = Color(0xFF64748B), fontSize = 12.sp)
-                        }
-                        Text("🔄", fontSize = 18.sp)
-                    }
                 }
             }
         }
