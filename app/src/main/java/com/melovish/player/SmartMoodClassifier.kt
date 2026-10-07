@@ -54,13 +54,10 @@ import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
-import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.util.Calendar
 import java.util.Locale
 import kotlin.math.abs
-import kotlin.math.max
-import kotlin.math.min
 import kotlin.math.sqrt
 
 // =========================================================================
@@ -72,63 +69,99 @@ enum class AudioMood(
     val title: String,
     val subtitle: String,
     val emoji: String,
-    val colorHex: Long
+    val colorHex: Long,
+    val defaultMinBpm: Int,
+    val defaultMaxBpm: Int,
+    val defaultMinEnergy: Int,
+    val defaultMaxEnergy: Int
 ) {
     PARTY(
         id = "mood_party",
         title = "Party & Dance",
-        subtitle = "Upbeat dance tracks, heavy rhythm & club beats.",
+        subtitle = "High tempo, heavy bass drops & club beats.",
         emoji = "🎉",
-        colorHex = 0xFFFF2A85
+        colorHex = 0xFFFF2A85,
+        defaultMinBpm = 118,
+        defaultMaxBpm = 185,
+        defaultMinEnergy = 52,
+        defaultMaxEnergy = 100
     ),
     WORKOUT(
         id = "mood_workout",
         title = "Workout",
-        subtitle = "High BPM, explosive rhythm & raw power.",
+        subtitle = "Explosive rhythm, fast cadence & peak energy.",
         emoji = "⚡",
-        colorHex = 0xFFFF453A
+        colorHex = 0xFFFF453A,
+        defaultMinBpm = 125,
+        defaultMaxBpm = 190,
+        defaultMinEnergy = 60,
+        defaultMaxEnergy = 100
     ),
     NINETIES(
         id = "mood_nineties",
         title = "90's Old Songs",
-        subtitle = "Evergreen 90s melodies, golden era duets & sweet nostalgia.",
+        subtitle = "1980–1999 golden melodies & memorable duets.",
         emoji = "📻",
-        colorHex = 0xFFF59E0B
+        colorHex = 0xFFF59E0B,
+        defaultMinBpm = 65,
+        defaultMaxBpm = 145,
+        defaultMinEnergy = 20,
+        defaultMaxEnergy = 72
     ),
     RETRO_SIXTIES(
         id = "mood_retro_sixties",
         title = "60's Old Songs",
-        subtitle = "Timeless vintage classics, retro instruments & soul legends.",
+        subtitle = "1950–1979 vintage acoustic tracks & legends.",
         emoji = "🎙️",
-        colorHex = 0xFFD97706
+        colorHex = 0xFFD97706,
+        defaultMinBpm = 55,
+        defaultMaxBpm = 135,
+        defaultMinEnergy = 10,
+        defaultMaxEnergy = 58
     ),
     ROMANTIC(
         id = "mood_romantic",
         title = "Romantic",
-        subtitle = "Warm acoustic tones, sweet melodies & love notes.",
+        subtitle = "Warm acoustic strings, sweet vocals & love notes.",
         emoji = "💖",
-        colorHex = 0xFFFF69B4
+        colorHex = 0xFFFF69B4,
+        defaultMinBpm = 68,
+        defaultMaxBpm = 112,
+        defaultMinEnergy = 22,
+        defaultMaxEnergy = 60
     ),
     SAD(
         id = "mood_sad",
         title = "Sad & Melancholy",
         subtitle = "Deep emotional slow tracks for quiet reflections.",
         emoji = "💔",
-        colorHex = 0xFF60A5FA
+        colorHex = 0xFF60A5FA,
+        defaultMinBpm = 50,
+        defaultMaxBpm = 95,
+        defaultMinEnergy = 5,
+        defaultMaxEnergy = 40
     ),
     STUDY(
         id = "mood_study",
         title = "Study & Focus",
-        subtitle = "Consistent, ambient & calm tracks for deep focus.",
+        subtitle = "Calm tempos & ambient acoustic textures.",
         emoji = "📚",
-        colorHex = 0xFF10B981
+        colorHex = 0xFF10B981,
+        defaultMinBpm = 55,
+        defaultMaxBpm = 110,
+        defaultMinEnergy = 5,
+        defaultMaxEnergy = 38
     ),
     CHILL(
         id = "mood_chill",
         title = "Late Night Chill",
-        subtitle = "Relaxed tempo, mellow vibes & peaceful tones.",
+        subtitle = "Laid-back vibes, lofi & relaxing tones.",
         emoji = "🌙",
-        colorHex = 0xFF8B5CF6
+        colorHex = 0xFF8B5CF6,
+        defaultMinBpm = 60,
+        defaultMaxBpm = 102,
+        defaultMinEnergy = 15,
+        defaultMaxEnergy = 48
     )
 }
 
@@ -143,20 +176,63 @@ data class AudioAcousticProfile(
 )
 
 // =========================================================================
-// 📌 OFFLINE DSP & MULTI-MOOD ACOUSTIC ENGINE
+// 📌 OFFLINE DSP & ACOUSTIC FEATURE EXTRACTION ENGINE (V4 CALIBRATED)
 // =========================================================================
 
 object SmartMoodClassifier {
-    private const val PREFS_NAME = "melovish_smart_moods_cache_v3"
+    private const val PREFS_NAME = "melovish_smart_moods_cache_v4"
+    private const val PREFS_FILTERS_NAME = "melovish_mood_filters_memory_v2"
     private var prefs: SharedPreferences? = null
+    private var filterPrefs: SharedPreferences? = null
 
     val profilesCache = mutableStateMapOf<Long, AudioAcousticProfile>()
     var classificationVersion by mutableIntStateOf(0)
 
     fun init(context: Context) {
-        if (prefs != null) return
-        prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        loadCache()
+        if (prefs == null) {
+            prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            loadCache()
+        }
+        if (filterPrefs == null) {
+            filterPrefs = context.getSharedPreferences(PREFS_FILTERS_NAME, Context.MODE_PRIVATE)
+        }
+    }
+
+    // --- Persistent Acoustic Filter Bounds Helpers ---
+    fun getSavedMinBpm(mood: AudioMood): Int {
+        return filterPrefs?.getInt("filter_min_bpm_${mood.id}", mood.defaultMinBpm) ?: mood.defaultMinBpm
+    }
+
+    fun getSavedMaxBpm(mood: AudioMood): Int {
+        return filterPrefs?.getInt("filter_max_bpm_${mood.id}", mood.defaultMaxBpm) ?: mood.defaultMaxBpm
+    }
+
+    fun getSavedMinEnergy(mood: AudioMood): Int {
+        return filterPrefs?.getInt("filter_min_energy_${mood.id}", mood.defaultMinEnergy) ?: mood.defaultMinEnergy
+    }
+
+    fun getSavedMaxEnergy(mood: AudioMood): Int {
+        return filterPrefs?.getInt("filter_max_energy_${mood.id}", mood.defaultMaxEnergy) ?: mood.defaultMaxEnergy
+    }
+
+    fun saveMoodFilters(mood: AudioMood, minBpm: Int, maxBpm: Int, minEnergy: Int, maxEnergy: Int) {
+        filterPrefs?.edit()
+            ?.putInt("filter_min_bpm_${mood.id}", minBpm)
+            ?.putInt("filter_max_bpm_${mood.id}", maxBpm)
+            ?.putInt("filter_min_energy_${mood.id}", minEnergy)
+            ?.putInt("filter_max_energy_${mood.id}", maxEnergy)
+            ?.apply()
+        classificationVersion++
+    }
+
+    fun resetMoodFilters(mood: AudioMood) {
+        filterPrefs?.edit()
+            ?.remove("filter_min_bpm_${mood.id}")
+            ?.remove("filter_max_bpm_${mood.id}")
+            ?.remove("filter_min_energy_${mood.id}")
+            ?.remove("filter_max_energy_${mood.id}")
+            ?.apply()
+        classificationVersion++
     }
 
     private fun loadCache() {
@@ -350,12 +426,15 @@ object SmartMoodClassifier {
             try { extractor?.release() } catch (_: Exception) {}
         }
 
-        // DSP Calculations
+        // =========================================================================
+        // 🔬 CALIBRATED ACOUSTIC DSP CALCULATIONS
+        // =========================================================================
+
         val samplesCount = pcmFloats.size
-        var energyRms = 0.5f
-        var zeroCrossingRate = 0.1f
-        var spectralBrightness = 0.5f
-        var estimatedBpm = 100
+        var energyRms = 0.45f
+        var zeroCrossingRate = 0.08f
+        var spectralBrightness = 0.45f
+        var estimatedBpm = 95
 
         if (samplesCount > 1024) {
             var sumSquares = 0.0
@@ -363,7 +442,8 @@ object SmartMoodClassifier {
                 val s = pcmFloats[i]
                 sumSquares += (s * s)
             }
-            energyRms = (sqrt(sumSquares / samplesCount).toFloat() * 3.5f).coerceIn(0.05f, 1.0f)
+            // Coerce realistic loudness range
+            energyRms = (sqrt(sumSquares / samplesCount).toFloat() * 3.2f).coerceIn(0.05f, 1.0f)
 
             var zeroCrossings = 0
             for (i in 1 until samplesCount) {
@@ -378,7 +458,7 @@ object SmartMoodClassifier {
                 val diff = pcmFloats[i] - pcmFloats[i - 1]
                 highFreqEnergy += (diff * diff)
             }
-            spectralBrightness = (sqrt(highFreqEnergy / samplesCount).toFloat() * 4.0f).coerceIn(0.05f, 1.0f)
+            spectralBrightness = (sqrt(highFreqEnergy / samplesCount).toFloat() * 3.6f).coerceIn(0.05f, 1.0f)
 
             val windowSize = (sampleRate * 0.05).toInt()
             val numWindows = samplesCount / windowSize
@@ -414,95 +494,127 @@ object SmartMoodClassifier {
 
                 if (bestLag > 0) {
                     var calcBpm = ((windowsPerSec * 60f) / bestLag).toInt()
-                    if (calcBpm in 60..75 && energyRms > 0.45f) calcBpm *= 2
-                    estimatedBpm = calcBpm.coerceIn(65, 185)
+                    // Normalize tempo halving/doubling
+                    if (calcBpm in 55..70 && energyRms > 0.50f) calcBpm *= 2
+                    if (calcBpm > 175 && energyRms < 0.40f) calcBpm /= 2
+                    estimatedBpm = calcBpm.coerceIn(55, 185)
                 }
             }
         }
 
-        // Multi-Criteria Scoring Vector
+        // =========================================================================
+        // 🧠 WORD-BOUNDARY HEURISTICS & ACOUSTIC BOUNDS
+        // =========================================================================
+
         val cleanTitle = song.title.lowercase(Locale.getDefault())
         val cleanFolder = song.folderName.lowercase(Locale.getDefault())
         val cleanArtist = song.artist.lowercase(Locale.getDefault())
         val cleanAlbum = song.album.lowercase(Locale.getDefault())
-        val cleanPath = song.path.lowercase(Locale.getDefault())
         val releaseYear = song.releaseDate.toIntOrNull() ?: 0
-        val metadataBlob = "$cleanTitle $cleanFolder $cleanArtist $cleanAlbum $cleanPath"
 
+        // Strict word boundary matcher helper
+        fun containsWord(text: String, vararg words: String): Boolean {
+            return words.any { word ->
+                Regex("\\b${Regex.escape(word)}\\b").containsMatchIn(text)
+            }
+        }
+
+        val folderAndTitle = "$cleanFolder $cleanTitle"
+        val metaString = "$cleanTitle $cleanArtist $cleanAlbum"
+
+        // 1. 60's & RETRO GOLDEN ERA (STRICT BOUNDS: Energy <= 0.58, release date or vintage artists)
+        val is60sArtist = cleanArtist.contains("kishore kumar") || cleanArtist.contains("mohammed rafi") ||
+                cleanArtist.contains("lata mangeshkar") || cleanArtist.contains("mukesh") ||
+                cleanArtist.contains("asha bhosle") || cleanArtist.contains("rd burman") ||
+                cleanArtist.contains("r.d. burman") || cleanArtist.contains("manna dey") ||
+                cleanArtist.contains("talat mahmood") || cleanArtist.contains("hemant kumar")
+
+        val is60sFolder = containsWord(cleanFolder, "60s", "70s", "50s", "golden", "evergreen", "purane") ||
+                (containsWord(cleanFolder, "retro", "old") && !cleanFolder.contains("90"))
+
+        val is60sYear = releaseYear in 1950..1979
+
+        val qualifies60s = (is60sArtist || is60sFolder || is60sYear || containsWord(cleanTitle, "60s", "70s")) &&
+                (energyRms <= 0.60f && estimatedBpm <= 145)
+
+        // 2. 90's NOSTALGIA ERA (STRICT BOUNDS: 1980–1999 or 90s singers)
+        val is90sArtist = cleanArtist.contains("kumar sanu") || cleanArtist.contains("alka yagnik") ||
+                cleanArtist.contains("udit narayan") || cleanArtist.contains("anuradha paudwal") ||
+                cleanArtist.contains("abhijeet") || cleanArtist.contains("sonu nigam") ||
+                cleanArtist.contains("kavita krishnamurthy") || cleanArtist.contains("nadeem shravan") ||
+                cleanArtist.contains("jatin lalit") || cleanArtist.contains("bappi lahiri")
+
+        val is90sFolder = containsWord(cleanFolder, "90s", "nineties", "90's")
+        val is90sYear = releaseYear in 1980..1999
+
+        val qualifies90s = (is90sArtist || is90sFolder || is90sYear || containsWord(cleanTitle, "90s", "90's")) &&
+                !qualifies60s && (energyRms <= 0.75f)
+
+        // 3. PARTY & DANCE (STRICT: Must be energetic + fast tempo)
+        val isPartyFolder = containsWord(cleanFolder, "party", "dance", "club", "dj", "remix", "edm", "bhangra", "pub")
+        val isPartyWord = containsWord(folderAndTitle, "party", "dance", "club", "remix", "dhol", "bhangra", "mashup", "dj", "bass drop")
+
+        val qualifiesParty = when {
+            isPartyFolder -> (energyRms >= 0.40f && estimatedBpm >= 105)
+            isPartyWord -> (energyRms >= 0.45f && estimatedBpm >= 110)
+            else -> (energyRms >= 0.54f && estimatedBpm >= 118 && spectralBrightness >= 0.46f)
+        }
+
+        // 4. WORKOUT (STRICT: High tempo & raw power)
+        val isWorkoutFolder = containsWord(cleanFolder, "workout", "gym", "fitness", "crossfit", "running")
+        val isWorkoutWord = containsWord(folderAndTitle, "workout", "gym", "motivation", "beast", "hardstyle")
+
+        val qualifiesWorkout = when {
+            isWorkoutFolder -> (energyRms >= 0.45f && estimatedBpm >= 115)
+            isWorkoutWord -> (energyRms >= 0.50f && estimatedBpm >= 120)
+            else -> (energyRms >= 0.60f && estimatedBpm >= 125 && zeroCrossingRate >= 0.06f)
+        }
+
+        // 5. ROMANTIC (Warm acoustic, mid-low energy, sweet tempo)
+        val isRomanticWord = containsWord(metaString, "love", "ishq", "dil", "pyaar", "mohabbat", "romantic", "sanam", "humsafar")
+        val isRomanticFolder = containsWord(cleanFolder, "romantic", "love", "couple", "valentine")
+
+        val qualifiesRomantic = (isRomanticFolder || isRomanticWord || (estimatedBpm in 68..112 && energyRms in 0.22f..0.60f)) &&
+                !qualifiesParty && !qualifiesWorkout
+
+        // 6. SAD & MELANCHOLY (Very low energy, slow, minor key)
+        val isSadWord = containsWord(metaString, "sad", "dard", "juda", "bewafa", "alone", "cry", "broken", "tears", "tanha")
+        val isSadFolder = containsWord(cleanFolder, "sad", "dard", "breakup", "heartbreak")
+
+        val qualifiesSad = (isSadFolder || isSadWord || (energyRms <= 0.38f && estimatedBpm <= 95 && spectralBrightness <= 0.38f)) &&
+                !qualifiesParty && !qualifiesWorkout
+
+        // 7. STUDY & FOCUS (Low energy, consistent texture, acoustic)
+        val isStudyWord = containsWord(folderAndTitle, "study", "focus", "piano", "calm", "meditation", "classical")
+        val isStudyFolder = containsWord(cleanFolder, "study", "focus", "instrumental", "ambient")
+
+        val qualifiesStudy = (isStudyFolder || isStudyWord || (energyRms <= 0.36f && spectralBrightness <= 0.38f && zeroCrossingRate <= 0.06f)) &&
+                !qualifiesParty && !qualifiesWorkout
+
+        // 8. CHILL & RELAX
+        val isChillWord = containsWord(folderAndTitle, "chill", "lofi", "lo-fi", "relax", "peace", "night", "rain", "slowed")
+        val isChillFolder = containsWord(cleanFolder, "chill", "relax", "lofi", "sleep")
+
+        val qualifiesChill = (isChillFolder || isChillWord || (energyRms in 0.15f..0.48f && estimatedBpm in 60..102)) &&
+                !qualifiesParty && !qualifiesWorkout
+
+        // Multi-mood assignment with confidence check
         val assignedMoods = mutableSetOf<AudioMood>()
 
-        // 1. Vintage / Era Detection
-        val is60sRetro = cleanFolder.contains("60s") || cleanFolder.contains("70s") || cleanFolder.contains("50s") ||
-                cleanFolder.contains("retro") || cleanFolder.contains("purane") || cleanFolder.contains("golden") ||
-                cleanFolder.contains("evergreen") || (cleanFolder.contains("old") && !cleanFolder.contains("90")) ||
-                cleanTitle.contains("retro") || cleanTitle.contains("60s") || cleanTitle.contains("70s") ||
-                cleanArtist.contains("kishore kumar") || cleanArtist.contains("mohammed rafi") || cleanArtist.contains("lata mangeshkar") ||
-                cleanArtist.contains("mukesh") || cleanArtist.contains("asha bhosle") || cleanArtist.contains("rd burman") ||
-                (releaseYear in 1950..1979)
+        if (qualifiesParty) assignedMoods.add(AudioMood.PARTY)
+        if (qualifiesWorkout) assignedMoods.add(AudioMood.WORKOUT)
+        if (qualifies60s) assignedMoods.add(AudioMood.RETRO_SIXTIES)
+        if (qualifies90s) assignedMoods.add(AudioMood.NINETIES)
+        if (qualifiesRomantic) assignedMoods.add(AudioMood.ROMANTIC)
+        if (qualifiesSad) assignedMoods.add(AudioMood.SAD)
+        if (qualifiesStudy) assignedMoods.add(AudioMood.STUDY)
+        if (qualifiesChill) assignedMoods.add(AudioMood.CHILL)
 
-        val is90s = cleanFolder.contains("90s") || cleanFolder.contains("90's") || cleanFolder.contains("nineties") ||
-                cleanTitle.contains("90s") || cleanTitle.contains("90's") ||
-                cleanArtist.contains("kumar sanu") || cleanArtist.contains("alka yagnik") || cleanArtist.contains("udit narayan") ||
-                cleanArtist.contains("anuradha paudwal") || cleanArtist.contains("abhijeet") || cleanArtist.contains("sonu nigam") ||
-                cleanArtist.contains("kavita krishnamurthy") || cleanArtist.contains("nadeem shravan") || (releaseYear in 1980..1999)
+        if (assignedMoods.isEmpty()) {
+            assignedMoods.add(if (energyRms > 0.50f) AudioMood.PARTY else AudioMood.CHILL)
+        }
 
-        if (is60sRetro) assignedMoods.add(AudioMood.RETRO_SIXTIES)
-        if (is90s) assignedMoods.add(AudioMood.NINETIES)
-
-        // 2. Party & Dance
-        val isParty = cleanFolder.contains("party") || cleanFolder.contains("dance") || cleanFolder.contains("club") ||
-                cleanFolder.contains("dj") || cleanFolder.contains("remix") || cleanFolder.contains("edm") ||
-                metadataBlob.contains("party") || metadataBlob.contains("dance") || metadataBlob.contains("club") ||
-                metadataBlob.contains("remix") || metadataBlob.contains("dj") || metadataBlob.contains("mashup") ||
-                metadataBlob.contains("dhol") || metadataBlob.contains("bass") || metadataBlob.contains("nach") ||
-                (energyRms >= 0.44f && estimatedBpm >= 110) || (energyRms >= 0.52f && spectralBrightness >= 0.45f)
-
-        if (isParty) assignedMoods.add(AudioMood.PARTY)
-
-        // 3. Workout
-        val isWorkout = cleanFolder.contains("workout") || cleanFolder.contains("gym") || cleanFolder.contains("fitness") ||
-                metadataBlob.contains("workout") || metadataBlob.contains("gym") || metadataBlob.contains("motivation") ||
-                metadataBlob.contains("trap") || metadataBlob.contains("beast") ||
-                (energyRms >= 0.50f && estimatedBpm >= 120 && zeroCrossingRate >= 0.07f) ||
-                (isParty && energyRms >= 0.55f && estimatedBpm >= 125)
-
-        if (isWorkout) assignedMoods.add(AudioMood.WORKOUT)
-
-        // 4. Romantic
-        val isRomantic = cleanFolder.contains("romantic") || cleanFolder.contains("love") || cleanFolder.contains("couple") ||
-                metadataBlob.contains("love") || metadataBlob.contains("ishq") || metadataBlob.contains("dil") ||
-                metadataBlob.contains("pyaar") || metadataBlob.contains("mohabbat") || metadataBlob.contains("romantic") ||
-                metadataBlob.contains("sanam") || metadataBlob.contains("jaan") ||
-                (estimatedBpm in 70..112 && energyRms in 0.28f..0.65f && !isParty)
-
-        if (isRomantic) assignedMoods.add(AudioMood.ROMANTIC)
-
-        // 5. Sad & Melancholy
-        val isSad = cleanFolder.contains("sad") || cleanFolder.contains("dard") || cleanFolder.contains("breakup") ||
-                metadataBlob.contains("sad") || metadataBlob.contains("dard") || metadataBlob.contains("juda") ||
-                metadataBlob.contains("bewafa") || metadataBlob.contains("alone") || metadataBlob.contains("cry") ||
-                (energyRms <= 0.35f && estimatedBpm <= 96 && spectralBrightness <= 0.38f)
-
-        if (isSad) assignedMoods.add(AudioMood.SAD)
-
-        // 6. Study & Focus
-        val isStudy = cleanFolder.contains("study") || cleanFolder.contains("focus") || cleanFolder.contains("ambient") ||
-                metadataBlob.contains("study") || metadataBlob.contains("focus") || metadataBlob.contains("piano") ||
-                metadataBlob.contains("calm") || metadataBlob.contains("instrumental") ||
-                (energyRms <= 0.34f && spectralBrightness <= 0.38f && zeroCrossingRate <= 0.06f)
-
-        if (isStudy) assignedMoods.add(AudioMood.STUDY)
-
-        // 7. Late Night Chill
-        val isChill = cleanFolder.contains("chill") || cleanFolder.contains("relax") || cleanFolder.contains("sleep") ||
-                metadataBlob.contains("lofi") || metadataBlob.contains("lo-fi") || metadataBlob.contains("chill") ||
-                metadataBlob.contains("rain") || metadataBlob.contains("slowed") ||
-                (energyRms <= 0.42f && estimatedBpm in 65..95)
-
-        if (isChill || assignedMoods.isEmpty()) assignedMoods.add(AudioMood.CHILL)
-
-        // Cap to top 3 matching moods to maintain playlists quality
-        val finalMoods = assignedMoods.take(3).toSet()
+        val finalMoods = assignedMoods.take(2).toSet()
 
         val profile = AudioAcousticProfile(
             songId = song.id,
@@ -518,7 +630,6 @@ object SmartMoodClassifier {
         return@withContext profile
     }
 
-    // Dynamic Time-of-Day Hero Mood (For Search Tab Highlighting)
     fun getCurrentHeroMood(): AudioMood {
         val hour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
         return when (hour) {
@@ -529,7 +640,6 @@ object SmartMoodClassifier {
         }
     }
 
-    // Vibe match calculation percentage (0% to 100%)
     fun calculateVibeMatchScore(songId: Long, mood: AudioMood): Int {
         val profile = profilesCache[songId] ?: return 85
         var score = 75
@@ -537,43 +647,43 @@ object SmartMoodClassifier {
         if (profile.matchedMoods.contains(mood)) score += 15
         if (profile.primaryMood == mood) score += 5
 
-        when (mood) {
-            AudioMood.PARTY, AudioMood.WORKOUT -> {
-                if (profile.estimatedBpm >= 120) score += 5
-                if (profile.energyRms >= 0.50f) score += 5
-            }
-            AudioMood.ROMANTIC, AudioMood.NINETIES, AudioMood.RETRO_SIXTIES -> {
-                if (profile.estimatedBpm in 70..115) score += 5
-            }
-            AudioMood.SAD, AudioMood.STUDY, AudioMood.CHILL -> {
-                if (profile.energyRms <= 0.38f) score += 5
-            }
-        }
+        val bpmInRange = profile.estimatedBpm in mood.defaultMinBpm..mood.defaultMaxBpm
+        val energyInRange = (profile.energyRms * 100).toInt() in mood.defaultMinEnergy..mood.defaultMaxEnergy
+
+        if (bpmInRange) score += 3
+        if (energyInRange) score += 2
+
         return score.coerceIn(60, 99)
     }
 
-    // Primary retrieval with multi-criteria fallback
     fun getSongsForMood(mood: AudioMood, allSongs: List<Song>): List<Song> {
-        return getFilteredSongsForMood(mood, allSongs, minBpm = 0, minEnergyPercent = 0)
+        val minBpm = getSavedMinBpm(mood)
+        val maxBpm = getSavedMaxBpm(mood)
+        val minEnergy = getSavedMinEnergy(mood)
+        val maxEnergy = getSavedMaxEnergy(mood)
+
+        return getFilteredSongsForMood(mood, allSongs, minBpm, maxBpm, minEnergy, maxEnergy)
     }
 
-    // Interactive slider-filtered query
     fun getFilteredSongsForMood(
         mood: AudioMood,
         allSongs: List<Song>,
-        minBpm: Int = 0,
-        minEnergyPercent: Int = 0
+        minBpm: Int = mood.defaultMinBpm,
+        maxBpm: Int = mood.defaultMaxBpm,
+        minEnergyPercent: Int = mood.defaultMinEnergy,
+        maxEnergyPercent: Int = mood.defaultMaxEnergy
     ): List<Song> {
         val minEnergyFloat = (minEnergyPercent / 100f).coerceIn(0f, 1f)
+        val maxEnergyFloat = (maxEnergyPercent / 100f).coerceIn(0f, 1f)
 
         val matchingSongs = allSongs.filter { song ->
-            val profile = profilesCache[song.id]
-            val moodMatches = profile?.matchedMoods?.contains(mood) == true || profile?.primaryMood == mood
+            val profile = profilesCache[song.id] ?: return@filter false
+            val moodMatches = profile.matchedMoods.contains(mood) || profile.primaryMood == mood
 
             if (!moodMatches) return@filter false
 
-            val bpmPass = profile.estimatedBpm >= minBpm
-            val energyPass = profile.energyRms >= minEnergyFloat
+            val bpmPass = profile.estimatedBpm in minBpm..maxBpm
+            val energyPass = profile.energyRms in minEnergyFloat..maxEnergyFloat
             bpmPass && energyPass
         }
 
@@ -591,7 +701,7 @@ object SmartMoodClassifier {
 }
 
 // =========================================================================
-// 📌 SELF-CONTAINED FROSTED BPM & ENERGY CONTROLS (Zero MainActivity bloat)
+// 📌 FROSTED BPM & ENERGY BOUNDS CONTROLS WITH MEMORY
 // =========================================================================
 
 @Composable
@@ -604,7 +714,6 @@ fun MoodHeaderActionButtons(
     onShuffleClick: () -> Unit
 ) {
     Row(verticalAlignment = Alignment.CenterVertically) {
-        // BPM & Energy Filter Button (Left to Shuffle)
         Box(
             modifier = Modifier
                 .size(36.dp)
@@ -622,7 +731,6 @@ fun MoodHeaderActionButtons(
 
         Spacer(modifier = Modifier.width(8.dp))
 
-        // Shuffle Button (Far Right)
         Box(
             modifier = Modifier
                 .size(36.dp)
@@ -675,19 +783,24 @@ fun MoodHeaderActionButtons(
 
 @Composable
 fun MoodBpmEnergyFilterDialog(
+    mood: AudioMood,
     initialMinBpm: Int,
+    initialMaxBpm: Int,
     initialMinEnergy: Int,
+    initialMaxEnergy: Int,
     isDark: Boolean,
     accent: Color,
     textColor: Color,
     dialogColor: Color,
     glassBorder: androidx.compose.ui.graphics.Brush,
-    onApply: (minBpm: Int, minEnergy: Int) -> Unit,
+    onApply: (minBpm: Int, maxBpm: Int, minEnergy: Int, maxEnergy: Int) -> Unit,
     onReset: () -> Unit,
     onDismiss: () -> Unit
 ) {
     var minBpm by remember { mutableIntStateOf(initialMinBpm) }
+    var maxBpm by remember { mutableIntStateOf(initialMaxBpm) }
     var minEnergy by remember { mutableIntStateOf(initialMinEnergy) }
+    var maxEnergy by remember { mutableIntStateOf(initialMaxEnergy) }
 
     Box(
         modifier = Modifier
@@ -716,65 +829,68 @@ fun MoodBpmEnergyFilterDialog(
                 ) {
                     Column {
                         Text(
-                            text = "Acoustic DSP Filters",
+                            text = "${mood.emoji} ${mood.title} Filters",
                             fontSize = 18.sp,
                             fontWeight = FontWeight.Bold,
                             color = textColor
                         )
                         Text(
-                            text = "Filter playlist tracks by acoustic tempo & power",
+                            text = "Calibrate tempo & energy boundaries",
                             fontSize = 12.sp,
                             color = Color(0xFF64748B)
                         )
                     }
                     Text(
-                        text = "Reset",
+                        text = "Reset Defaults",
                         color = Color(0xFFEF4444),
                         fontSize = 13.sp,
                         fontWeight = FontWeight.Bold,
                         modifier = Modifier
                             .clip(RoundedCornerShape(8.dp))
                             .clickable {
-                                minBpm = 0
-                                minEnergy = 0
+                                minBpm = mood.defaultMinBpm
+                                maxBpm = mood.defaultMaxBpm
+                                minEnergy = mood.defaultMinEnergy
+                                maxEnergy = mood.defaultMaxEnergy
+                                SmartMoodClassifier.resetMoodFilters(mood)
                                 onReset()
                             }
                             .padding(6.dp)
                     )
                 }
 
-                // Min BPM Slider
+                // Min & Max Tempo Slider
                 Column {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Text("Min Tempo (BPM)", color = textColor, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                        Text(if (minBpm > 0) "$minBpm BPM" else "Any Pace", color = accent, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                        Text("Min Tempo: $minBpm BPM", color = textColor, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                        Text("Max: $maxBpm BPM", color = accent, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                     }
                     Slider(
                         value = minBpm.toFloat(),
-                        onValueChange = { minBpm = it.toInt() },
-                        valueRange = 0f..180f,
-                        steps = 17,
+                        onValueChange = { minBpm = it.toInt().coerceAtMost(maxBpm) },
+                        valueRange = 50f..190f,
+                        steps = 27,
                         colors = SliderDefaults.colors(thumbColor = accent, activeTrackColor = accent)
                     )
                 }
 
-                // Min Energy Slider
+                // Min & Max Energy Slider
                 Column {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Text("Min Acoustic Energy", color = textColor, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                        Text(if (minEnergy > 0) "$minEnergy%" else "Any Energy", color = accent, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                        Text("Min Energy: $minEnergy%", color = textColor, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                        Text("Max: $maxEnergy%", color = accent, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                     }
                     Slider(
                         value = minEnergy.toFloat(),
-                        onValueChange = { minEnergy = it.toInt() },
+                        onValueChange = { minEnergy = it.toInt().coerceAtMost(maxEnergy) },
                         valueRange = 0f..100f,
-                        steps = 9,
+                        steps = 19,
                         colors = SliderDefaults.colors(thumbColor = accent, activeTrackColor = accent)
                     )
                 }
@@ -794,14 +910,15 @@ fun MoodBpmEnergyFilterDialog(
 
                     Button(
                         onClick = {
-                            onApply(minBpm, minEnergy)
+                            SmartMoodClassifier.saveMoodFilters(mood, minBpm, maxBpm, minEnergy, maxEnergy)
+                            onApply(minBpm, maxBpm, minEnergy, maxEnergy)
                             onDismiss()
                         },
                         modifier = Modifier.weight(1f).height(48.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = accent),
                         shape = RoundedCornerShape(12.dp)
                     ) {
-                        Text("Apply", color = Color.White, fontWeight = FontWeight.Bold)
+                        Text("Apply & Save", color = Color.White, fontWeight = FontWeight.Bold)
                     }
                 }
             }
