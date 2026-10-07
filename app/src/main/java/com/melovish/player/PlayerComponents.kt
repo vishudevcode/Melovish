@@ -84,7 +84,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
-import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
@@ -127,7 +126,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import java.util.Locale
 import kotlin.math.abs
-import kotlin.math.roundToInt
 
 // Live Animated 4-Bar Equalizer
 @Composable
@@ -2155,7 +2153,7 @@ fun MenuRow(icon: String, text: String, isDark: Boolean, isDanger: Boolean = fal
     }
 }
 
-// 🌟 Mini Player Dock with Frosted Glass Surface, Optical Depth Blur & Swipe-to-Dismiss Gesture
+// 🌟 Mini Player Dock with Frosted Glass Surface, Floating Island Depth Shadow & Swipe-to-Dismiss Gesture
 @UnstableApi
 @Composable
 fun MiniPlayerDock(
@@ -2166,19 +2164,26 @@ fun MiniPlayerDock(
     val song = manager.currentSong ?: return
     val accent = manager.accentColor
     val isDark = manager.isDarkMode
+    val textColor = manager.getCurrentTextColor()
 
-    // Dynamic frosted glass properties from settings
-    val surfaceColor = manager.getCurrentSurfaceColor()
-    val glassBorderBrush = manager.getGlassBorderBrush()
+    // 1. Dynamic Glass Opacity based on the Slider (Matching Dialogs in Image 2)
     val isFrosted = manager.isFrostedGlassEnabled
-    val opacity = manager.frostedGlassOpacity
+    val sliderOpacity = manager.frostedGlassOpacity.coerceIn(0f, 1f)
 
-    // Dynamic blur depth: higher blur when slider is transparent, gently softening as it becomes solid
-    val blurRadius = if (isFrosted) {
-        (26.dp * (1f - (opacity * 0.35f))).coerceAtLeast(8.dp)
+    // Smoothly scale base alpha: 52% at Clear, 74% at Frosted, 100% at Opaque
+    val dynamicAlpha = if (!isFrosted) {
+        1.0f
     } else {
-        0.dp
+        (0.52f + (sliderOpacity * 0.48f)).coerceIn(0.52f, 1.0f)
     }
+
+    val dynamicSurface = if (isDark) {
+        Color(0xFF1E293B).copy(alpha = dynamicAlpha)
+    } else {
+        Color.White.copy(alpha = dynamicAlpha)
+    }
+
+    val glassBorderBrush = manager.getGlassBorderBrush()
 
     var albumArtBitmap by remember(song.id) { mutableStateOf(manager.getCachedAlbumArt(song.id)) }
     LaunchedEffect(song.id) {
@@ -2189,14 +2194,16 @@ fun MiniPlayerDock(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 14.dp, vertical = 6.dp)
+            // Floating elevation shadow
             .shadow(
-                elevation = if (isDark) 16.dp else 10.dp,
-                shape = RoundedCornerShape(22.dp),
-                spotColor = accent.copy(alpha = 0.40f),
-                ambientColor = if (isDark) Color.Black.copy(alpha = 0.75f) else Color(0x44000000)
+                elevation = if (isDark) 18.dp else 12.dp,
+                shape = RoundedCornerShape(24.dp),
+                spotColor = if (isDark) Color.Black else accent.copy(alpha = 0.35f),
+                ambientColor = if (isDark) Color.Black.copy(alpha = 0.65f) else Color(0x33000000)
             )
-            .clip(RoundedCornerShape(22.dp))
-            .border(1.2.dp, glassBorderBrush, RoundedCornerShape(22.dp))
+            .clip(RoundedCornerShape(24.dp))
+            .background(dynamicSurface)
+            .border(1.2.dp, glassBorderBrush, RoundedCornerShape(24.dp))
             .pointerInput(manager.isPlaying) {
                 detectVerticalDragGestures { _, dragAmount ->
                     if (dragAmount < -22f) {
@@ -2208,47 +2215,18 @@ fun MiniPlayerDock(
                 }
             }
             .clickable { onClick() }
+            .padding(horizontal = 14.dp, vertical = 9.dp)
     ) {
-        // 🔮 BACKDROP BLUR & FROSTED GLASS LAYER:
-        // Diffuses background scrolling items into a smooth bokeh while applying theme tint
-        Box(
-            modifier = Modifier
-                .matchParentSize()
-                .then(
-                    if (blurRadius > 0.dp) Modifier.blur(blurRadius) else Modifier
-                )
-                .background(surfaceColor)
-        )
-
-        // Specular glass highlight reflection across the top
-        if (isFrosted) {
-            Box(
-                modifier = Modifier
-                    .matchParentSize()
-                    .background(
-                        Brush.verticalGradient(
-                            listOf(
-                                Color.White.copy(alpha = if (isDark) 0.08f else 0.22f),
-                                Color.Transparent
-                            )
-                        )
-                    )
-            )
-        }
-
-        // 🎵 FOREGROUND CONTENT (Keeps album art, text labels, and buttons sharp and readable)
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 14.dp, vertical = 9.dp),
+            modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
+            // Album Art Thumbnail
             Box(
                 modifier = Modifier
                     .size(46.dp)
                     .clip(RoundedCornerShape(12.dp))
-                    .background(Color(0xFF1E293B))
-                    .border(1.dp, Color.White.copy(alpha = 0.18f), RoundedCornerShape(12.dp)),
+                    .background(Color(0xFF1E293B)),
                 contentAlignment = Alignment.Center
             ) {
                 if (albumArtBitmap != null) {
@@ -2265,10 +2243,11 @@ fun MiniPlayerDock(
 
             Spacer(modifier = Modifier.width(12.dp))
 
+            // Track Title & Details
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = song.title,
-                    color = manager.getCurrentTextColor(),
+                    color = textColor,
                     fontSize = 14.sp,
                     fontWeight = FontWeight.Bold,
                     maxLines = 1,
@@ -2286,13 +2265,14 @@ fun MiniPlayerDock(
 
             Spacer(modifier = Modifier.width(8.dp))
 
+            // Play / Pause Floating Circle
             Box(
                 modifier = Modifier
                     .size(42.dp)
                     .shadow(elevation = 6.dp, shape = CircleShape, spotColor = accent)
                     .clip(CircleShape)
                     .background(accent)
-                    .border(1.2.dp, Color.White.copy(alpha = 0.25f), CircleShape)
+                    .border(1.2.dp, Color.White.copy(alpha = 0.35f), CircleShape)
                     .clickable {
                         manager.triggerHapticFeedback(true)
                         manager.togglePlayPause()
