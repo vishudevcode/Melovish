@@ -19,7 +19,6 @@ import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -44,7 +43,6 @@ import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -779,7 +777,7 @@ fun SettingsScreen(
                 )
             }
 
-            // 6. Frosted Glass Styling Section (Updated Titles & Precision Ticked Slider)
+            // 6. Frosted Glass Styling Section (Solid Accent Slider & 5%/25% Accent Dots)
             item(key = "frosted_glass_section", contentType = "frosted_glass_card") {
                 Column(
                     modifier = Modifier
@@ -827,7 +825,7 @@ fun SettingsScreen(
                             }
                             Spacer(modifier = Modifier.height(4.dp))
 
-                            // High-Precision Slider with 5% dots and prominent 0%, 25%, 50%, 75%, 100% anchors
+                            // Solid Accent Slider Track with 5% and 25% Accent-Colored Tick Dots
                             Box(
                                 modifier = Modifier.fillMaxWidth(),
                                 contentAlignment = Alignment.Center
@@ -848,9 +846,9 @@ fun SettingsScreen(
 
                                         val dotRadius = if (isProminent) 3.5.dp.toPx() else 1.8.dp.toPx()
                                         val dotColor = when {
-                                            frac <= manager.frostedGlassOpacity -> if (isProminent) Color.White.copy(alpha = 0.95f) else accent.copy(alpha = 0.70f)
-                                            isProminent -> if (isDark) Color(0xFF64748B) else Color(0xFF94A3B8)
-                                            else -> if (isDark) Color(0xFF334155) else Color(0xFFCBD5E1)
+                                            frac <= manager.frostedGlassOpacity -> if (isProminent) Color.White else accent.copy(alpha = 0.85f)
+                                            isProminent -> accent.copy(alpha = 0.45f)
+                                            else -> accent.copy(alpha = 0.22f)
                                         }
 
                                         drawCircle(
@@ -875,8 +873,8 @@ fun SettingsScreen(
                                     modifier = Modifier.fillMaxWidth(),
                                     colors = SliderDefaults.colors(
                                         thumbColor = accent,
-                                        activeTrackColor = accent.copy(alpha = 0.55f),
-                                        inactiveTrackColor = Color.Transparent
+                                        activeTrackColor = accent,
+                                        inactiveTrackColor = if (isDark) Color(0xFF1E293B) else Color(0xFFE2E8F0)
                                     )
                                 )
                             }
@@ -1624,6 +1622,7 @@ fun CircularColorPickerDialog(
                 Button(
                     onClick = {
                         onColorSelected(selectedColor)
+                        onDismiss()
                     },
                     modifier = Modifier.fillMaxWidth().height(48.dp),
                     shape = RoundedCornerShape(12.dp),
