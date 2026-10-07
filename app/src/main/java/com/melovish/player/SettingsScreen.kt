@@ -43,6 +43,7 @@ import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -769,7 +770,7 @@ fun SettingsScreen(
                 }
             }
 
-            // 5. 🌟 Custom Audio Effects Section (Directly Below Audio)
+            // 5. 🌟 Custom Audio Effects Section
             item(key = "custom_audio_effects_section", contentType = "custom_dsp_card") {
                 AudioEffectsSettingsSection(
                     manager = manager,
@@ -777,7 +778,7 @@ fun SettingsScreen(
                 )
             }
 
-            // 6. Frosted Glass Styling Section (Solid Accent Slider & 5%/25% Accent Dots)
+            // 6. Frosted Glass Styling Section (Solid Accent Bar + Underneath Dots)
             item(key = "frosted_glass_section", contentType = "frosted_glass_card") {
                 Column(
                     modifier = Modifier
@@ -825,9 +826,10 @@ fun SettingsScreen(
                             }
                             Spacer(modifier = Modifier.height(4.dp))
 
-                            // Solid Accent Slider Track with 5% and 25% Accent-Colored Tick Dots
                             Box(
-                                modifier = Modifier.fillMaxWidth(),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(34.dp),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Canvas(
@@ -838,24 +840,27 @@ fun SettingsScreen(
                                 ) {
                                     val centerY = size.height / 2f
                                     val trackWidth = size.width
+                                    val currentFraction = manager.frostedGlassOpacity
 
                                     for (i in 0..20) {
                                         val frac = i / 20f
-                                        val dotX = frac * trackWidth
-                                        val isProminent = i == 0 || i == 5 || i == 10 || i == 15 || i == 20
+                                        if (frac >= currentFraction) {
+                                            val dotX = frac * trackWidth
+                                            val isProminent = i == 0 || i == 5 || i == 10 || i == 15 || i == 20
+                                            val dotRadius = if (isProminent) 3.5.dp.toPx() else 1.8.dp.toPx()
 
-                                        val dotRadius = if (isProminent) 3.5.dp.toPx() else 1.8.dp.toPx()
-                                        val dotColor = when {
-                                            frac <= manager.frostedGlassOpacity -> if (isProminent) Color.White else accent.copy(alpha = 0.85f)
-                                            isProminent -> accent.copy(alpha = 0.45f)
-                                            else -> accent.copy(alpha = 0.22f)
+                                            val dotColor = if (isProminent) {
+                                                if (isDark) Color(0xFF64748B) else Color(0xFF94A3B8)
+                                            } else {
+                                                if (isDark) Color(0xFF334155) else Color(0xFFCBD5E1)
+                                            }
+
+                                            drawCircle(
+                                                color = dotColor,
+                                                radius = dotRadius,
+                                                center = Offset(dotX, centerY)
+                                            )
                                         }
-
-                                        drawCircle(
-                                            color = dotColor,
-                                            radius = dotRadius,
-                                            center = Offset(dotX, centerY)
-                                        )
                                     }
                                 }
 
@@ -874,12 +879,11 @@ fun SettingsScreen(
                                     colors = SliderDefaults.colors(
                                         thumbColor = accent,
                                         activeTrackColor = accent,
-                                        inactiveTrackColor = if (isDark) Color(0xFF1E293B) else Color(0xFFE2E8F0)
+                                        inactiveTrackColor = if (isDark) Color(0x22FFFFFF) else Color(0x33000000)
                                     )
                                 )
                             }
 
-                            // Coordinate-locked bottom labels with 50% "Frosted" dead center
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -942,7 +946,7 @@ fun SettingsScreen(
                 }
             }
 
-            // 8. 📁 Content Manager Section (Relocated Below Haptics & Feedback)
+            // 8. Content Manager Section (At Very Bottom Below Haptics)
             item(key = "content_manager_section", contentType = "content_manager_card") {
                 Column(
                     modifier = Modifier
@@ -1465,7 +1469,7 @@ fun ManageHiddenAudioFullScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(18.dp))
-                            .background(if (isDark) Color(0x1AE53935) else Color.White)
+                            .background(if (isDark) Color(0x1AEE53935) else Color.White)
                             .border(1.2.dp, Color(0x66E53935), RoundedCornerShape(18.dp))
                             .clickable {
                                 manager.triggerHapticFeedback(false)
@@ -1622,7 +1626,6 @@ fun CircularColorPickerDialog(
                 Button(
                     onClick = {
                         onColorSelected(selectedColor)
-                        onDismiss()
                     },
                     modifier = Modifier.fillMaxWidth().height(48.dp),
                     shape = RoundedCornerShape(12.dp),
