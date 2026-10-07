@@ -7,9 +7,11 @@ import android.media.MediaExtractor
 import android.media.MediaFormat
 import android.net.Uri
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -26,6 +28,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
@@ -34,19 +38,18 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
@@ -426,10 +429,6 @@ object SmartMoodClassifier {
             try { extractor?.release() } catch (_: Exception) {}
         }
 
-        // =========================================================================
-        // 🔬 CALIBRATED ACOUSTIC DSP CALCULATIONS
-        // =========================================================================
-
         val samplesCount = pcmFloats.size
         var energyRms = 0.45f
         var zeroCrossingRate = 0.08f
@@ -442,7 +441,6 @@ object SmartMoodClassifier {
                 val s = pcmFloats[i]
                 sumSquares += (s * s)
             }
-            // Coerce realistic loudness range
             energyRms = (sqrt(sumSquares / samplesCount).toFloat() * 3.2f).coerceIn(0.05f, 1.0f)
 
             var zeroCrossings = 0
@@ -494,7 +492,6 @@ object SmartMoodClassifier {
 
                 if (bestLag > 0) {
                     var calcBpm = ((windowsPerSec * 60f) / bestLag).toInt()
-                    // Normalize tempo halving/doubling
                     if (calcBpm in 55..70 && energyRms > 0.50f) calcBpm *= 2
                     if (calcBpm > 175 && energyRms < 0.40f) calcBpm /= 2
                     estimatedBpm = calcBpm.coerceIn(55, 185)
@@ -502,17 +499,12 @@ object SmartMoodClassifier {
             }
         }
 
-        // =========================================================================
-        // 🧠 WORD-BOUNDARY HEURISTICS & ACOUSTIC BOUNDS
-        // =========================================================================
-
         val cleanTitle = song.title.lowercase(Locale.getDefault())
         val cleanFolder = song.folderName.lowercase(Locale.getDefault())
         val cleanArtist = song.artist.lowercase(Locale.getDefault())
         val cleanAlbum = song.album.lowercase(Locale.getDefault())
         val releaseYear = song.releaseDate.toIntOrNull() ?: 0
 
-        // Strict word boundary matcher helper
         fun containsWord(text: String, vararg words: String): Boolean {
             return words.any { word ->
                 Regex("\\b${Regex.escape(word)}\\b").containsMatchIn(text)
@@ -522,7 +514,7 @@ object SmartMoodClassifier {
         val folderAndTitle = "$cleanFolder $cleanTitle"
         val metaString = "$cleanTitle $cleanArtist $cleanAlbum"
 
-        // 1. 60's & RETRO GOLDEN ERA (STRICT BOUNDS: Energy <= 0.58, release date or vintage artists)
+        // 1. 60's & RETRO GOLDEN ERA
         val is60sArtist = cleanArtist.contains("kishore kumar") || cleanArtist.contains("mohammed rafi") ||
                 cleanArtist.contains("lata mangeshkar") || cleanArtist.contains("mukesh") ||
                 cleanArtist.contains("asha bhosle") || cleanArtist.contains("rd burman") ||
@@ -537,7 +529,7 @@ object SmartMoodClassifier {
         val qualifies60s = (is60sArtist || is60sFolder || is60sYear || containsWord(cleanTitle, "60s", "70s")) &&
                 (energyRms <= 0.60f && estimatedBpm <= 145)
 
-        // 2. 90's NOSTALGIA ERA (STRICT BOUNDS: 1980–1999 or 90s singers)
+        // 2. 90's NOSTALGIA ERA
         val is90sArtist = cleanArtist.contains("kumar sanu") || cleanArtist.contains("alka yagnik") ||
                 cleanArtist.contains("udit narayan") || cleanArtist.contains("anuradha paudwal") ||
                 cleanArtist.contains("abhijeet") || cleanArtist.contains("sonu nigam") ||
@@ -550,7 +542,7 @@ object SmartMoodClassifier {
         val qualifies90s = (is90sArtist || is90sFolder || is90sYear || containsWord(cleanTitle, "90s", "90's")) &&
                 !qualifies60s && (energyRms <= 0.75f)
 
-        // 3. PARTY & DANCE (STRICT: Must be energetic + fast tempo)
+        // 3. PARTY & DANCE
         val isPartyFolder = containsWord(cleanFolder, "party", "dance", "club", "dj", "remix", "edm", "bhangra", "pub")
         val isPartyWord = containsWord(folderAndTitle, "party", "dance", "club", "remix", "dhol", "bhangra", "mashup", "dj", "bass drop")
 
@@ -560,7 +552,7 @@ object SmartMoodClassifier {
             else -> (energyRms >= 0.54f && estimatedBpm >= 118 && spectralBrightness >= 0.46f)
         }
 
-        // 4. WORKOUT (STRICT: High tempo & raw power)
+        // 4. WORKOUT
         val isWorkoutFolder = containsWord(cleanFolder, "workout", "gym", "fitness", "crossfit", "running")
         val isWorkoutWord = containsWord(folderAndTitle, "workout", "gym", "motivation", "beast", "hardstyle")
 
@@ -570,21 +562,21 @@ object SmartMoodClassifier {
             else -> (energyRms >= 0.60f && estimatedBpm >= 125 && zeroCrossingRate >= 0.06f)
         }
 
-        // 5. ROMANTIC (Warm acoustic, mid-low energy, sweet tempo)
+        // 5. ROMANTIC
         val isRomanticWord = containsWord(metaString, "love", "ishq", "dil", "pyaar", "mohabbat", "romantic", "sanam", "humsafar")
         val isRomanticFolder = containsWord(cleanFolder, "romantic", "love", "couple", "valentine")
 
         val qualifiesRomantic = (isRomanticFolder || isRomanticWord || (estimatedBpm in 68..112 && energyRms in 0.22f..0.60f)) &&
                 !qualifiesParty && !qualifiesWorkout
 
-        // 6. SAD & MELANCHOLY (Very low energy, slow, minor key)
+        // 6. SAD & MELANCHOLY
         val isSadWord = containsWord(metaString, "sad", "dard", "juda", "bewafa", "alone", "cry", "broken", "tears", "tanha")
         val isSadFolder = containsWord(cleanFolder, "sad", "dard", "breakup", "heartbreak")
 
         val qualifiesSad = (isSadFolder || isSadWord || (energyRms <= 0.38f && estimatedBpm <= 95 && spectralBrightness <= 0.38f)) &&
                 !qualifiesParty && !qualifiesWorkout
 
-        // 7. STUDY & FOCUS (Low energy, consistent texture, acoustic)
+        // 7. STUDY & FOCUS
         val isStudyWord = containsWord(folderAndTitle, "study", "focus", "piano", "calm", "meditation", "classical")
         val isStudyFolder = containsWord(cleanFolder, "study", "focus", "instrumental", "ambient")
 
@@ -598,7 +590,6 @@ object SmartMoodClassifier {
         val qualifiesChill = (isChillFolder || isChillWord || (energyRms in 0.15f..0.48f && estimatedBpm in 60..102)) &&
                 !qualifiesParty && !qualifiesWorkout
 
-        // Multi-mood assignment with confidence check
         val assignedMoods = mutableSetOf<AudioMood>()
 
         if (qualifiesParty) assignedMoods.add(AudioMood.PARTY)
@@ -701,19 +692,30 @@ object SmartMoodClassifier {
 }
 
 // =========================================================================
-// 📌 FROSTED BPM & ENERGY BOUNDS CONTROLS WITH MEMORY
+// 📌 4-BUTTON COMPOSABLE: [ BPM ] [ VIEW ] [ SORT ] [ SHUFFLE ]
 // =========================================================================
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun MoodHeaderActionButtons(
     accent: Color,
     cardBg: Color,
     glassBorder: androidx.compose.ui.graphics.Brush,
     isFilterActive: Boolean,
+    currentViewMode: GridViewMode,
     onOpenFilterDialog: () -> Unit,
+    onCycleViewMode: () -> Unit,
+    onOpenGridSizeDialog: () -> Unit,
+    onSelectSortOrder: (SongSortOrder) -> Unit,
     onShuffleClick: () -> Unit
 ) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
+    var showSortMenu by remember { mutableStateOf(false) }
+
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        // 1. BPM & Energy Filter Button (Far Left)
         Box(
             modifier = Modifier
                 .size(36.dp)
@@ -723,14 +725,51 @@ fun MoodHeaderActionButtons(
                 .clickable { onOpenFilterDialog() },
             contentAlignment = Alignment.Center
         ) {
-            Text(
-                text = "⚡",
-                fontSize = 16.sp
-            )
+            Text(text = "⚡", fontSize = 15.sp)
         }
 
-        Spacer(modifier = Modifier.width(8.dp))
+        // 2. View Mode Button
+        Box(
+            modifier = Modifier
+                .size(36.dp)
+                .clip(CircleShape)
+                .background(cardBg)
+                .border(1.2.dp, glassBorder, CircleShape)
+                .combinedClickable(
+                    onClick = { onCycleViewMode() },
+                    onLongClick = { onOpenGridSizeDialog() }
+                ),
+            contentAlignment = Alignment.Center
+        ) {
+            GridViewModeVectorIcon(mode = currentViewMode, tint = accent, modifier = Modifier.size(16.dp))
+        }
 
+        // 3. Sort Menu Button
+        Box {
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .clip(CircleShape)
+                    .background(cardBg)
+                    .border(1.2.dp, glassBorder, CircleShape)
+                .clickable { showSortMenu = true },
+            contentAlignment = Alignment.Center
+        ) {
+            SortListVector(tint = accent, modifier = Modifier.size(18.dp))
+        }
+
+            DropdownMenu(expanded = showSortMenu, onDismissRequest = { showSortMenu = false }) {
+                DropdownMenuItem(text = { Text("A to Z") }, onClick = { onSelectSortOrder(SongSortOrder.A_TO_Z); showSortMenu = false })
+                DropdownMenuItem(text = { Text("Z to A") }, onClick = { onSelectSortOrder(SongSortOrder.Z_TO_A); showSortMenu = false })
+                DropdownMenuItem(text = { Text("Duration") }, onClick = { onSelectSortOrder(SongSortOrder.DURATION); showSortMenu = false })
+                DropdownMenuItem(text = { Text("File Size") }, onClick = { onSelectSortOrder(SongSortOrder.FILE_SIZE); showSortMenu = false })
+                DropdownMenuItem(text = { Text("Newest First") }, onClick = { onSelectSortOrder(SongSortOrder.NEWEST); showSortMenu = false })
+                DropdownMenuItem(text = { Text("Oldest First") }, onClick = { onSelectSortOrder(SongSortOrder.OLDEST); showSortMenu = false })
+                DropdownMenuItem(text = { Text("By Artist") }, onClick = { onSelectSortOrder(SongSortOrder.ARTIST); showSortMenu = false })
+            }
+        }
+
+        // 4. Shuffle Button (Far Right)
         Box(
             modifier = Modifier
                 .size(36.dp)
@@ -740,43 +779,7 @@ fun MoodHeaderActionButtons(
                 .clickable { onShuffleClick() },
             contentAlignment = Alignment.Center
         ) {
-            Canvas(modifier = Modifier.size(20.dp)) {
-                val w = size.width
-                val h = size.height
-                val strokeW = w * 0.14f
-
-                val p1 = Path().apply {
-                    moveTo(w * 0.08f, h * 0.32f)
-                    lineTo(w * 0.30f, h * 0.32f)
-                    cubicTo(w * 0.46f, h * 0.32f, w * 0.54f, h * 0.68f, w * 0.70f, h * 0.68f)
-                    lineTo(w * 0.82f, h * 0.68f)
-                }
-                drawPath(p1, accent, style = Stroke(strokeW, cap = StrokeCap.Round, join = StrokeJoin.Round))
-
-                val p2 = Path().apply {
-                    moveTo(w * 0.08f, h * 0.68f)
-                    lineTo(w * 0.30f, h * 0.68f)
-                    cubicTo(w * 0.46f, h * 0.68f, w * 0.54f, h * 0.32f, w * 0.70f, h * 0.32f)
-                    lineTo(w * 0.82f, h * 0.32f)
-                }
-                drawPath(p2, accent, style = Stroke(strokeW, cap = StrokeCap.Round, join = StrokeJoin.Round))
-
-                val arr1 = Path().apply {
-                    moveTo(w * 0.94f, h * 0.32f)
-                    lineTo(w * 0.70f, h * 0.12f)
-                    lineTo(w * 0.70f, h * 0.52f)
-                    close()
-                }
-                drawPath(arr1, accent)
-
-                val arr2 = Path().apply {
-                    moveTo(w * 0.94f, h * 0.68f)
-                    lineTo(w * 0.70f, h * 0.48f)
-                    lineTo(w * 0.70f, h * 0.88f)
-                    close()
-                }
-                drawPath(arr2, accent)
-            }
+            ShuffleActionVector(tint = accent, modifier = Modifier.size(20.dp))
         }
     }
 }
@@ -859,7 +862,6 @@ fun MoodBpmEnergyFilterDialog(
                     )
                 }
 
-                // Min & Max Tempo Slider
                 Column {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -877,7 +879,6 @@ fun MoodBpmEnergyFilterDialog(
                     )
                 }
 
-                // Min & Max Energy Slider
                 Column {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
