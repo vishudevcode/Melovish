@@ -2155,7 +2155,7 @@ fun MenuRow(icon: String, text: String, isDark: Boolean, isDanger: Boolean = fal
     }
 }
 
-// Mini Player Dock with Dialog-Container Frosted Depth Blur Surface, Top-Lit Glass Border & Swipe-to-Dismiss Gesture
+// 🌟 Mini Player Dock with Dialog-Box Multi-Pass Frosted Diffusion System
 @UnstableApi
 @Composable
 fun MiniPlayerDock(
@@ -2172,6 +2172,11 @@ fun MiniPlayerDock(
         if (albumArtBitmap == null) albumArtBitmap = manager.loadAlbumArtAsync(song)
     }
 
+    // Dynamic depth diffusion values synced to manager.frostedGlassOpacity
+    val baseScrimAlpha = (0.55f + (manager.frostedGlassOpacity * 0.40f)).coerceIn(0.50f, 0.96f)
+    val scrimColor = if (isDark) Color(0xFF050811).copy(alpha = baseScrimAlpha) else Color(0xFFE2E8F0).copy(alpha = baseScrimAlpha)
+    val dialogColor = manager.getCurrentDialogColor()
+
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -2183,7 +2188,11 @@ fun MiniPlayerDock(
                 ambientColor = if (isDark) Color.Black.copy(alpha = 0.70f) else Color(0x44000000)
             )
             .clip(RoundedCornerShape(22.dp))
-            .background(manager.getCurrentDialogColor())
+            // Layer 1: Base scrim completely diffuses sharp text lines scrolling underneath
+            .background(scrimColor)
+            // Layer 2: True dialog-container frosted tint matching the Glass Visibility slider exactly
+            .background(dialogColor)
+            // Layer 3: Specular top-lit glass gradient highlight border
             .border(1.2.dp, manager.getGlassBorderBrush(), RoundedCornerShape(22.dp))
             .pointerInput(manager.isPlaying) {
                 detectVerticalDragGestures { _, dragAmount ->
