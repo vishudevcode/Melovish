@@ -461,11 +461,15 @@ fun MelovishRootApp(manager: MusicManager) {
     var selectedAlbum by remember { mutableStateOf<String?>(null) }
     var selectedMood by remember { mutableStateOf<AudioMood?>(null) }
 
+    // Persistent filter state for Mood BPM/Energy dialog
+    var moodMinBpm by remember { mutableIntStateOf(0) }
+    var moodMinEnergy by remember { mutableIntStateOf(0) }
+    var showMoodFilterDialog by remember { mutableStateOf(false) }
+
     var isPlayerExpanded by remember { mutableStateOf(false) }
     var isSettingsEqOpen by remember { mutableStateOf(false) }
     var isMiniPlayerDismissed by remember { mutableStateOf(false) }
 
-    // Smart Click Routing: Always restores miniplayer; resumes active track if paused and opens full player
     val handleSmartSongClick: (Song, List<Song>, String) -> Unit = { song, list, source ->
         isMiniPlayerDismissed = false
         if (manager.currentSong?.id == song.id) {
@@ -518,7 +522,8 @@ fun MelovishRootApp(manager: MusicManager) {
             rootCustomizingFolder != null || rootCustomizingPlaylist != null || rootSelectedArtistForActions != null ||
             rootSelectedArtistSongForAction != null || showRootDarkSubStyleDialog || showRootLightSubStyleDialog ||
             rootColorPickerMode != null || showRootCreateArtistDialog || showRootGridSizeDialog || showRootArtistAddSongsDialog ||
-            isSettingsEqOpen || activeSongForMenu != null || activeTagEditSong != null || activeAddToPlaylistSong != null || activeSongInfo != null
+            isSettingsEqOpen || activeSongForMenu != null || activeTagEditSong != null || activeAddToPlaylistSong != null ||
+            activeSongInfo != null || showMoodFilterDialog
 
     val topBarNestedScrollConnection = remember(isMainTabScreen, isAnyRootModalOpen) {
         object : NestedScrollConnection {
@@ -549,10 +554,11 @@ fun MelovishRootApp(manager: MusicManager) {
             rootColorPickerMode != null || showRootCreateArtistDialog || showRootGridSizeDialog || showRootArtistAddSongsDialog ||
             isSettingsEqOpen || isPlayerExpanded || activeScreen == "settings" ||
             activeScreen == "profile" || selectedMood != null || selectedArtist != null || selectedAlbum != null ||
-            selectedPlaylist != null || selectedFolder != null || activeScreen != "home"
+            selectedPlaylist != null || selectedFolder != null || showMoodFilterDialog || activeScreen != "home"
 
     BackHandler(enabled = canGoBack) {
         when {
+            showMoodFilterDialog -> showMoodFilterDialog = false
             showRootCreatePlaylistDialog -> showRootCreatePlaylistDialog = false
             showRootManagePlaylistsDialog -> showRootManagePlaylistsDialog = false
             showRootArrangePlaylistsDialog -> showRootArrangePlaylistsDialog = false
@@ -574,7 +580,11 @@ fun MelovishRootApp(manager: MusicManager) {
             activeScreen == "profile" -> {
                 activeScreen = if (previousActiveScreen != "profile") previousActiveScreen else "home"
             }
-            selectedMood != null -> selectedMood = null
+            selectedMood != null -> {
+                selectedMood = null
+                moodMinBpm = 0
+                moodMinEnergy = 0
+            }
             selectedArtist != null -> selectedArtist = null
             selectedAlbum != null -> selectedAlbum = null
             selectedPlaylist != null -> selectedPlaylist = null
@@ -661,17 +671,37 @@ fun MelovishRootApp(manager: MusicManager) {
                         )
                         selectedMood != null -> {
                             val curMood = selectedMood!!
-                            val moodSongs = remember(curMood, manager.allSongs.size, SmartMoodClassifier.classificationVersion) {
-                                SmartMoodClassifier.getSongsForMood(curMood, manager.allSongs).toImmutableList()
+                            val moodSongs = remember(curMood, manager.allSongs.size, SmartMoodClassifier.classificationVersion, moodMinBpm, moodMinEnergy) {
+                                SmartMoodClassifier.getFilteredSongsForMood(curMood, manager.allSongs, moodMinBpm, moodMinEnergy).toImmutableList()
                             }
                             FilteredSongsScreen(
                                 title = "${curMood.emoji} ${curMood.title}",
                                 songs = moodSongs,
                                 manager = manager,
                                 isDark = isDark,
-                                onBack = { selectedMood = null },
+                                onBack = {
+                                    selectedMood = null
+                                    moodMinBpm = 0
+                                    moodMinEnergy = 0
+                                },
                                 onSongMenuClick = { song: Song -> activeSongForMenu = song },
-                                onSongClick = { song -> handleSmartSongClick(song, moodSongs, "${curMood.emoji} ${curMood.title}") }
+                                onSongClick = { song -> handleSmartSongClick(song, moodSongs, "${curMood.emoji} ${curMood.title}") },
+                                extraHeaderActions = {
+                                    MoodHeaderActionButtons(
+                                        accent = manager.accentColor,
+                                        cardBg = manager.getCurrentSurfaceColor(),
+                                        glassBorder = manager.getGlassBorderBrush(),
+                                        isFilterActive = (moodMinBpm > 0 || moodMinEnergy > 0),
+                                        onOpenFilterDialog = { showMoodFilterDialog = true },
+                                        onShuffleClick = {
+                                            val shuffled = moodSongs.shuffled()
+                                            if (shuffled.isNotEmpty()) {
+                                                manager.triggerHapticFeedback(true)
+                                                manager.playSong(shuffled.first(), shuffled, "${curMood.emoji} ${curMood.title}")
+                                            }
+                                        }
+                                    )
+                                }
                             )
                         }
                         selectedArtist != null -> {
@@ -740,7 +770,11 @@ fun MelovishRootApp(manager: MusicManager) {
                             manager = manager,
                             listState = searchListState,
                             onSongMenuClick = { song: Song -> activeSongForMenu = song },
-                            onMoodClick = { mood -> selectedMood = mood },
+                            onMoodClick = { mood ->
+                                selectedMood = mood
+                                moodMinBpm = 0
+                                moodMinEnergy = 0
+                            },
                             onSongClick = { song, songs -> handleSmartSongClick(song, songs, "Search Results") }
                         )
                         activeScreen == "library" -> LibraryScreen(
@@ -794,7 +828,7 @@ fun MelovishRootApp(manager: MusicManager) {
                 }
             }
 
-            // 🌟 TRUE FLOATING MINIPLAYER DOCK (Dialog-Box Frosted Aesthetic with Real-Time Visibility Control)
+            // 🌟 TRUE FLOATING MINIPLAYER DOCK
             if (manager.currentSong != null && !isPlayerExpanded && !isMiniPlayerDismissed) {
                 Box(
                     modifier = Modifier
@@ -810,7 +844,7 @@ fun MelovishRootApp(manager: MusicManager) {
                 }
             }
 
-            // Top Status Bar Overlay: Drawn when no modal is open
+            // Top Status Bar Overlay
             if (!isAnyRootModalOpen) {
                 Box(
                     modifier = Modifier
@@ -852,6 +886,29 @@ fun MelovishRootApp(manager: MusicManager) {
 
             if (isSettingsEqOpen) {
                 EqualizerSheet(manager = manager, onDismiss = { isSettingsEqOpen = false })
+            }
+
+            if (showMoodFilterDialog) {
+                MoodBpmEnergyFilterDialog(
+                    initialMinBpm = moodMinBpm,
+                    initialMinEnergy = moodMinEnergy,
+                    isDark = isDark,
+                    accent = manager.accentColor,
+                    textColor = manager.getCurrentTextColor(),
+                    dialogColor = manager.getCurrentDialogColor(),
+                    glassBorder = manager.getGlassBorderBrush(),
+                    onApply = { appliedBpm, appliedEnergy ->
+                        moodMinBpm = appliedBpm
+                        moodMinEnergy = appliedEnergy
+                        showMoodFilterDialog = false
+                    },
+                    onReset = {
+                        moodMinBpm = 0
+                        moodMinEnergy = 0
+                        showMoodFilterDialog = false
+                    },
+                    onDismiss = { showMoodFilterDialog = false }
+                )
             }
 
             if (showRootCreatePlaylistDialog) {
@@ -1776,6 +1833,7 @@ fun HomeScreen(
         }
     }
 }
+
 // =========================================================================
 // 📌 LIBRARY SCREEN
 // =========================================================================
@@ -2062,7 +2120,6 @@ fun LibraryScreen(
         }
     }
 }
-
 // =========================================================================
 // 📌 PLAYLIST DETAIL SCREEN
 // =========================================================================
@@ -3899,6 +3956,7 @@ fun SearchScreen(
     }
 
     val isDark = manager.isDarkMode
+    val heroMood = remember { SmartMoodClassifier.getCurrentHeroMood() }
 
     Column(modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
         Spacer(modifier = Modifier.height(8.dp))
@@ -4073,18 +4131,21 @@ fun SearchScreen(
                                         SmartMoodClassifier.getSongsForMood(mood, manager.allSongs).size
                                     }
                                     val moodColor = Color(mood.colorHex)
+                                    val isHero = (mood == heroMood)
 
                                     Box(
                                         modifier = Modifier
                                             .weight(1f)
-                                            .height(105.dp)
+                                            .height(112.dp)
                                             .clip(RoundedCornerShape(18.dp))
-                                            .background(cardBg)
+                                            .background(if (isHero) moodColor.copy(alpha = 0.14f) else cardBg)
                                             .border(
-                                                width = 1.2.dp,
-                                                brush = Brush.linearGradient(
-                                                    listOf(moodColor.copy(alpha = 0.45f), glassBorderBrush.let { Color.Transparent })
-                                                ),
+                                                width = if (isHero) 1.8.dp else 1.2.dp,
+                                                brush = if (isHero) {
+                                                    Brush.linearGradient(listOf(moodColor, accent))
+                                                } else {
+                                                    Brush.linearGradient(listOf(moodColor.copy(alpha = 0.45f), Color.Transparent))
+                                                },
                                                 shape = RoundedCornerShape(18.dp)
                                             )
                                             .clickable {
@@ -4103,18 +4164,37 @@ fun SearchScreen(
                                                 verticalAlignment = Alignment.Top
                                             ) {
                                                 Text(mood.emoji, fontSize = 24.sp)
-                                                Box(
-                                                    modifier = Modifier
-                                                        .clip(RoundedCornerShape(6.dp))
-                                                        .background(moodColor.copy(alpha = 0.16f))
-                                                        .padding(horizontal = 6.dp, vertical = 2.dp)
-                                                ) {
-                                                    Text(
-                                                        text = "$count tracks",
-                                                        color = moodColor,
-                                                        fontSize = 10.sp,
-                                                        fontWeight = FontWeight.Bold
-                                                    )
+
+                                                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                                    if (isHero) {
+                                                        Box(
+                                                            modifier = Modifier
+                                                                .clip(RoundedCornerShape(6.dp))
+                                                                .background(accent)
+                                                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                                                        ) {
+                                                            Text(
+                                                                text = "⚡ NOW",
+                                                                color = Color.White,
+                                                                fontSize = 9.sp,
+                                                                fontWeight = FontWeight.Black
+                                                            )
+                                                        }
+                                                    }
+
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .clip(RoundedCornerShape(6.dp))
+                                                            .background(moodColor.copy(alpha = 0.16f))
+                                                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                                                    ) {
+                                                        Text(
+                                                            text = "$count tracks",
+                                                            color = moodColor,
+                                                            fontSize = 10.sp,
+                                                            fontWeight = FontWeight.Bold
+                                                        )
+                                                    }
                                                 }
                                             }
 
@@ -4322,16 +4402,27 @@ fun FilteredSongsScreen(
     isDark: Boolean,
     onBack: () -> Unit,
     onSongMenuClick: (Song) -> Unit,
-    onSongClick: (Song) -> Unit = { song -> manager.playSong(song, songs, title) }
+    onSongClick: (Song) -> Unit = { song -> manager.playSong(song, songs, title) },
+    extraHeaderActions: (@Composable () -> Unit)? = null
 ) {
     val textColor = manager.getCurrentTextColor()
     Column(modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
-        Row(modifier = Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 2.dp), verticalAlignment = Alignment.CenterVertically) {
-            GlassBackButton(isDark = isDark, onClick = onBack)
-            Spacer(modifier = Modifier.width(14.dp))
-            Column {
-                Text(title, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = textColor, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text("${songs.size} tracks", fontSize = 12.sp, color = Color(0xFF64748B))
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 2.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f, fill = false)) {
+                GlassBackButton(isDark = isDark, onClick = onBack)
+                Spacer(modifier = Modifier.width(14.dp))
+                Column {
+                    Text(title, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = textColor, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text("${songs.size} tracks", fontSize = 12.sp, color = Color(0xFF64748B))
+                }
+            }
+
+            if (extraHeaderActions != null) {
+                extraHeaderActions()
             }
         }
         Spacer(modifier = Modifier.height(14.dp))
