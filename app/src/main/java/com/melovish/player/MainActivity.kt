@@ -412,6 +412,7 @@ fun MelovishRootApp(manager: MusicManager) {
     LaunchedEffect(Unit) {
         SmartMoodClassifier.init(context)
         AudioEffectsManager.init(context)
+        ArtistDataManager.init(context)
     }
 
     // 🚀 ULTRA-FAST NON-BLOCKING MOOD CLASSIFICATION FOR 10,000+ SONGS
@@ -522,18 +523,8 @@ fun MelovishRootApp(manager: MusicManager) {
 
     val topBarNestedScrollConnection = remember(isMainTabScreen, isAnyRootModalOpen) {
         object : NestedScrollConnection {
-            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
-                if (!isMainTabScreen || isAnyRootModalOpen) return Offset.Zero
-                if (source == NestedScrollSource.UserInput) {
-                    val delta = available.y
-                    if (delta < -14f && isTopBarVisible) {
-                        isTopBarVisible = false
-                    } else if (delta > 14f && !isTopBarVisible) {
-                        isTopBarVisible = true
-                    }
-                }
-                return Offset.Zero
-            }
+            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset = Offset.Zero
+            override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset = available
         }
     }
 
@@ -1255,16 +1246,6 @@ fun MelovishRootApp(manager: MusicManager) {
                                                 .background(if (isDark) Color(0x1AFFFFFF) else Color(0xFFF1F5F9))
                                                 .clickable {
                                                     ArtistDataManager.moveSongToArtist(song, artistName, target.name)
-                                                    
-                                                    // ⚡ Permanently update in-memory and persisted song metadata
-                                                    val updatedSong = song.copy(artist = target.name)
-                                                    val idx = manager.allSongs.indexOfFirst { it.id == song.id }
-                                                    if (idx != -1) manager.allSongs[idx] = updatedSong
-                                                    
-                                                    manager.managerScope.launch(Dispatchers.IO) {
-                                                        manager.prefs.edit().putString("custom_artist_${song.id}", target.name).apply()
-                                                    }
-                                                    
                                                     val updated = ArtistParsingEngine.parseAndGroupArtists(manager.allSongs)
                                                     manager.parsedArtistsList.clear()
                                                     manager.parsedArtistsList.addAll(updated)
@@ -1365,7 +1346,7 @@ fun MelovishRootApp(manager: MusicManager) {
 }
 
 // =========================================================================
-// 📌 HOME SCREEN (120 FPS Optimized)
+// 📌 HOME SCREEN (Optimized for Fast Flinging & Zero-Stutter Lazy Lists)
 // =========================================================================
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -1400,6 +1381,7 @@ fun HomeScreen(
         manager.historySongs.take(30).toImmutableList()
     }
 
+    // 🚀 MEMOIZE GRID CHUNKS TO PREVENT RUNTIME ALLOCATIONS IN SCROLLING LOOPS
     val chunkedGrid2 = remember(sortedSongs) { sortedSongs.chunked(2) }
     val chunkedGrid3 = remember(sortedSongs) { sortedSongs.chunked(3) }
     val chunkedGrid4 = remember(sortedSongs) { sortedSongs.chunked(4) }
@@ -4471,7 +4453,6 @@ fun FilteredSongsScreen(
                     }
                 }
                 GridViewMode.GRID_2 -> {
-                    val chunked = remember(songs) { songs.chunked(2) }
                     LazyVerticalGrid(
                         columns = GridCells.Fixed(2),
                         contentPadding = PaddingValues(bottom = 120.dp),

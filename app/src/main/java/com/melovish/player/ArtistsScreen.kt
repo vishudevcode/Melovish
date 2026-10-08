@@ -105,6 +105,8 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import androidx.media3.common.util.UnstableApi
 import coil.compose.AsyncImage
+import coil.request.ImageRequest
+import coil.size.Precision
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.toImmutableList
 import kotlinx.coroutines.Dispatchers
@@ -132,8 +134,9 @@ object ArtistDataManager {
     var refreshTrigger by mutableIntStateOf(0)
 
     fun init(context: Context) {
-        if (prefs != null) return
-        prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        if (prefs == null) {
+            prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        }
         loadData()
     }
 
@@ -236,7 +239,7 @@ object ArtistDataManager {
             .putString("removed_songs_map", remObj.toString())
             .putString("moved_songs_map", movObj.toString())
             .putString("custom_artist_images", imgObj.toString())
-            .apply()
+            .commit()
 
         refreshTrigger++
     }
@@ -259,37 +262,7 @@ object ArtistDataManager {
 
     fun mergeArtists(sourceName: String, targetName: String) {
         if (sourceName.equals(targetName, ignoreCase = true)) return
-
-        // Resolve transitive alias: ensure target is the ultimate canonical name
-        var resolvedTarget = targetName
-        val visited = HashSet<String>()
-        while (artistAliases.containsKey(resolvedTarget) && visited.add(resolvedTarget)) {
-            resolvedTarget = artistAliases[resolvedTarget] ?: resolvedTarget
-        }
-
-        artistAliases[sourceName] = resolvedTarget
-
-        // Re-target any existing aliases pointing to sourceName
-        artistAliases.keys.toList().forEach { k ->
-            if (artistAliases[k].equals(sourceName, ignoreCase = true)) {
-                artistAliases[k] = resolvedTarget
-            }
-        }
-
-        // Migrate moved songs from sourceName to resolvedTarget
-        val srcMoved = movedSongMap[sourceName]
-        if (!srcMoved.isNullOrEmpty()) {
-            val destMoved = movedSongMap.getOrPut(resolvedTarget) { mutableListOf() }
-            srcMoved.forEach { id ->
-                if (!destMoved.contains(id)) destMoved.add(id)
-            }
-            movedSongMap.remove(sourceName)
-        }
-
-        // If sourceName was pinned or manually created, clean it up
-        pinnedArtists.remove(sourceName)
-        manuallyCreatedArtists.remove(sourceName)
-
+        artistAliases[sourceName] = targetName
         saveData()
     }
 
@@ -309,18 +282,11 @@ object ArtistDataManager {
 
     fun createNewArtist(name: String, initialSongs: List<Song> = emptyList()) {
         val trimmed = name.trim()
-        if (trimmed.isNotBlank()) {
-            if (!manuallyCreatedArtists.any { it.equals(trimmed, ignoreCase = true) }) {
-                manuallyCreatedArtists.add(trimmed)
-            }
-            hiddenArtists.remove(trimmed)
-            artistAliases.remove(trimmed)
-
+        if (trimmed.isNotBlank() && !manuallyCreatedArtists.any { it.equals(trimmed, ignoreCase = true) }) {
+            manuallyCreatedArtists.add(trimmed)
             if (initialSongs.isNotEmpty()) {
                 val list = movedSongMap.getOrPut(trimmed) { mutableListOf() }
-                initialSongs.forEach {
-                    if (!list.contains(it.id)) list.add(it.id)
-                }
+                initialSongs.forEach { list.add(it.id) }
             }
             saveData()
         }
@@ -330,9 +296,8 @@ object ArtistDataManager {
         val list = removedSongMap.getOrPut(artistName) { mutableListOf() }
         if (!list.contains(songId)) {
             list.add(songId)
+            saveData()
         }
-        movedSongMap[artistName]?.remove(songId)
-        saveData()
     }
 
     fun moveSongToArtist(song: Song, fromArtist: String, toArtist: String) {
@@ -341,7 +306,6 @@ object ArtistDataManager {
         if (!list.contains(song.id)) {
             list.add(song.id)
         }
-        removedSongMap[toArtist]?.remove(song.id)
         saveData()
     }
 }
@@ -435,7 +399,7 @@ object ArtistParsingEngine {
             }
         }
 
-        // Always register manually created artists, even if they have 0 tracks
+        // Guarantee manually created artists always exist in the map
         ArtistDataManager.manuallyCreatedArtists.forEach { customName ->
             var target = customName
             val visited = HashSet<String>()
@@ -475,8 +439,8 @@ object ArtistParsingEngine {
                     }
                 }
 
-                val isManuallyCreated = ArtistDataManager.manuallyCreatedArtists.any { it.equals(name, ignoreCase = true) }
-                if (distinctSongs.isNotEmpty() || isManuallyCreated) {
+                val isCustomCreated = ArtistDataManager.manuallyCreatedArtists.any { it.equals(name, ignoreCase = true) }
+                if (distinctSongs.isNotEmpty() || isCustomCreated) {
                     val isPinned = pinnedSet.contains(name)
                     finalResult.add(
                         ArtistItem(
@@ -745,7 +709,7 @@ fun RootArtistActionModal(
     }
 }
 
-// 1:1 Dynamic Square Artist Card
+// 1:1 Dynamic Square Artist Card with Fast Hardware Image Loading
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun ArtistSquareCard(
@@ -761,16 +725,12 @@ fun ArtistSquareCard(
     onClick: () -> Unit,
     onLongClick: () -> Unit
 ) {
+    val context = LocalContext.current
     val customImgPath = ArtistDataManager.customArtistImages[artist.name]
     val firstSong = artist.songs.firstOrNull()
-    var albumArtBitmap by remember(firstSong?.id, customImgPath) {
-        mutableStateOf(if (customImgPath == null && firstSong != null) manager.getCachedAlbumArt(firstSong.id) else null)
-    }
-
-    LaunchedEffect(firstSong?.id, customImgPath) {
-        if (customImgPath == null && firstSong != null && albumArtBitmap == null) {
-            albumArtBitmap = manager.loadAlbumArtAsync(firstSong)
-        }
+    val artUri = remember(firstSong?.id, customImgPath) {
+        if (!customImgPath.isNullOrBlank()) Uri.fromFile(File(customImgPath))
+        else firstSong?.let { manager.getAlbumArtUri(it) }
     }
 
     Box(
@@ -800,14 +760,7 @@ fun ArtistSquareCard(
                 .padding(bottom = if (gridColumns == 4) 24.dp else if (isHero) 32.dp else 28.dp),
             contentAlignment = Alignment.Center
         ) {
-            if (!customImgPath.isNullOrBlank() && File(customImgPath).exists()) {
-                AsyncImage(
-                    model = File(customImgPath),
-                    contentDescription = artist.name,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize()
-                )
-            } else if (albumArtBitmap != null) {
+            if (artUri != null) {
                 val badgeFraction = when (gridColumns) {
                     2 -> if (isHero) 0.58f else 0.54f
                     3 -> 0.52f
@@ -820,8 +773,13 @@ fun ArtistSquareCard(
                         .clip(CircleShape)
                         .border(1.5.dp, accentColor.copy(alpha = 0.5f), CircleShape)
                 ) {
-                    Image(
-                        bitmap = albumArtBitmap!!.asImageBitmap(),
+                    AsyncImage(
+                        model = ImageRequest.Builder(context)
+                            .data(artUri)
+                            .size(140, 140)
+                            .precision(Precision.INEXACT)
+                            .crossfade(80)
+                            .build(),
                         contentDescription = artist.name,
                         contentScale = ContentScale.Crop,
                         modifier = Modifier.fillMaxSize()
@@ -927,12 +885,12 @@ fun ArtistsScreen(
     var query by remember { mutableStateOf("") }
     var showSortMenu by remember { mutableStateOf(false) }
 
-    val artistsList = if (manager.parsedArtistsList.isNotEmpty()) {
-        manager.parsedArtistsList
-    } else {
-        remember(manager.allSongs.size, ArtistDataManager.refreshTrigger) {
-            ArtistParsingEngine.parseAndGroupArtists(manager.allSongs)
-        }
+    // Recompute parsed artists whenever user merges, creates, or renames an artist
+    val artistsList = remember(manager.allSongs.size, ArtistDataManager.refreshTrigger) {
+        val updated = ArtistParsingEngine.parseAndGroupArtists(manager.allSongs)
+        manager.parsedArtistsList.clear()
+        manager.parsedArtistsList.addAll(updated)
+        updated
     }
 
     val sortedArtists: ImmutableList<ArtistItem> = remember(artistsList, query, manager.artistsSortOrder, ArtistDataManager.refreshTrigger) {
@@ -1083,6 +1041,12 @@ fun ArtistsScreen(
                                     contentType = { "artist_list_row" }
                                 ) { artist ->
                                     val customImg = ArtistDataManager.customArtistImages[artist.name]
+                                    val firstSong = artist.songs.firstOrNull()
+                                    val artUri = remember(firstSong?.id, customImg) {
+                                        if (!customImg.isNullOrBlank()) Uri.fromFile(File(customImg))
+                                        else firstSong?.let { manager.getAlbumArtUri(it) }
+                                    }
+
                                     Row(
                                         modifier = Modifier
                                             .fillMaxWidth()
@@ -1108,9 +1072,14 @@ fun ArtistsScreen(
                                                 .border(1.5.dp, accentColor.copy(alpha = 0.5f), CircleShape),
                                             contentAlignment = Alignment.Center
                                         ) {
-                                            if (!customImg.isNullOrBlank() && File(customImg).exists()) {
+                                            if (artUri != null) {
                                                 AsyncImage(
-                                                    model = File(customImg),
+                                                    model = ImageRequest.Builder(context)
+                                                        .data(artUri)
+                                                        .size(100, 100)
+                                                        .precision(Precision.INEXACT)
+                                                        .crossfade(80)
+                                                        .build(),
                                                     contentDescription = artist.name,
                                                     contentScale = ContentScale.Crop,
                                                     modifier = Modifier.fillMaxSize()
@@ -1700,11 +1669,7 @@ fun ArtistAddSongsDialog(
                                     val list = ArtistDataManager.movedSongMap.getOrPut(artistName) { mutableListOf() }
                                     if (!list.contains(song.id)) list.add(song.id)
                                     ArtistDataManager.removedSongMap[artistName]?.remove(song.id)
-                                    
-                                    val updated = ArtistParsingEngine.parseAndGroupArtists(manager.allSongs)
-                                    manager.parsedArtistsList.clear()
-                                    manager.parsedArtistsList.addAll(updated)
-                                    
+                                    ArtistDataManager.refreshTrigger++
                                     Toast.makeText(context, "Added ${song.title}", Toast.LENGTH_SHORT).show()
                                 }
                                 .padding(12.dp),
