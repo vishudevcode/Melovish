@@ -1785,13 +1785,26 @@ class MusicManager(val context: Context) {
         }
     }
 
+    // 🚀 Safe Queue Item Moving: preserves current playback and never pauses the track
     fun moveQueueItem(fromIndex: Int, toIndex: Int) {
         if (fromIndex in playbackQueue.indices && toIndex in playbackQueue.indices && fromIndex != toIndex) {
+            val currentActiveSong = currentSong
+            val isPlayingOriginal = player.isPlaying
+
             val moved = playbackQueue.removeAt(fromIndex)
             playbackQueue.add(toIndex, moved)
+
             try {
                 player.moveMediaItem(fromIndex, toIndex)
             } catch (_: Exception) {}
+
+            // Keep the active song pinned to whatever was playing
+            if (currentActiveSong != null) {
+                currentSong = currentActiveSong
+                if (isPlayingOriginal && !player.isPlaying) {
+                    player.play()
+                }
+            }
         }
     }
 

@@ -82,6 +82,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.withFrameNanos
@@ -124,6 +125,7 @@ import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.Locale
 import kotlin.math.abs
@@ -266,6 +268,7 @@ fun FolderColorDialog(
     Box(
         modifier = Modifier
             .fillMaxSize()
+            .zIndex(150f)
             .background(if (isDark) Color(0x66000000) else Color(0x40000000))
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
@@ -721,6 +724,7 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
     val isDark = manager.isDarkMode
     val userAccent = manager.accentColor
     val monoColor = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0F172A)
+    val coroutineScope = rememberCoroutineScope()
 
     val currentQueue = remember(manager.playbackQueue.size, manager.playbackQueue.toList()) {
         if (manager.playbackQueue.isNotEmpty()) manager.playbackQueue.toList()
@@ -738,8 +742,9 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
     )
 
     var isProgrammaticScroll by remember { mutableStateOf(false) }
+    var isQueueReorderingActive by remember { mutableStateOf(false) }
 
-    LaunchedEffect(manager.currentSong?.id) {
+    LaunchedEffect(manager.currentSong?.id, currentQueue) {
         val targetIdx = currentQueue.indexOfFirst { it.id == manager.currentSong?.id }
         if (targetIdx != -1 && targetIdx != pagerState.currentPage && !pagerState.isScrollInProgress) {
             isProgrammaticScroll = true
@@ -748,9 +753,9 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
         }
     }
 
-    LaunchedEffect(pagerState) {
+    LaunchedEffect(pagerState, isQueueReorderingActive) {
         snapshotFlow { pagerState.isScrollInProgress to pagerState.settledPage }.collect { (inProgress, settledPage) ->
-            if (!inProgress && !isProgrammaticScroll && settledPage in currentQueue.indices) {
+            if (!inProgress && !isProgrammaticScroll && !isQueueReorderingActive && settledPage in currentQueue.indices) {
                 val targetSong = currentQueue[settledPage]
                 if (targetSong.id != manager.currentSong?.id) {
                     manager.playSong(targetSong, currentQueue, manager.currentSectionName)
@@ -1247,6 +1252,7 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
+                    .zIndex(100f)
                     .background(if (isDark) Color(0x66000000) else Color(0x40000000))
             )
         }
@@ -1255,6 +1261,7 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
+                    .zIndex(150f)
                     .background(Color.Transparent)
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },
@@ -1325,7 +1332,7 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
             visible = showQueueSheet,
             enter = slideInVertically(initialOffsetY = { it }, animationSpec = spring(stiffness = 500f, dampingRatio = 0.85f)),
             exit = slideOutVertically(targetOffsetY = { it }, animationSpec = spring(stiffness = 500f, dampingRatio = 0.85f)),
-            modifier = Modifier.fillMaxSize().zIndex(20f)
+            modifier = Modifier.fillMaxSize().zIndex(150f)
         ) {
             QueueSheet(
                 manager = manager,
@@ -1336,6 +1343,18 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                 subTextColor = animTextSecondary,
                 accent = userAccent,
                 isDark = isDark,
+                onReorderStateChange = { active ->
+                    isQueueReorderingActive = active
+                },
+                onItemMoved = { movedSong, newIndex ->
+                    if (movedSong.id == manager.currentSong?.id) {
+                        coroutineScope.launch {
+                            isProgrammaticScroll = true
+                            pagerState.scrollToPage(newIndex)
+                            isProgrammaticScroll = false
+                        }
+                    }
+                },
                 onDismiss = { showQueueSheet = false }
             )
         }
@@ -1361,6 +1380,8 @@ fun QueueSheet(
     subTextColor: Color,
     accent: Color,
     isDark: Boolean,
+    onReorderStateChange: (Boolean) -> Unit = {},
+    onItemMoved: (Song, Int) -> Unit = { _, _ -> },
     onDismiss: () -> Unit
 ) {
     val density = LocalDensity.current
@@ -1391,6 +1412,7 @@ fun QueueSheet(
     var grabOffsetY by remember { mutableFloatStateOf(itemHeightPx / 2f) }
 
     LaunchedEffect(draggingSongId) {
+        onReorderStateChange(draggingSongId != null)
         if (draggingSongId != null) {
             var lastFrameTimeNanos = 0L
 
@@ -1487,6 +1509,7 @@ fun QueueSheet(
     Box(
         modifier = Modifier
             .fillMaxSize()
+            .zIndex(150f)
             .background(if (isDark) Color(0x66000000) else Color(0x40000000))
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
@@ -1681,6 +1704,7 @@ fun QueueSheet(
                                                     val originalIndex = manager.playbackQueue.indexOfFirst { it.id == song.id }
                                                     if (finalIndex != -1 && originalIndex != -1 && finalIndex != originalIndex) {
                                                         manager.moveQueueItem(originalIndex, finalIndex)
+                                                        onItemMoved(song, finalIndex)
                                                     }
                                                     draggingSongId = null
                                                     fingerYInList = -1f
@@ -1811,6 +1835,7 @@ fun EqualizerSheet(manager: MusicManager, onDismiss: () -> Unit) {
     Box(
         modifier = Modifier
             .fillMaxSize()
+            .zIndex(150f)
             .background(if (isDark) Color(0x66000000) else Color(0x40000000))
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
@@ -2298,6 +2323,7 @@ fun SleepTimerDialog(manager: MusicManager, onDismiss: () -> Unit) {
     Box(
         modifier = Modifier
             .fillMaxSize()
+            .zIndex(150f)
             .background(if (isDark) Color(0x66000000) else Color(0x40000000))
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
@@ -2437,6 +2463,7 @@ fun LyricsDialog(song: Song, manager: MusicManager, onDismiss: () -> Unit) {
     Box(
         modifier = Modifier
             .fillMaxSize()
+            .zIndex(150f)
             .background(if (isDark) Color(0x66000000) else Color(0x40000000))
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
@@ -2485,6 +2512,7 @@ fun AddToPlaylistDialog(manager: MusicManager, song: Song, onDismiss: () -> Unit
     Box(
         modifier = Modifier
             .fillMaxSize()
+            .zIndex(150f)
             .background(if (isDark) Color(0x66000000) else Color(0x40000000))
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
@@ -2621,6 +2649,7 @@ fun MagneticSpeedDialog(manager: MusicManager, onDismiss: () -> Unit) {
     Box(
         modifier = Modifier
             .fillMaxSize()
+            .zIndex(150f)
             .background(if (isDark) Color(0x66000000) else Color(0x40000000))
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
