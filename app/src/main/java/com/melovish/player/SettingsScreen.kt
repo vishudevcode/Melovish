@@ -780,7 +780,7 @@ fun SettingsScreen(
                 )
             }
 
-            // 6. Frosted Glass Styling Section (Restored Two-Segment Slider With Clean Gap)
+            // 6. Frosted Glass Styling Section
             item(key = "frosted_glass_section", contentType = "frosted_glass_card") {
                 Column(
                     modifier = Modifier
@@ -880,10 +880,9 @@ fun SettingsScreen(
 
                                     val thumbIndicatorWidth = 4.dp.toPx()
                                     val thumbHeight = 22.dp.toPx()
-                                    // True air gap flanking the thumb (no background underneath)
                                     val clearanceGap = 4.5.dp.toPx()
 
-                                    // 1. ACTIVE SEGMENT (Solid Accent, ends cleanly before the thumb)
+                                    // 1. ACTIVE SEGMENT
                                     val activeEndX = (thumbCenterX - (thumbIndicatorWidth / 2f) - clearanceGap).coerceAtLeast(trackPadding)
                                     val activeFillWidth = activeEndX - trackPadding
                                     if (activeFillWidth > 0f) {
@@ -895,7 +894,7 @@ fun SettingsScreen(
                                         )
                                     }
 
-                                    // 2. INACTIVE SEGMENT (Gray track, starts cleanly after the thumb)
+                                    // 2. INACTIVE SEGMENT
                                     val inactiveStartX = (thumbCenterX + (thumbIndicatorWidth / 2f) + clearanceGap).coerceAtMost(trackPadding + trackWidth)
                                     val inactiveWidth = (trackPadding + trackWidth) - inactiveStartX
                                     if (inactiveWidth > 0f) {
@@ -907,12 +906,11 @@ fun SettingsScreen(
                                             cornerRadius = CornerRadius(trackRadius, trackRadius)
                                         )
 
-                                        // 3. MAGNETIC ACCENT DOTS (Drawn strictly within inactive track)
+                                        // 3. MAGNETIC ACCENT DOTS
                                         for (i in 0..20) {
                                             val dotFraction = i / 20f
                                             val dotX = trackPadding + (dotFraction * trackWidth)
 
-                                            // Only render dots that lie comfortably inside the inactive segment
                                             if (dotX >= inactiveStartX + 2.dp.toPx()) {
                                                 val isProminent = (i % 5 == 0)
                                                 val dotRadius = if (isProminent) 2.6.dp.toPx() else 1.5.dp.toPx()
@@ -927,7 +925,7 @@ fun SettingsScreen(
                                         }
                                     }
 
-                                    // 4. VERTICAL INDICATOR THUMB LINE (Floats freely in the gap)
+                                    // 4. VERTICAL INDICATOR THUMB LINE
                                     drawRoundRect(
                                         color = accent,
                                         topLeft = Offset(thumbCenterX - (thumbIndicatorWidth / 2f), centerY - (thumbHeight / 2f)),

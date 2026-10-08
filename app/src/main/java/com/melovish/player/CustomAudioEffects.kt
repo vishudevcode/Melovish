@@ -64,7 +64,6 @@ object AudioEffectsManager {
     val spatialProcessor = Spatial3DAudioProcessor()
     val lofiProcessor = LofiAudioProcessor()
 
-    // Hook callback so ExoPlayer speed & pitch adjust automatically without coupling
     var onPlaybackSpeedChangeRequested: ((speed: Float, pitch: Float) -> Unit)? = null
 
     fun init(context: Context) {
@@ -85,9 +84,6 @@ object AudioEffectsManager {
         _isLofiEnabled.value = enabled
         context?.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)?.edit()?.putBoolean(KEY_LOFI, enabled)?.apply()
 
-        // 🎵 SLOWED & PITCHED DOWN FOR AUTHENTIC LO-FI GROOVE:
-        // Speed = 0.83x (drops typical 100-110 BPM tracks into the sweet 75-88 BPM range)
-        // Pitch = 0.88x (drops pitch by ~2.2 semitones for deep, mellow vocals)
         if (enabled) {
             onPlaybackSpeedChangeRequested?.invoke(0.83f, 0.88f)
         } else {
@@ -105,8 +101,8 @@ class Spatial3DAudioProcessor : BaseAudioProcessor() {
 
     private var azimuthPhase = 0.0
     private var elevationPhase = 0.0
-    private val azimuthSpeedHz = 1.0 / 14.0   // 14-second horizontal 360° orbit
-    private val elevationSpeedHz = 1.0 / 9.0   // 9-second undulating height elevation
+    private val azimuthSpeedHz = 1.0 / 14.0
+    private val elevationSpeedHz = 1.0 / 9.0
 
     private var delayBufferL = FloatArray(0)
     private var delayBufferR = FloatArray(0)
@@ -495,8 +491,8 @@ fun AudioEffectsSettingsSection(
         // 3D Spatial Audio Orbit Toggle
         AudioEffectToggleRow(
             icon = "🌐",
-            title = "3D Spatial Surround Sound",
-            description = "Places sound in a true 360° spherical field with height elevation, pinna reflections, and ear crossfeed.",
+            title = "3D Spatial Audio",
+            description = "Simulates a rotating 360° sound",
             isChecked = isSpatialActive,
             accentColor = accent,
             textColor = textColor,
@@ -511,8 +507,8 @@ fun AudioEffectsSettingsSection(
         // Lo-Fi Vintage Tape Filter Toggle
         AudioEffectToggleRow(
             icon = "📻",
-            title = "Melodic Lo-Fi & Slowed Tape",
-            description = "Slows to 0.83x, drops pitch, adds warm tube saturation, tape wow/flutter, room reverb & vinyl crackle.",
+            title = "Lofi Audio",
+            description = "Warm nostalgic tape hiss vinyl old sound",
             isChecked = isLofiActive,
             accentColor = accent,
             textColor = textColor,
