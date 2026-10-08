@@ -586,12 +586,13 @@ fun MoodHeaderActionButtons(
             }
         }
 
+        // 🚀 Shuffle button with matching standard glass border (identical to other action buttons)
         Box(
             modifier = Modifier
                 .size(36.dp)
                 .clip(CircleShape)
                 .background(cardBg)
-                .border(1.2.dp, accent.copy(alpha = 0.55f), CircleShape)
+                .border(1.2.dp, glassBorder, CircleShape)
                 .clickable { onShuffleClick() },
             contentAlignment = Alignment.Center
         ) {

@@ -1605,12 +1605,13 @@ fun HomeScreen(
 
                         Spacer(modifier = Modifier.width(6.dp))
 
+                        // 🚀 Circular shuffle button with uniform glass border (identical to left icons)
                         Box(
                             modifier = Modifier
                                 .size(36.dp)
                                 .clip(CircleShape)
                                 .background(cardBg)
-                                .border(1.2.dp, accent.copy(alpha = 0.5f), CircleShape)
+                                .border(1.2.dp, glassBorderBrush, CircleShape)
                                 .clickable {
                                     val shuffled = sortedSongs.shuffled()
                                     if (shuffled.isNotEmpty()) {
@@ -1620,7 +1621,7 @@ fun HomeScreen(
                                 },
                             contentAlignment = Alignment.Center
                         ) {
-                            ShuffleActionVector(tint = accent, modifier = Modifier.size(22.dp))
+                            ShuffleActionVector(tint = accent, modifier = Modifier.size(20.dp))
                         }
                     }
                 }
@@ -2244,16 +2245,17 @@ fun PlaylistDetailScreen(
 
                     Spacer(modifier = Modifier.width(6.dp))
 
+                    // 🚀 Shuffle Button styled identical to other header buttons
                     Box(
                         modifier = Modifier
                             .size(36.dp)
                             .clip(CircleShape)
                             .background(cardBg)
-                            .border(1.2.dp, accent.copy(alpha = 0.5f), CircleShape)
+                            .border(1.2.dp, glassBorderBrush, CircleShape)
                             .clickable { manager.shufflePlaylist(playlist) },
                         contentAlignment = Alignment.Center
                     ) {
-                        ShuffleActionVector(tint = accent, modifier = Modifier.size(22.dp))
+                        ShuffleActionVector(tint = accent, modifier = Modifier.size(20.dp))
                     }
                 }
             }
@@ -2454,19 +2456,20 @@ fun FolderSongsScreen(
 
                     Spacer(modifier = Modifier.width(6.dp))
 
+                    // 🚀 Shuffle Button styled identical to other header buttons
                     Box(
                         modifier = Modifier
                             .size(36.dp)
                             .clip(CircleShape)
                             .background(cardBg)
-                            .border(1.2.dp, accent.copy(alpha = 0.5f), CircleShape)
+                            .border(1.2.dp, glassBorderBrush, CircleShape)
                             .clickable {
                                 val shuffled = sortedSongs.shuffled()
                                 if (shuffled.isNotEmpty()) onSongClick(shuffled.first(), shuffled)
                             },
                         contentAlignment = Alignment.Center
                     ) {
-                        ShuffleActionVector(tint = accent, modifier = Modifier.size(22.dp))
+                        ShuffleActionVector(tint = accent, modifier = Modifier.size(20.dp))
                     }
                 }
             }

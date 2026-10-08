@@ -309,7 +309,6 @@ object ArtistDataManager {
         saveData()
     }
 
-    // 🚀 Robust, permanent track addition
     fun addSongToArtist(artistName: String, songId: Long) {
         removedSongMap[artistName]?.remove(songId)
         val list = movedSongMap.getOrPut(artistName) { mutableListOf() }
@@ -1342,7 +1341,6 @@ fun ArtistDetailScreen(
 
     var showSortMenu by remember { mutableStateOf(false) }
 
-    // 🚀 Reactive hook: automatically updates song list when tracks are added or moved
     val currentSongs = remember(artistItem.name, manager.parsedArtistsList, ArtistDataManager.refreshTrigger) {
         val updatedGroup = ArtistParsingEngine.parseAndGroupArtists(manager.allSongs)
         updatedGroup.find { it.name.equals(artistItem.name, ignoreCase = true) }?.songs ?: artistItem.songs
@@ -1436,19 +1434,20 @@ fun ArtistDetailScreen(
 
                     Spacer(modifier = Modifier.width(6.dp))
 
+                    // 🚀 Shuffle Button styled identical to other header buttons
                     Box(
                         modifier = Modifier
                             .size(36.dp)
                             .clip(CircleShape)
                             .background(cardBg)
-                            .border(1.2.dp, accent.copy(alpha = 0.5f), CircleShape)
+                            .border(1.2.dp, glassBorderBrush, CircleShape)
                             .clickable {
                                 val shuffled = sortedSongs.shuffled()
                                 if (shuffled.isNotEmpty()) manager.playSong(shuffled.first(), shuffled, artistItem.name)
                             },
                         contentAlignment = Alignment.Center
                     ) {
-                        ShuffleActionVector(tint = accent, modifier = Modifier.size(22.dp))
+                        ShuffleActionVector(tint = accent, modifier = Modifier.size(20.dp))
                     }
                 }
             }
@@ -1678,7 +1677,6 @@ fun ArtistAddSongsDialog(
                                 .clip(RoundedCornerShape(10.dp))
                                 .background(if (isDark) Color(0x1AFFFFFF) else Color(0xFFF1F5F9))
                                 .clickable {
-                                    // 🚀 Permanently saves to disk and updates reactive lists immediately
                                     ArtistDataManager.addSongToArtist(artistName, song.id)
                                     val updated = ArtistParsingEngine.parseAndGroupArtists(manager.allSongs)
                                     manager.parsedArtistsList.clear()
