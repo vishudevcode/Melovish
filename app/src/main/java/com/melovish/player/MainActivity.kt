@@ -1255,6 +1255,16 @@ fun MelovishRootApp(manager: MusicManager) {
                                                 .background(if (isDark) Color(0x1AFFFFFF) else Color(0xFFF1F5F9))
                                                 .clickable {
                                                     ArtistDataManager.moveSongToArtist(song, artistName, target.name)
+                                                    
+                                                    // ⚡ Permanently update in-memory and persisted song metadata
+                                                    val updatedSong = song.copy(artist = target.name)
+                                                    val idx = manager.allSongs.indexOfFirst { it.id == song.id }
+                                                    if (idx != -1) manager.allSongs[idx] = updatedSong
+                                                    
+                                                    manager.managerScope.launch(Dispatchers.IO) {
+                                                        manager.prefs.edit().putString("custom_artist_${song.id}", target.name).apply()
+                                                    }
+                                                    
                                                     val updated = ArtistParsingEngine.parseAndGroupArtists(manager.allSongs)
                                                     manager.parsedArtistsList.clear()
                                                     manager.parsedArtistsList.addAll(updated)
@@ -1355,7 +1365,7 @@ fun MelovishRootApp(manager: MusicManager) {
 }
 
 // =========================================================================
-// 📌 HOME SCREEN (Optimized for Fast Flinging & Zero-Stutter Lazy Lists)
+// 📌 HOME SCREEN (120 FPS Optimized)
 // =========================================================================
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -1390,7 +1400,6 @@ fun HomeScreen(
         manager.historySongs.take(30).toImmutableList()
     }
 
-    // 🚀 MEMOIZE GRID CHUNKS TO PREVENT RUNTIME ALLOCATIONS IN SCROLLING LOOPS
     val chunkedGrid2 = remember(sortedSongs) { sortedSongs.chunked(2) }
     val chunkedGrid3 = remember(sortedSongs) { sortedSongs.chunked(3) }
     val chunkedGrid4 = remember(sortedSongs) { sortedSongs.chunked(4) }
@@ -4462,6 +4471,7 @@ fun FilteredSongsScreen(
                     }
                 }
                 GridViewMode.GRID_2 -> {
+                    val chunked = remember(songs) { songs.chunked(2) }
                     LazyVerticalGrid(
                         columns = GridCells.Fixed(2),
                         contentPadding = PaddingValues(bottom = 120.dp),

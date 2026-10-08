@@ -259,7 +259,37 @@ object ArtistDataManager {
 
     fun mergeArtists(sourceName: String, targetName: String) {
         if (sourceName.equals(targetName, ignoreCase = true)) return
-        artistAliases[sourceName] = targetName
+
+        // Resolve transitive alias: ensure target is the ultimate canonical name
+        var resolvedTarget = targetName
+        val visited = HashSet<String>()
+        while (artistAliases.containsKey(resolvedTarget) && visited.add(resolvedTarget)) {
+            resolvedTarget = artistAliases[resolvedTarget] ?: resolvedTarget
+        }
+
+        artistAliases[sourceName] = resolvedTarget
+
+        // Re-target any existing aliases pointing to sourceName
+        artistAliases.keys.toList().forEach { k ->
+            if (artistAliases[k].equals(sourceName, ignoreCase = true)) {
+                artistAliases[k] = resolvedTarget
+            }
+        }
+
+        // Migrate moved songs from sourceName to resolvedTarget
+        val srcMoved = movedSongMap[sourceName]
+        if (!srcMoved.isNullOrEmpty()) {
+            val destMoved = movedSongMap.getOrPut(resolvedTarget) { mutableListOf() }
+            srcMoved.forEach { id ->
+                if (!destMoved.contains(id)) destMoved.add(id)
+            }
+            movedSongMap.remove(sourceName)
+        }
+
+        // If sourceName was pinned or manually created, clean it up
+        pinnedArtists.remove(sourceName)
+        manuallyCreatedArtists.remove(sourceName)
+
         saveData()
     }
 
@@ -279,11 +309,18 @@ object ArtistDataManager {
 
     fun createNewArtist(name: String, initialSongs: List<Song> = emptyList()) {
         val trimmed = name.trim()
-        if (trimmed.isNotBlank() && !manuallyCreatedArtists.any { it.equals(trimmed, ignoreCase = true) }) {
-            manuallyCreatedArtists.add(trimmed)
+        if (trimmed.isNotBlank()) {
+            if (!manuallyCreatedArtists.any { it.equals(trimmed, ignoreCase = true) }) {
+                manuallyCreatedArtists.add(trimmed)
+            }
+            hiddenArtists.remove(trimmed)
+            artistAliases.remove(trimmed)
+
             if (initialSongs.isNotEmpty()) {
                 val list = movedSongMap.getOrPut(trimmed) { mutableListOf() }
-                initialSongs.forEach { list.add(it.id) }
+                initialSongs.forEach {
+                    if (!list.contains(it.id)) list.add(it.id)
+                }
             }
             saveData()
         }
@@ -293,8 +330,9 @@ object ArtistDataManager {
         val list = removedSongMap.getOrPut(artistName) { mutableListOf() }
         if (!list.contains(songId)) {
             list.add(songId)
-            saveData()
         }
+        movedSongMap[artistName]?.remove(songId)
+        saveData()
     }
 
     fun moveSongToArtist(song: Song, fromArtist: String, toArtist: String) {
@@ -303,6 +341,7 @@ object ArtistDataManager {
         if (!list.contains(song.id)) {
             list.add(song.id)
         }
+        removedSongMap[toArtist]?.remove(song.id)
         saveData()
     }
 }
@@ -329,8 +368,6 @@ object ArtistParsingEngine {
     }
 
     fun parseAndGroupArtists(allSongs: List<Song>): List<ArtistItem> {
-        if (allSongs.isEmpty()) return emptyList()
-
         val intermediateMap = LinkedHashMap<String, ArrayList<Song>>()
 
         for (song in allSongs) {
@@ -398,10 +435,16 @@ object ArtistParsingEngine {
             }
         }
 
+        // Always register manually created artists, even if they have 0 tracks
         ArtistDataManager.manuallyCreatedArtists.forEach { customName ->
-            if (!userMergedMap.containsKey(customName)) {
-                userMergedMap[customName] = ArrayList()
-                userMergedIds[customName] = HashSet()
+            var target = customName
+            val visited = HashSet<String>()
+            while (aliasSnapshot.containsKey(target) && visited.add(target)) {
+                target = aliasSnapshot[target] ?: target
+            }
+            if (!userMergedMap.containsKey(target)) {
+                userMergedMap[target] = ArrayList()
+                userMergedIds[target] = HashSet()
             }
         }
 
@@ -432,7 +475,8 @@ object ArtistParsingEngine {
                     }
                 }
 
-                if (distinctSongs.isNotEmpty() || ArtistDataManager.manuallyCreatedArtists.any { it.equals(name, ignoreCase = true) }) {
+                val isManuallyCreated = ArtistDataManager.manuallyCreatedArtists.any { it.equals(name, ignoreCase = true) }
+                if (distinctSongs.isNotEmpty() || isManuallyCreated) {
                     val isPinned = pinnedSet.contains(name)
                     finalResult.add(
                         ArtistItem(
@@ -1656,7 +1700,11 @@ fun ArtistAddSongsDialog(
                                     val list = ArtistDataManager.movedSongMap.getOrPut(artistName) { mutableListOf() }
                                     if (!list.contains(song.id)) list.add(song.id)
                                     ArtistDataManager.removedSongMap[artistName]?.remove(song.id)
-                                    ArtistDataManager.refreshTrigger++
+                                    
+                                    val updated = ArtistParsingEngine.parseAndGroupArtists(manager.allSongs)
+                                    manager.parsedArtistsList.clear()
+                                    manager.parsedArtistsList.addAll(updated)
+                                    
                                     Toast.makeText(context, "Added ${song.title}", Toast.LENGTH_SHORT).show()
                                 }
                                 .padding(12.dp),
@@ -1813,6 +1861,9 @@ fun CreateArtistDialog(
                         val name = artistName.trim()
                         if (name.isNotBlank()) {
                             ArtistDataManager.createNewArtist(name, selectedSongs)
+                            val updated = ArtistParsingEngine.parseAndGroupArtists(manager.allSongs)
+                            manager.parsedArtistsList.clear()
+                            manager.parsedArtistsList.addAll(updated)
                             Toast.makeText(context, "Artist created!", Toast.LENGTH_SHORT).show()
                             onDismiss()
                         } else {
