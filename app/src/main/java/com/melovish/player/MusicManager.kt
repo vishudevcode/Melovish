@@ -329,7 +329,7 @@ class MusicManager(val context: Context) {
     )
 
     // =========================================================================
-    // 🎨 COMPREHENSIVE THEME & SPECULAR FROSTED GLASS ENGINE
+    // 🎨 THEME & SPECULAR FROSTED GLASS ENGINE
     // =========================================================================
 
     var themeMode by mutableStateOf(prefs.getString("theme_mode", "System") ?: "System")
@@ -631,7 +631,6 @@ class MusicManager(val context: Context) {
         registerAudioDeviceCallback()
         updateDeviceRoutingAndHighlight()
 
-        // 🎵 WIRING LO-FI DYNAMIC SPEED & PITCH CALLBACK
         AudioEffectsManager.onPlaybackSpeedChangeRequested = { speed, pitch ->
             try {
                 playbackSpeed = speed
@@ -1469,7 +1468,7 @@ class MusicManager(val context: Context) {
         } catch (_: Exception) {}
     }
 
-    // ⚡ Safe instant startup cache: Zero-crash guarantee even with corrupted / large cache files
+    // ⚡ Safe instant startup cache: Zero-crash guarantee
     private suspend fun loadInstantCacheAsync() = withContext(Dispatchers.IO) {
         try {
             val cachedJson = prefs.getString("cached_songs_catalog", null)
@@ -1516,12 +1515,10 @@ class MusicManager(val context: Context) {
                     refreshHistory()
                     isInitialLoading = false
                 }
-                SmartMoodClassifier.syncLibraryMoods(list)
             } else {
                 withContext(Dispatchers.Main.immediate) { isInitialLoading = false }
             }
         } catch (e: Throwable) {
-            // Discard broken/oversized XML cache to guarantee safe zero-crash cold boot
             try {
                 prefs.edit().remove("cached_songs_catalog").apply()
             } catch (_: Exception) {}
@@ -1529,7 +1526,6 @@ class MusicManager(val context: Context) {
         }
     }
 
-    // ⚡ Compact preview persistence: Keeps XML < 50 KB so Android SharedPreferences never crashes on startup
     private fun persistSongsCache(songs: List<Song>) {
         managerScope.launch(Dispatchers.IO) {
             try {
@@ -1674,7 +1670,6 @@ class MusicManager(val context: Context) {
             val hiddenAudioSet = hiddenAudioIds.toHashSet()
             val visibleSongs = songList.filter { it.folderName !in hiddenFoldersSet && it.id !in hiddenAudioSet }
 
-            // Ensure artist persistence engine is ready before grouping so user merges are never erased
             ArtistDataManager.init(context)
             val parsed = withContext(Dispatchers.Default) {
                 ArtistParsingEngine.parseAndGroupArtists(visibleSongs)
@@ -1692,7 +1687,6 @@ class MusicManager(val context: Context) {
                 isInitialLoading = false
             }
 
-            SmartMoodClassifier.syncLibraryMoods(visibleSongs)
             persistSongsCache(visibleSongs)
         }
     }
@@ -2499,10 +2493,8 @@ class MusicManager(val context: Context) {
         }
     }
 
-    // Direct O(1) in-memory bitmap cache lookup
     fun getCachedAlbumArt(songId: Long): Bitmap? = memoryCache.get(songId)
 
-    // Fast MediaStore Content Provider Album Art URI (Instant resolution without native MediaMetadataRetriever stalls)
     fun getAlbumArtUri(song: Song): Uri? {
         if (song.customCoverPath != null && File(song.customCoverPath).exists()) {
             return Uri.fromFile(File(song.customCoverPath))
@@ -2514,14 +2506,12 @@ class MusicManager(val context: Context) {
         }
     }
 
-    // ⚡ Hardware-Safe Fast Thumbnail Decoder (Takes ~15ms instead of 80ms)
     suspend fun loadAlbumArtAsync(song: Song): Bitmap? = withContext(Dispatchers.IO) {
         val cached = memoryCache.get(song.id)
         if (cached != null) return@withContext cached
 
         var resultBitmap: Bitmap? = null
 
-        // 1. Manual/custom cover if exists
         if (song.customCoverPath != null) {
             val file = File(song.customCoverPath)
             if (file.exists()) {
@@ -2533,7 +2523,6 @@ class MusicManager(val context: Context) {
             }
         }
 
-        // 2. Direct MediaStore Albumart content stream
         if (resultBitmap == null && song.albumId > 0L) {
             try {
                 val sArtworkUri = Uri.parse("content://media/external/audio/albumart")

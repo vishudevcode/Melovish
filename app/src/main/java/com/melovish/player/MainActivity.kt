@@ -339,7 +339,6 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         viewModel.manager.attachActivity(this)
 
-        // 🚀 ENFORCE 120HZ PEAK DISPLAY REFRESH RATE
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             try {
                 val display = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
@@ -410,16 +409,8 @@ fun MelovishRootApp(manager: MusicManager) {
     val systemDark = isSystemInDarkTheme()
 
     LaunchedEffect(Unit) {
-        SmartMoodClassifier.init(context)
         AudioEffectsManager.init(context)
         ArtistDataManager.init(context)
-    }
-
-    // 🚀 ULTRA-FAST NON-BLOCKING MOOD CLASSIFICATION FOR 10,000+ SONGS
-    LaunchedEffect(manager.allSongs.size) {
-        if (manager.allSongs.isNotEmpty()) {
-            SmartMoodClassifier.syncLibraryMoods(manager.allSongs)
-        }
     }
 
     val isDark = when (manager.themeMode) {
@@ -458,8 +449,6 @@ fun MelovishRootApp(manager: MusicManager) {
     var selectedPlaylist by remember { mutableStateOf<Playlist?>(null) }
     var selectedArtist by remember { mutableStateOf<ArtistItem?>(null) }
     var selectedAlbum by remember { mutableStateOf<String?>(null) }
-    var selectedMood by remember { mutableStateOf<AudioMood?>(null) }
-    var moodSortOrder by remember { mutableStateOf(SongSortOrder.A_TO_Z) }
 
     var isPlayerExpanded by remember { mutableStateOf(false) }
     var isSettingsEqOpen by remember { mutableStateOf(false) }
@@ -490,7 +479,6 @@ fun MelovishRootApp(manager: MusicManager) {
     var showRootCreateArtistDialog by remember { mutableStateOf(false) }
     var showRootGridSizeDialog by remember { mutableStateOf(false) }
     var showRootArtistAddSongsDialog by remember { mutableStateOf(false) }
-    var showMoodFilterDialog by remember { mutableStateOf(false) }
 
     SideEffect {
         if (activity != null) {
@@ -512,16 +500,16 @@ fun MelovishRootApp(manager: MusicManager) {
 
     var isTopBarVisible by remember { mutableStateOf(true) }
     val isMainTabScreen = activeScreen in listOf("home", "library", "artists", "search") &&
-            selectedFolder == null && selectedPlaylist == null && selectedArtist == null && selectedAlbum == null && selectedMood == null
+            selectedFolder == null && selectedPlaylist == null && selectedArtist == null && selectedAlbum == null
 
     val isAnyRootModalOpen = showRootCreatePlaylistDialog || showRootManagePlaylistsDialog || showRootArrangePlaylistsDialog ||
             rootCustomizingFolder != null || rootCustomizingPlaylist != null || rootSelectedArtistForActions != null ||
             rootSelectedArtistSongForAction != null || showRootDarkSubStyleDialog || showRootLightSubStyleDialog ||
             rootColorPickerMode != null || showRootCreateArtistDialog || showRootGridSizeDialog || showRootArtistAddSongsDialog ||
             isSettingsEqOpen || activeSongForMenu != null || activeTagEditSong != null || activeAddToPlaylistSong != null ||
-            activeSongInfo != null || showMoodFilterDialog
+            activeSongInfo != null
 
-    // 🚀 ULTRA-RESPONSIVE COLLAPSING/EXPANDING TOP BAR CONNECTION
+    // 🚀 RESPONSIVE COLLAPSING/EXPANDING TOP BAR CONNECTION
     val topBarNestedScrollConnection = remember(isMainTabScreen, isAnyRootModalOpen) {
         object : NestedScrollConnection {
             override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
@@ -548,12 +536,11 @@ fun MelovishRootApp(manager: MusicManager) {
             rootSelectedArtistSongForAction != null || showRootDarkSubStyleDialog || showRootLightSubStyleDialog ||
             rootColorPickerMode != null || showRootCreateArtistDialog || showRootGridSizeDialog || showRootArtistAddSongsDialog ||
             isSettingsEqOpen || isPlayerExpanded || activeScreen == "settings" ||
-            activeScreen == "profile" || selectedMood != null || selectedArtist != null || selectedAlbum != null ||
-            selectedPlaylist != null || selectedFolder != null || showMoodFilterDialog || activeScreen != "home"
+            activeScreen == "profile" || selectedArtist != null || selectedAlbum != null ||
+            selectedPlaylist != null || selectedFolder != null || activeScreen != "home"
 
     BackHandler(enabled = canGoBack) {
         when {
-            showMoodFilterDialog -> showMoodFilterDialog = false
             showRootCreatePlaylistDialog -> showRootCreatePlaylistDialog = false
             showRootManagePlaylistsDialog -> showRootManagePlaylistsDialog = false
             showRootArrangePlaylistsDialog -> showRootArrangePlaylistsDialog = false
@@ -575,7 +562,6 @@ fun MelovishRootApp(manager: MusicManager) {
             activeScreen == "profile" -> {
                 activeScreen = if (previousActiveScreen != "profile") previousActiveScreen else "home"
             }
-            selectedMood != null -> selectedMood = null
             selectedArtist != null -> selectedArtist = null
             selectedAlbum != null -> selectedAlbum = null
             selectedPlaylist != null -> selectedPlaylist = null
@@ -660,55 +646,6 @@ fun MelovishRootApp(manager: MusicManager) {
                                 activeScreen = if (previousActiveScreen != "profile") previousActiveScreen else "home"
                             }
                         )
-                        selectedMood != null -> {
-                            val curMood = selectedMood!!
-                            val rawMoodSongs = remember(curMood, manager.allSongs.size, SmartMoodClassifier.classificationVersion) {
-                                SmartMoodClassifier.getSongsForMood(curMood, manager.allSongs)
-                            }
-                            val sortedMoodSongs = remember(rawMoodSongs, moodSortOrder) {
-                                when (moodSortOrder) {
-                                    SongSortOrder.A_TO_Z -> rawMoodSongs.sortedBy { it.title.lowercase(Locale.getDefault()) }
-                                    SongSortOrder.Z_TO_A -> rawMoodSongs.sortedByDescending { it.title.lowercase(Locale.getDefault()) }
-                                    SongSortOrder.DURATION -> rawMoodSongs.sortedByDescending { it.duration }
-                                    SongSortOrder.FILE_SIZE -> rawMoodSongs.sortedByDescending { it.size }
-                                    SongSortOrder.NEWEST -> rawMoodSongs.sortedByDescending { it.id }
-                                    SongSortOrder.OLDEST -> rawMoodSongs.sortedBy { it.id }
-                                    SongSortOrder.ARTIST -> rawMoodSongs.sortedBy { it.artist.lowercase(Locale.getDefault()) }
-                                }.toImmutableList()
-                            }
-
-                            FilteredSongsScreen(
-                                title = "${curMood.emoji} ${curMood.title}",
-                                songs = sortedMoodSongs,
-                                manager = manager,
-                                isDark = isDark,
-                                currentViewMode = manager.homeViewMode,
-                                onBack = { selectedMood = null },
-                                onSongMenuClick = { song: Song -> activeSongForMenu = song },
-                                onSongClick = { song -> handleSmartSongClick(song, sortedMoodSongs, "${curMood.emoji} ${curMood.title}") },
-                                extraHeaderActions = {
-                                    MoodHeaderActionButtons(
-                                        accent = manager.accentColor,
-                                        cardBg = manager.getCurrentSurfaceColor(),
-                                        glassBorder = manager.getGlassBorderBrush(),
-                                        isFilterActive = (SmartMoodClassifier.getSavedMinBpm(curMood) != curMood.defaultMinBpm ||
-                                                          SmartMoodClassifier.getSavedMinEnergy(curMood) != curMood.defaultMinEnergy),
-                                        currentViewMode = manager.homeViewMode,
-                                        onOpenFilterDialog = { showMoodFilterDialog = true },
-                                        onCycleViewMode = { manager.cycleNextHomeViewMode() },
-                                        onOpenGridSizeDialog = { showRootGridSizeDialog = true },
-                                        onSelectSortOrder = { newSort -> moodSortOrder = newSort },
-                                        onShuffleClick = {
-                                            val shuffled = sortedMoodSongs.shuffled()
-                                            if (shuffled.isNotEmpty()) {
-                                                manager.triggerHapticFeedback(true)
-                                                manager.playSong(shuffled.first(), shuffled, "${curMood.emoji} ${curMood.title}")
-                                            }
-                                        }
-                                    )
-                                }
-                            )
-                        }
                         selectedArtist != null -> {
                             val curArtist = selectedArtist!!
                             ArtistDetailScreen(
@@ -775,7 +712,6 @@ fun MelovishRootApp(manager: MusicManager) {
                             manager = manager,
                             listState = searchListState,
                             onSongMenuClick = { song: Song -> activeSongForMenu = song },
-                            onMoodClick = { mood -> selectedMood = mood },
                             onSongClick = { song, songs -> handleSmartSongClick(song, songs, "Search Results") }
                         )
                         activeScreen == "library" -> LibraryScreen(
@@ -883,25 +819,6 @@ fun MelovishRootApp(manager: MusicManager) {
 
             if (isSettingsEqOpen) {
                 EqualizerSheet(manager = manager, onDismiss = { isSettingsEqOpen = false })
-            }
-
-            if (showMoodFilterDialog && selectedMood != null) {
-                val curMood = selectedMood!!
-                MoodBpmEnergyFilterDialog(
-                    mood = curMood,
-                    initialMinBpm = SmartMoodClassifier.getSavedMinBpm(curMood),
-                    initialMaxBpm = SmartMoodClassifier.getSavedMaxBpm(curMood),
-                    initialMinEnergy = SmartMoodClassifier.getSavedMinEnergy(curMood),
-                    initialMaxEnergy = SmartMoodClassifier.getSavedMaxEnergy(curMood),
-                    isDark = isDark,
-                    accent = manager.accentColor,
-                    textColor = manager.getCurrentTextColor(),
-                    dialogColor = manager.getCurrentDialogColor(),
-                    glassBorder = manager.getGlassBorderBrush(),
-                    onApply = { _, _, _, _ -> showMoodFilterDialog = false },
-                    onReset = { showMoodFilterDialog = false },
-                    onDismiss = { showMoodFilterDialog = false }
-                )
             }
 
             if (showRootCreatePlaylistDialog) {
@@ -1390,7 +1307,6 @@ fun HomeScreen(
         manager.historySongs.take(30).toImmutableList()
     }
 
-    // 🚀 MEMOIZE GRID CHUNKS TO PREVENT RUNTIME ALLOCATIONS IN SCROLLING LOOPS
     val chunkedGrid2 = remember(sortedSongs) { sortedSongs.chunked(2) }
     val chunkedGrid3 = remember(sortedSongs) { sortedSongs.chunked(3) }
     val chunkedGrid4 = remember(sortedSongs) { sortedSongs.chunked(4) }
@@ -1605,7 +1521,6 @@ fun HomeScreen(
 
                         Spacer(modifier = Modifier.width(6.dp))
 
-                        // 🚀 Circular shuffle button with uniform glass border (identical to left icons)
                         Box(
                             modifier = Modifier
                                 .size(36.dp)
@@ -2245,7 +2160,6 @@ fun PlaylistDetailScreen(
 
                     Spacer(modifier = Modifier.width(6.dp))
 
-                    // 🚀 Shuffle Button styled identical to other header buttons
                     Box(
                         modifier = Modifier
                             .size(36.dp)
@@ -2456,7 +2370,6 @@ fun FolderSongsScreen(
 
                     Spacer(modifier = Modifier.width(6.dp))
 
-                    // 🚀 Shuffle Button styled identical to other header buttons
                     Box(
                         modifier = Modifier
                             .size(36.dp)
@@ -3896,7 +3809,7 @@ fun LibraryFolderSquareCard(
 }
 
 // =========================================================================
-// 📌 SEARCH SCREEN (With Recent 10 Search History & AI Mood Playlists Hub)
+// 📌 SEARCH SCREEN (Pure, Fast & Light - Zero Mood Dependencies)
 // =========================================================================
 
 @UnstableApi
@@ -3905,7 +3818,6 @@ fun SearchScreen(
     manager: MusicManager,
     listState: LazyListState,
     onSongMenuClick: (Song) -> Unit,
-    onMoodClick: (AudioMood) -> Unit = {},
     onSongClick: (Song, List<Song>) -> Unit = { song, list -> manager.playSong(song, list, "Search Results") }
 ) {
     val context = LocalContext.current
@@ -3966,7 +3878,6 @@ fun SearchScreen(
     }
 
     val isDark = manager.isDarkMode
-    val heroMood = remember { SmartMoodClassifier.getCurrentHeroMood() }
 
     Column(modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
         Spacer(modifier = Modifier.height(8.dp))
@@ -4008,7 +3919,6 @@ fun SearchScreen(
                 contentPadding = PaddingValues(bottom = 120.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                // 1. RECENT 10 SEARCHES WITH CLEAR OPTION
                 if (searchHistory.isNotEmpty()) {
                     item(key = "search_history_section") {
                         Column(
@@ -4097,145 +4007,8 @@ fun SearchScreen(
                         }
                     }
                 }
-
-                // 2. AI MOOD PLAYLISTS HUB
-                item(key = "mood_hub_header") {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column {
-                            Text(
-                                text = "Smart Mood Playlists",
-                                color = textColor,
-                                fontSize = 18.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Text(
-                                text = "Acoustic signal & offline DSP classification",
-                                color = Color(0xFF64748B),
-                                fontSize = 12.sp
-                            )
-                        }
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(accent.copy(alpha = 0.15f))
-                                .padding(horizontal = 8.dp, vertical = 4.dp)
-                        ) {
-                            Text("AI DSP", color = accent, fontSize = 10.sp, fontWeight = FontWeight.Black)
-                        }
-                    }
-                }
-
-                item(key = "mood_grid_container") {
-                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        AudioMood.values().toList().chunked(2).forEach { rowMoods ->
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(10.dp)
-                            ) {
-                                rowMoods.forEach { mood ->
-                                    val count = remember(mood, manager.allSongs.size, SmartMoodClassifier.classificationVersion) {
-                                        SmartMoodClassifier.getSongsForMood(mood, manager.allSongs).size
-                                    }
-                                    val moodColor = Color(mood.colorHex)
-                                    val isHero = (mood == heroMood)
-
-                                    Box(
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .height(112.dp)
-                                            .clip(RoundedCornerShape(18.dp))
-                                            .background(if (isHero) moodColor.copy(alpha = 0.14f) else cardBg)
-                                            .border(
-                                                width = if (isHero) 1.8.dp else 1.2.dp,
-                                                brush = if (isHero) {
-                                                    Brush.linearGradient(listOf(moodColor, accent))
-                                                } else {
-                                                    Brush.linearGradient(listOf(moodColor.copy(alpha = 0.45f), Color.Transparent))
-                                                },
-                                                shape = RoundedCornerShape(18.dp)
-                                            )
-                                            .clickable {
-                                                manager.triggerHapticFeedback(false)
-                                                onMoodClick(mood)
-                                            }
-                                            .padding(12.dp)
-                                    ) {
-                                        Column(
-                                            modifier = Modifier.fillMaxSize(),
-                                            verticalArrangement = Arrangement.SpaceBetween
-                                        ) {
-                                            Row(
-                                                modifier = Modifier.fillMaxWidth(),
-                                                horizontalArrangement = Arrangement.SpaceBetween,
-                                                verticalAlignment = Alignment.Top
-                                            ) {
-                                                Text(mood.emoji, fontSize = 24.sp)
-
-                                                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                                    if (isHero) {
-                                                        Box(
-                                                            modifier = Modifier
-                                                                .clip(RoundedCornerShape(6.dp))
-                                                                .background(accent)
-                                                                .padding(horizontal = 6.dp, vertical = 2.dp)
-                                                        ) {
-                                                            Text(
-                                                                text = "⚡ NOW",
-                                                                color = Color.White,
-                                                                fontSize = 9.sp,
-                                                                fontWeight = FontWeight.Black
-                                                            )
-                                                        }
-                                                    }
-
-                                                    Box(
-                                                        modifier = Modifier
-                                                            .clip(RoundedCornerShape(6.dp))
-                                                            .background(moodColor.copy(alpha = 0.16f))
-                                                            .padding(horizontal = 6.dp, vertical = 2.dp)
-                                                    ) {
-                                                        Text(
-                                                            text = "$count tracks",
-                                                            color = moodColor,
-                                                            fontSize = 10.sp,
-                                                            fontWeight = FontWeight.Bold
-                                                        )
-                                                    }
-                                                }
-                                            }
-
-                                            Column {
-                                                Text(
-                                                    text = mood.title,
-                                                    color = textColor,
-                                                    fontSize = 14.sp,
-                                                    fontWeight = FontWeight.Bold,
-                                                    maxLines = 1,
-                                                    overflow = TextOverflow.Ellipsis
-                                                )
-                                                Text(
-                                                    text = mood.subtitle,
-                                                    color = Color(0xFF64748B),
-                                                    fontSize = 10.sp,
-                                                    maxLines = 1,
-                                                    overflow = TextOverflow.Ellipsis
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
-                                if (rowMoods.size == 1) Spacer(modifier = Modifier.weight(1f))
-                            }
-                        }
-                    }
-                }
             }
         } else {
-            // Live Search Results
             LazyColumn(
                 state = listState,
                 contentPadding = PaddingValues(bottom = 120.dp),
@@ -4440,7 +4213,7 @@ fun FilteredSongsScreen(
 
         if (songs.isEmpty()) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("No songs match the current mood filters.", color = Color(0xFF64748B), fontSize = 13.sp)
+                Text("No songs found in this category.", color = Color(0xFF64748B), fontSize = 13.sp)
             }
         } else {
             when (currentViewMode) {
