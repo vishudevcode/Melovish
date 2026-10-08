@@ -12,20 +12,24 @@
         android:maxSdkVersion="29" 
         tools:ignore="ScopedStorage" />
 
-    <!-- Phase 3: Android 14+ Foreground Service Runtime Declarations -->
+    <!-- Foreground Service & Media Session Declarations -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     
-    <!-- Audio Routing & Hardware Haptics -->
+    <!-- Audio Routing, Bluetooth Headsets & Hardware Haptics -->
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    <uses-permission 
+        android:name="android.permission.BLUETOOTH_CONNECT" 
+        tools:targetApi="s" />
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission 
         android:name="android.permission.WRITE_SETTINGS" 
         tools:ignore="ProtectedPermissions" />
 
     <application
+        android:name=".MelovishApp"
         android:allowBackup="true"
         android:icon="@drawable/app_logo"
         android:roundIcon="@drawable/app_logo"
@@ -35,10 +39,11 @@
         android:largeHeap="true"
         android:theme="@android:style/Theme.Material.Light.NoActionBar">
 
-        <!-- Host Activity: Protected against Configuration Destructions -->
+        <!-- Host Activity: Protected against Configuration Destructions & Re-creation Churn -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
+            android:launchMode="singleTask"
             android:windowSoftInputMode="adjustResize"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|uiMode|smallestScreenSize"
             android:theme="@android:style/Theme.Material.Light.NoActionBar">
