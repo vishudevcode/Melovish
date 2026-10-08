@@ -12,6 +12,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -515,7 +516,7 @@ fun RootArtistActionModal(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .zIndex(150f)
+                .zIndex(999f)
                 .background(Color(0x77000000))
                 .nestedScroll(modalScrollInterceptor)
                 .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
@@ -601,7 +602,7 @@ fun RootArtistActionModal(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .zIndex(150f)
+            .zIndex(999f)
             .background(Color(0x77000000))
             .nestedScroll(modalScrollInterceptor)
             .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
@@ -1691,7 +1692,7 @@ fun ArtistAddSongsDialog(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .zIndex(150f)
+            .zIndex(999f)
             .background(Color(0x77000000))
             .nestedScroll(modalScrollInterceptor)
             .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
@@ -1808,7 +1809,7 @@ fun CreateArtistDialog(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .zIndex(150f)
+            .zIndex(999f)
             .background(Color(0x77000000))
             .nestedScroll(dialogScrollInterceptor)
             .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
