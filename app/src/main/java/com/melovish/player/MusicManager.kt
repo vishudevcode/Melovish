@@ -1469,14 +1469,15 @@ class MusicManager(val context: Context) {
         } catch (_: Exception) {}
     }
 
-    // ⚡ Fast memory-friendly cache restore without massive object allocations
+    // ⚡ Safe instant startup cache: Zero-crash guarantee even with corrupted / large cache files
     private suspend fun loadInstantCacheAsync() = withContext(Dispatchers.IO) {
-        val cachedJson = prefs.getString("cached_songs_catalog", null)
-        if (cachedJson == null) {
-            withContext(Dispatchers.Main.immediate) { isInitialLoading = false }
-            return@withContext
-        }
         try {
+            val cachedJson = prefs.getString("cached_songs_catalog", null)
+            if (cachedJson.isNullOrBlank()) {
+                withContext(Dispatchers.Main.immediate) { isInitialLoading = false }
+                return@withContext
+            }
+
             val arr = JSONArray(cachedJson)
             val list = ArrayList<Song>(arr.length())
             for (i in 0 until arr.length()) {
@@ -1515,22 +1516,25 @@ class MusicManager(val context: Context) {
                     refreshHistory()
                     isInitialLoading = false
                 }
-                // Pre-compute mood lookups on low-priority background thread
                 SmartMoodClassifier.syncLibraryMoods(list)
             } else {
                 withContext(Dispatchers.Main.immediate) { isInitialLoading = false }
             }
-        } catch (_: Exception) {
+        } catch (e: Throwable) {
+            // Discard broken/oversized XML cache to guarantee safe zero-crash cold boot
+            try {
+                prefs.edit().remove("cached_songs_catalog").apply()
+            } catch (_: Exception) {}
             withContext(Dispatchers.Main.immediate) { isInitialLoading = false }
         }
     }
 
+    // ⚡ Compact preview persistence: Keeps XML < 50 KB so Android SharedPreferences never crashes on startup
     private fun persistSongsCache(songs: List<Song>) {
         managerScope.launch(Dispatchers.IO) {
             try {
                 val arr = JSONArray()
-                // Cache up to 4,000 recent/frequent items to keep cache size ultra-compact
-                songs.take(4000).forEach { s ->
+                songs.take(100).forEach { s ->
                     val o = JSONObject().apply {
                         put("id", s.id)
                         put("title", s.title)
@@ -1670,6 +1674,8 @@ class MusicManager(val context: Context) {
             val hiddenAudioSet = hiddenAudioIds.toHashSet()
             val visibleSongs = songList.filter { it.folderName !in hiddenFoldersSet && it.id !in hiddenAudioSet }
 
+            // Ensure artist persistence engine is ready before grouping so user merges are never erased
+            ArtistDataManager.init(context)
             val parsed = withContext(Dispatchers.Default) {
                 ArtistParsingEngine.parseAndGroupArtists(visibleSongs)
             }
@@ -1686,7 +1692,6 @@ class MusicManager(val context: Context) {
                 isInitialLoading = false
             }
 
-            // High-speed mood syncing across all parsed tracks
             SmartMoodClassifier.syncLibraryMoods(visibleSongs)
             persistSongsCache(visibleSongs)
         }
