@@ -151,6 +151,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.media3.common.util.UnstableApi
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
+import coil.size.Precision
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.toImmutableList
 import kotlinx.coroutines.Dispatchers
@@ -338,7 +339,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         viewModel.manager.attachActivity(this)
 
-        // 🚀 ENFORCE 120HZ / PEAK HARDWARE REFRESH RATE
+        // 🚀 ENFORCE 120HZ PEAK DISPLAY REFRESH RATE
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             try {
                 val display = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
@@ -1354,7 +1355,7 @@ fun MelovishRootApp(manager: MusicManager) {
 }
 
 // =========================================================================
-// 📌 HOME SCREEN
+// 📌 HOME SCREEN (Optimized for Fast Flinging & Zero-Stutter Lazy Lists)
 // =========================================================================
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -1388,6 +1389,11 @@ fun HomeScreen(
     val recents: ImmutableList<Song> = remember(manager.historySongs.size, manager.historySongs.toList()) {
         manager.historySongs.take(30).toImmutableList()
     }
+
+    // 🚀 MEMOIZE GRID CHUNKS TO PREVENT RUNTIME ALLOCATIONS IN SCROLLING LOOPS
+    val chunkedGrid2 = remember(sortedSongs) { sortedSongs.chunked(2) }
+    val chunkedGrid3 = remember(sortedSongs) { sortedSongs.chunked(3) }
+    val chunkedGrid4 = remember(sortedSongs) { sortedSongs.chunked(4) }
 
     val configuration = LocalConfiguration.current
     val cardWidth = ((configuration.screenWidthDp - 32 - (3 * 8)) / 4).coerceAtLeast(76).dp
@@ -1703,7 +1709,7 @@ fun HomeScreen(
                     }
                     GridViewMode.GRID_2 -> {
                         items(
-                            items = sortedSongs.chunked(2),
+                            items = chunkedGrid2,
                             key = { it.first().id }
                         ) { rowSongs ->
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -1724,7 +1730,7 @@ fun HomeScreen(
                     }
                     GridViewMode.GRID_3 -> {
                         items(
-                            items = sortedSongs.chunked(3),
+                            items = chunkedGrid3,
                             key = { it.first().id }
                         ) { rowSongs ->
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1745,7 +1751,7 @@ fun HomeScreen(
                     }
                     GridViewMode.GRID_4 -> {
                         items(
-                            items = sortedSongs.chunked(4),
+                            items = chunkedGrid4,
                             key = { it.first().id }
                         ) { rowSongs ->
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -1766,7 +1772,7 @@ fun HomeScreen(
                     }
                     GridViewMode.HERO_GRID -> {
                         items(
-                            items = sortedSongs.chunked(2),
+                            items = chunkedGrid2,
                             key = { it.first().id }
                         ) { rowSongs ->
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -3143,7 +3149,9 @@ fun SquareAlbumOverlayCard(
             AsyncImage(
                 model = ImageRequest.Builder(context)
                     .data(artUri)
-                    .crossfade(150)
+                    .size(140, 140)
+                    .precision(Precision.INEXACT)
+                    .crossfade(80)
                     .build(),
                 contentDescription = song.title,
                 contentScale = ContentScale.Crop,
@@ -3229,7 +3237,9 @@ fun HeroAlbumCard(
             AsyncImage(
                 model = ImageRequest.Builder(context)
                     .data(artUri)
-                    .crossfade(150)
+                    .size(240, 240)
+                    .precision(Precision.INEXACT)
+                    .crossfade(80)
                     .build(),
                 contentDescription = song.title,
                 contentScale = ContentScale.Crop,
@@ -4683,7 +4693,7 @@ fun BottomNavBar(manager: MusicManager, activeTab: String, onTabSelected: (Strin
     }
 }
 
-// ⚡ 120Hz Hardware-Buffered Recently Played Card with Coil AsyncImage
+// ⚡ 120Hz Hardware-Buffered Recently Played Card with Pre-Scaled AsyncImage
 @UnstableApi
 @Composable
 fun RecentlyPlayedCard(song: Song, manager: MusicManager, onClick: () -> Unit) {
@@ -4704,7 +4714,9 @@ fun RecentlyPlayedCard(song: Song, manager: MusicManager, onClick: () -> Unit) {
             AsyncImage(
                 model = ImageRequest.Builder(context)
                     .data(artUri)
-                    .crossfade(150)
+                    .size(140, 140)
+                    .precision(Precision.INEXACT)
+                    .crossfade(80)
                     .build(),
                 contentDescription = song.title,
                 contentScale = ContentScale.Crop,
@@ -4855,7 +4867,7 @@ fun TopBar(manager: MusicManager, onProfileClick: () -> Unit, onSettingsClick: (
     }
 }
 
-// ⚡ 120Hz Hardware-Buffered Universal Song Row with Coil AsyncImage
+// ⚡ 120Hz Hardware-Buffered Universal Song Row with Pre-Scaled AsyncImage
 @UnstableApi
 @Composable
 fun UniversalSongRow(song: Song, manager: MusicManager, isDark: Boolean, onPlay: () -> Unit, onMenuClick: () -> Unit) {
@@ -4889,7 +4901,9 @@ fun UniversalSongRow(song: Song, manager: MusicManager, isDark: Boolean, onPlay:
                 AsyncImage(
                     model = ImageRequest.Builder(context)
                         .data(artUri)
-                        .crossfade(150)
+                        .size(140, 140)
+                        .precision(Precision.INEXACT)
+                        .crossfade(80)
                         .build(),
                     contentDescription = "Art",
                     modifier = Modifier.fillMaxSize(),
