@@ -206,7 +206,7 @@ object ArtistDataManager {
         }
     }
 
-    private fun saveData() {
+    fun saveData() {
         val p = prefs ?: return
         val aliasObj = JSONObject()
         artistAliases.forEach { (k, v) -> aliasObj.put(k, v) }
@@ -305,6 +305,16 @@ object ArtistDataManager {
         val list = movedSongMap.getOrPut(toArtist) { mutableListOf() }
         if (!list.contains(song.id)) {
             list.add(song.id)
+        }
+        saveData()
+    }
+
+    // 🚀 Robust, permanent track addition
+    fun addSongToArtist(artistName: String, songId: Long) {
+        removedSongMap[artistName]?.remove(songId)
+        val list = movedSongMap.getOrPut(artistName) { mutableListOf() }
+        if (!list.contains(songId)) {
+            list.add(songId)
         }
         saveData()
     }
@@ -885,7 +895,6 @@ fun ArtistsScreen(
     var query by remember { mutableStateOf("") }
     var showSortMenu by remember { mutableStateOf(false) }
 
-    // Recompute parsed artists whenever user merges, creates, or renames an artist
     val artistsList = remember(manager.allSongs.size, ArtistDataManager.refreshTrigger) {
         val updated = ArtistParsingEngine.parseAndGroupArtists(manager.allSongs)
         manager.parsedArtistsList.clear()
@@ -1333,8 +1342,10 @@ fun ArtistDetailScreen(
 
     var showSortMenu by remember { mutableStateOf(false) }
 
+    // 🚀 Reactive hook: automatically updates song list when tracks are added or moved
     val currentSongs = remember(artistItem.name, manager.parsedArtistsList, ArtistDataManager.refreshTrigger) {
-        manager.parsedArtistsList.find { it.name.equals(artistItem.name, ignoreCase = true) }?.songs ?: artistItem.songs
+        val updatedGroup = ArtistParsingEngine.parseAndGroupArtists(manager.allSongs)
+        updatedGroup.find { it.name.equals(artistItem.name, ignoreCase = true) }?.songs ?: artistItem.songs
     }
 
     val sortedSongs: ImmutableList<Song> = remember(currentSongs, manager.artistInnerSortOrder) {
@@ -1592,7 +1603,8 @@ fun ArtistAddSongsDialog(
     }
 
     val currentArtist = remember(artistName, manager.parsedArtistsList, ArtistDataManager.refreshTrigger) {
-        manager.parsedArtistsList.find { it.name.equals(artistName, ignoreCase = true) }
+        val updatedGroup = ArtistParsingEngine.parseAndGroupArtists(manager.allSongs)
+        updatedGroup.find { it.name.equals(artistName, ignoreCase = true) }
     }
     val currentSongIdSet = remember(currentArtist) {
         currentArtist?.songs?.map { it.id }?.toHashSet() ?: hashSetOf()
@@ -1666,10 +1678,11 @@ fun ArtistAddSongsDialog(
                                 .clip(RoundedCornerShape(10.dp))
                                 .background(if (isDark) Color(0x1AFFFFFF) else Color(0xFFF1F5F9))
                                 .clickable {
-                                    val list = ArtistDataManager.movedSongMap.getOrPut(artistName) { mutableListOf() }
-                                    if (!list.contains(song.id)) list.add(song.id)
-                                    ArtistDataManager.removedSongMap[artistName]?.remove(song.id)
-                                    ArtistDataManager.refreshTrigger++
+                                    // 🚀 Permanently saves to disk and updates reactive lists immediately
+                                    ArtistDataManager.addSongToArtist(artistName, song.id)
+                                    val updated = ArtistParsingEngine.parseAndGroupArtists(manager.allSongs)
+                                    manager.parsedArtistsList.clear()
+                                    manager.parsedArtistsList.addAll(updated)
                                     Toast.makeText(context, "Added ${song.title}", Toast.LENGTH_SHORT).show()
                                 }
                                 .padding(12.dp),
