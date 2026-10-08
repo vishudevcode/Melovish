@@ -641,7 +641,7 @@ class MusicManager(val context: Context) {
             }
         }
 
-        // Apply initial Lo-Fi parameters if already turned on in preferences
+        // Apply initial Lo-Fi parameters if already active in preferences
         if (AudioEffectsManager.isLofiEnabled.value) {
             player.playbackParameters = PlaybackParameters(0.83f, 0.88f)
         }

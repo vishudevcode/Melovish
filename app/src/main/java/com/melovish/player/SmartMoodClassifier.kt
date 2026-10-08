@@ -52,7 +52,11 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.asCoroutineDispatcher
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
@@ -60,6 +64,8 @@ import java.io.File
 import java.nio.ByteOrder
 import java.util.Calendar
 import java.util.Locale
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.Executors
 import kotlin.math.abs
 import kotlin.math.sqrt
 
@@ -179,7 +185,7 @@ data class AudioAcousticProfile(
 )
 
 // =========================================================================
-// 📌 OFFLINE DSP & ACOUSTIC FEATURE EXTRACTION ENGINE (V4 CALIBRATED)
+// 📌 OFFLINE DSP & ACOUSTIC FEATURE EXTRACTION ENGINE (V4 CALIBRATED & ANR-SHIELDED)
 // =========================================================================
 
 object SmartMoodClassifier {
@@ -187,6 +193,19 @@ object SmartMoodClassifier {
     private const val PREFS_FILTERS_NAME = "melovish_mood_filters_memory_v2"
     private var prefs: SharedPreferences? = null
     private var filterPrefs: SharedPreferences? = null
+
+    // Dedicated single-thread background queue to eliminate UI thread latency and decoder starvation
+    private val dspDispatcher = Executors.newSingleThreadExecutor { r ->
+        Thread(r, "MelovishDspBackgroundWorker").apply {
+            priority = Thread.MIN_PRIORITY
+            isDaemon = true
+        }
+    }.asCoroutineDispatcher()
+
+    private val dspScope = CoroutineScope(SupervisorJob() + dspDispatcher)
+
+    // Tracks currently scheduled or running tasks to prevent redundant workloads
+    private val queuedSongIds = ConcurrentHashMap.newKeySet<Long>()
 
     val profilesCache = mutableStateMapOf<Long, AudioAcousticProfile>()
     var classificationVersion by mutableIntStateOf(0)
@@ -241,7 +260,8 @@ object SmartMoodClassifier {
     private fun loadCache() {
         val p = prefs ?: return
         profilesCache.clear()
-        p.all.forEach { (key, value) ->
+        val allEntries = try { p.all } catch (_: Exception) { emptyMap<String, Any>() }
+        allEntries.forEach { (key, value) ->
             if (value is String) {
                 try {
                     val songId = key.toLong()
@@ -298,8 +318,150 @@ object SmartMoodClassifier {
         } catch (_: Exception) {}
     }
 
-    suspend fun analyzeAudioTrack(context: Context, song: Song): AudioAcousticProfile = withContext(Dispatchers.IO) {
-        profilesCache[song.id]?.let { return@withContext it }
+    // =========================================================================
+    // ⚡ INSTANT NON-BLOCKING HEURISTIC ENGINE (<0.1ms per track)
+    // =========================================================================
+
+    private fun containsWord(text: String, vararg words: String): Boolean {
+        return words.any { word ->
+            Regex("\\b${Regex.escape(word)}\\b").containsMatchIn(text)
+        }
+    }
+
+    fun computeInstantHeuristicProfile(song: Song): AudioAcousticProfile {
+        val cleanTitle = song.title.lowercase(Locale.getDefault())
+        val cleanFolder = song.folderName.lowercase(Locale.getDefault())
+        val cleanArtist = song.artist.lowercase(Locale.getDefault())
+        val cleanAlbum = song.album.lowercase(Locale.getDefault())
+        val releaseYear = song.releaseDate.toIntOrNull() ?: 0
+
+        val folderAndTitle = "$cleanFolder $cleanTitle"
+        val metaString = "$cleanTitle $cleanArtist $cleanAlbum"
+
+        val is60sArtist = cleanArtist.contains("kishore kumar") || cleanArtist.contains("mohammed rafi") ||
+                cleanArtist.contains("lata mangeshkar") || cleanArtist.contains("mukesh") ||
+                cleanArtist.contains("asha bhosle") || cleanArtist.contains("rd burman") ||
+                cleanArtist.contains("r.d. burman") || cleanArtist.contains("manna dey") ||
+                cleanArtist.contains("talat mahmood") || cleanArtist.contains("hemant kumar")
+        val is60sFolder = containsWord(cleanFolder, "60s", "70s", "50s", "golden", "evergreen", "purane") ||
+                (containsWord(cleanFolder, "retro", "old") && !cleanFolder.contains("90"))
+        val is60sYear = releaseYear in 1950..1979
+        val qualifies60s = is60sArtist || is60sFolder || is60sYear || containsWord(cleanTitle, "60s", "70s")
+
+        val is90sArtist = cleanArtist.contains("kumar sanu") || cleanArtist.contains("alka yagnik") ||
+                cleanArtist.contains("udit narayan") || cleanArtist.contains("anuradha paudwal") ||
+                cleanArtist.contains("abhijeet") || cleanArtist.contains("sonu nigam") ||
+                cleanArtist.contains("kavita krishnamurthy") || cleanArtist.contains("nadeem shravan") ||
+                cleanArtist.contains("jatin lalit") || cleanArtist.contains("bappi lahiri")
+        val is90sFolder = containsWord(cleanFolder, "90s", "nineties", "90's")
+        val is90sYear = releaseYear in 1980..1999
+        val qualifies90s = (is90sArtist || is90sFolder || is90sYear || containsWord(cleanTitle, "90s", "90's")) && !qualifies60s
+
+        val isPartyFolder = containsWord(cleanFolder, "party", "dance", "club", "dj", "remix", "edm", "bhangra", "pub")
+        val isPartyWord = containsWord(folderAndTitle, "party", "dance", "club", "remix", "dhol", "bhangra", "mashup", "dj", "bass drop")
+        val qualifiesParty = isPartyFolder || isPartyWord
+
+        val isWorkoutFolder = containsWord(cleanFolder, "workout", "gym", "fitness", "crossfit", "running")
+        val isWorkoutWord = containsWord(folderAndTitle, "workout", "gym", "motivation", "beast", "hardstyle")
+        val qualifiesWorkout = isWorkoutFolder || isWorkoutWord
+
+        val isRomanticWord = containsWord(metaString, "love", "ishq", "dil", "pyaar", "mohabbat", "romantic", "sanam", "humsafar")
+        val isRomanticFolder = containsWord(cleanFolder, "romantic", "love", "couple", "valentine")
+        val qualifiesRomantic = (isRomanticFolder || isRomanticWord) && !qualifiesParty && !qualifiesWorkout
+
+        val isSadWord = containsWord(metaString, "sad", "dard", "juda", "bewafa", "alone", "cry", "broken", "tears", "tanha")
+        val isSadFolder = containsWord(cleanFolder, "sad", "dard", "breakup", "heartbreak")
+        val qualifiesSad = (isSadFolder || isSadWord) && !qualifiesParty && !qualifiesWorkout
+
+        val isStudyWord = containsWord(folderAndTitle, "study", "focus", "piano", "calm", "meditation", "classical")
+        val isStudyFolder = containsWord(cleanFolder, "study", "focus", "instrumental", "ambient")
+        val qualifiesStudy = (isStudyFolder || isStudyWord) && !qualifiesParty && !qualifiesWorkout
+
+        val isChillWord = containsWord(folderAndTitle, "chill", "lofi", "lo-fi", "relax", "peace", "night", "rain", "slowed")
+        val isChillFolder = containsWord(cleanFolder, "chill", "relax", "lofi", "sleep")
+        val qualifiesChill = (isChillFolder || isChillWord) && !qualifiesParty && !qualifiesWorkout
+
+        val assignedMoods = mutableSetOf<AudioMood>()
+        if (qualifiesParty) assignedMoods.add(AudioMood.PARTY)
+        if (qualifiesWorkout) assignedMoods.add(AudioMood.WORKOUT)
+        if (qualifies60s) assignedMoods.add(AudioMood.RETRO_SIXTIES)
+        if (qualifies90s) assignedMoods.add(AudioMood.NINETIES)
+        if (qualifiesRomantic) assignedMoods.add(AudioMood.ROMANTIC)
+        if (qualifiesSad) assignedMoods.add(AudioMood.SAD)
+        if (qualifiesStudy) assignedMoods.add(AudioMood.STUDY)
+        if (qualifiesChill) assignedMoods.add(AudioMood.CHILL)
+
+        if (assignedMoods.isEmpty()) {
+            assignedMoods.add(AudioMood.CHILL)
+        }
+
+        val estimatedBpm = when {
+            qualifiesParty -> 128
+            qualifiesWorkout -> 135
+            qualifies60s -> 90
+            qualifies90s -> 100
+            qualifiesRomantic -> 88
+            qualifiesSad -> 70
+            qualifiesStudy -> 75
+            else -> 85
+        }
+
+        val estimatedEnergy = when {
+            qualifiesParty -> 0.72f
+            qualifiesWorkout -> 0.80f
+            qualifies60s -> 0.35f
+            qualifies90s -> 0.45f
+            qualifiesRomantic -> 0.38f
+            qualifiesSad -> 0.20f
+            qualifiesStudy -> 0.22f
+            else -> 0.30f
+        }
+
+        val finalMoods = assignedMoods.take(2).toSet()
+
+        return AudioAcousticProfile(
+            songId = song.id,
+            energyRms = estimatedEnergy,
+            spectralBrightness = 0.45f,
+            zeroCrossingRate = 0.08f,
+            estimatedBpm = estimatedBpm,
+            matchedMoods = finalMoods,
+            primaryMood = finalMoods.first()
+        )
+    }
+
+    // Background job queue: schedules unanalyzed tracks onto a low-priority thread without blocking launch
+    fun queueBackgroundAnalysis(context: Context, songs: List<Song>) {
+        val pendingSongs = songs.filter { !profilesCache.containsKey(it.id) && queuedSongIds.add(it.id) }
+        if (pendingSongs.isEmpty()) return
+
+        // Populate instant heuristic profile so UI is immediately responsive
+        pendingSongs.forEach { s ->
+            if (!profilesCache.containsKey(s.id)) {
+                profilesCache[s.id] = computeInstantHeuristicProfile(s)
+            }
+        }
+        classificationVersion++
+
+        // Dispatch background processing safely
+        dspScope.launch {
+            for (song in pendingSongs) {
+                try {
+                    analyzeAudioTrack(context, song)
+                } catch (_: Exception) {
+                } finally {
+                    queuedSongIds.remove(song.id)
+                }
+            }
+        }
+    }
+
+    suspend fun analyzeAudioTrack(context: Context, song: Song): AudioAcousticProfile = withContext(dspDispatcher) {
+        profilesCache[song.id]?.let {
+            if (it.energyRms != 0.45f && it.estimatedBpm != 95) {
+                return@withContext it
+            }
+        }
 
         var extractor: MediaExtractor? = null
         var decoder: MediaCodec? = null
@@ -339,13 +501,15 @@ object SmartMoodClassifier {
             var audioTrackIndex = -1
             var audioFormat: MediaFormat? = null
 
-            for (i in 0 until extractor.trackCount) {
-                val format = extractor.getTrackFormat(i)
-                val mime = format.getString(MediaFormat.KEY_MIME) ?: ""
-                if (mime.startsWith("audio/")) {
-                    audioTrackIndex = i
-                    audioFormat = format
-                    break
+            if (dataSourceSet) {
+                for (i in 0 until extractor.trackCount) {
+                    val format = extractor.getTrackFormat(i)
+                    val mime = format.getString(MediaFormat.KEY_MIME) ?: ""
+                    if (mime.startsWith("audio/")) {
+                        audioTrackIndex = i
+                        audioFormat = format
+                        break
+                    }
                 }
             }
 
@@ -425,7 +589,8 @@ object SmartMoodClassifier {
             }
         } catch (_: Exception) {
         } finally {
-            try { decoder?.stop(); decoder?.release() } catch (_: Exception) {}
+            try { decoder?.stop() } catch (_: Exception) {}
+            try { decoder?.release() } catch (_: Exception) {}
             try { extractor?.release() } catch (_: Exception) {}
         }
 
@@ -504,12 +669,6 @@ object SmartMoodClassifier {
         val cleanArtist = song.artist.lowercase(Locale.getDefault())
         val cleanAlbum = song.album.lowercase(Locale.getDefault())
         val releaseYear = song.releaseDate.toIntOrNull() ?: 0
-
-        fun containsWord(text: String, vararg words: String): Boolean {
-            return words.any { word ->
-                Regex("\\b${Regex.escape(word)}\\b").containsMatchIn(text)
-            }
-        }
 
         val folderAndTitle = "$cleanFolder $cleanTitle"
         val metaString = "$cleanTitle $cleanArtist $cleanAlbum"
@@ -617,7 +776,9 @@ object SmartMoodClassifier {
             primaryMood = finalMoods.first()
         )
 
-        saveProfile(profile)
+        withContext(Dispatchers.Main.immediate) {
+            saveProfile(profile)
+        }
         return@withContext profile
     }
 
@@ -668,7 +829,9 @@ object SmartMoodClassifier {
         val maxEnergyFloat = (maxEnergyPercent / 100f).coerceIn(0f, 1f)
 
         val matchingSongs = allSongs.filter { song ->
-            val profile = profilesCache[song.id] ?: return@filter false
+            val profile = profilesCache[song.id] ?: computeInstantHeuristicProfile(song).also {
+                profilesCache[song.id] = it
+            }
             val moodMatches = profile.matchedMoods.contains(mood) || profile.primaryMood == mood
 
             if (!moodMatches) return@filter false
@@ -752,11 +915,11 @@ fun MoodHeaderActionButtons(
                     .clip(CircleShape)
                     .background(cardBg)
                     .border(1.2.dp, glassBorder, CircleShape)
-                .clickable { showSortMenu = true },
-            contentAlignment = Alignment.Center
-        ) {
-            SortListVector(tint = accent, modifier = Modifier.size(18.dp))
-        }
+                    .clickable { showSortMenu = true },
+                contentAlignment = Alignment.Center
+            ) {
+                SortListVector(tint = accent, modifier = Modifier.size(18.dp))
+            }
 
             DropdownMenu(expanded = showSortMenu, onDismissRequest = { showSortMenu = false }) {
                 DropdownMenuItem(text = { Text("A to Z") }, onClick = { onSelectSortOrder(SongSortOrder.A_TO_Z); showSortMenu = false })

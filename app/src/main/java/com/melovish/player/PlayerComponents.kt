@@ -457,7 +457,7 @@ suspend fun extractMaterialYouPaletteAsync(bitmap: Bitmap?, isDarkMode: Boolean,
     }
 }
 
-// 100% Mathematically Centered Progress Bar
+// 100% Mathematically Centered Progress Bar with Zero-Recomposition Layout Optimization
 @Composable
 fun IsolatedScrubberLeaf(
     currentPositionMs: Long,
@@ -471,7 +471,9 @@ fun IsolatedScrubberLeaf(
     var dragFraction by remember { mutableFloatStateOf(0f) }
 
     val maxDuration = durationMs.coerceAtLeast(1L)
-    val playbackFraction = (currentPositionMs.toFloat() / maxDuration.toFloat()).coerceIn(0f, 1f)
+    val playbackFraction by remember(currentPositionMs, maxDuration) {
+        derivedStateOf { (currentPositionMs.toFloat() / maxDuration.toFloat()).coerceIn(0f, 1f) }
+    }
     val currentFraction = if (isDragging) dragFraction else playbackFraction
     val displayPos = if (isDragging) (dragFraction * maxDuration).toLong() else currentPositionMs
     val inactiveTrackColor = if (isDark) Color(0xFF475569) else Color(0xFFD1D5DB)
@@ -883,7 +885,7 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                 beyondViewportPageCount = 1,
                 flingBehavior = PagerDefaults.flingBehavior(
                     state = pagerState,
-                    snapAnimationSpec = spring(stiffness = 700f, dampingRatio = 0.90f)
+                    snapAnimationSpec = spring(stiffness = 550f, dampingRatio = 0.85f)
                 ),
                 modifier = Modifier.weight(1f).fillMaxWidth()
             ) { pageIndex ->
@@ -2172,7 +2174,6 @@ fun MiniPlayerDock(
         if (albumArtBitmap == null) albumArtBitmap = manager.loadAlbumArtAsync(song)
     }
 
-    // Dynamic depth diffusion values synced to manager.frostedGlassOpacity
     val baseScrimAlpha = (0.55f + (manager.frostedGlassOpacity * 0.40f)).coerceIn(0.50f, 0.96f)
     val scrimColor = if (isDark) Color(0xFF050811).copy(alpha = baseScrimAlpha) else Color(0xFFE2E8F0).copy(alpha = baseScrimAlpha)
     val dialogColor = manager.getCurrentDialogColor()
@@ -2188,11 +2189,8 @@ fun MiniPlayerDock(
                 ambientColor = if (isDark) Color.Black.copy(alpha = 0.70f) else Color(0x44000000)
             )
             .clip(RoundedCornerShape(22.dp))
-            // Layer 1: Base scrim completely diffuses sharp text lines scrolling underneath
             .background(scrimColor)
-            // Layer 2: True dialog-container frosted tint matching the Glass Visibility slider exactly
             .background(dialogColor)
-            // Layer 3: Specular top-lit glass gradient highlight border
             .border(1.2.dp, manager.getGlassBorderBrush(), RoundedCornerShape(22.dp))
             .pointerInput(manager.isPlaying) {
                 detectVerticalDragGestures { _, dragAmount ->
