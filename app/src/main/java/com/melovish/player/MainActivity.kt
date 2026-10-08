@@ -521,10 +521,19 @@ fun MelovishRootApp(manager: MusicManager) {
             isSettingsEqOpen || activeSongForMenu != null || activeTagEditSong != null || activeAddToPlaylistSong != null ||
             activeSongInfo != null || showMoodFilterDialog
 
+    // 🚀 ULTRA-RESPONSIVE COLLAPSING/EXPANDING TOP BAR CONNECTION
     val topBarNestedScrollConnection = remember(isMainTabScreen, isAnyRootModalOpen) {
         object : NestedScrollConnection {
-            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset = Offset.Zero
-            override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset = available
+            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                if (!isMainTabScreen || isAnyRootModalOpen) return Offset.Zero
+                val delta = available.y
+                if (delta < -8f && isTopBarVisible) {
+                    isTopBarVisible = false
+                } else if (delta > 8f && !isTopBarVisible) {
+                    isTopBarVisible = true
+                }
+                return Offset.Zero
+            }
         }
     }
 
