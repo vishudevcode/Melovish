@@ -408,7 +408,6 @@ object ArtistParsingEngine {
             }
         }
 
-        // Guarantee manually created artists always exist in the map
         ArtistDataManager.manuallyCreatedArtists.forEach { customName ->
             var target = customName
             val visited = HashSet<String>()
@@ -514,6 +513,7 @@ fun RootArtistActionModal(
         Box(
             modifier = Modifier
                 .fillMaxSize()
+                .zIndex(150f)
                 .background(Color(0x77000000))
                 .nestedScroll(modalScrollInterceptor)
                 .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
@@ -599,6 +599,7 @@ fun RootArtistActionModal(
     Box(
         modifier = Modifier
             .fillMaxSize()
+            .zIndex(150f)
             .background(Color(0x77000000))
             .nestedScroll(modalScrollInterceptor)
             .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
@@ -1434,7 +1435,6 @@ fun ArtistDetailScreen(
 
                     Spacer(modifier = Modifier.width(6.dp))
 
-                    // 🚀 Shuffle Button styled identical to other header buttons
                     Box(
                         modifier = Modifier
                             .size(36.dp)
@@ -1579,7 +1579,7 @@ fun ArtistDetailScreen(
 }
 
 // =========================================================================
-// 📌 ARTIST ADD SONGS DIALOG (Rendered directly at the root level)
+// 📌 ARTIST ADD SONGS DIALOG (Rendered directly with high zIndex)
 // =========================================================================
 
 @Composable
@@ -1623,6 +1623,7 @@ fun ArtistAddSongsDialog(
     Box(
         modifier = Modifier
             .fillMaxSize()
+            .zIndex(150f)
             .background(Color(0x77000000))
             .nestedScroll(modalScrollInterceptor)
             .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
@@ -1739,6 +1740,7 @@ fun CreateArtistDialog(
     Box(
         modifier = Modifier
             .fillMaxSize()
+            .zIndex(150f)
             .background(Color(0x77000000))
             .nestedScroll(dialogScrollInterceptor)
             .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {

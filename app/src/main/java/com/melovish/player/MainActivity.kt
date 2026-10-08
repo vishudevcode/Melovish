@@ -454,6 +454,9 @@ fun MelovishRootApp(manager: MusicManager) {
     var isSettingsEqOpen by remember { mutableStateOf(false) }
     var isMiniPlayerDismissed by remember { mutableStateOf(false) }
 
+    // 🚀 Reactive search keyboard trigger
+    var focusSearchTrigger by remember { mutableLongStateOf(0L) }
+
     val handleSmartSongClick: (Song, List<Song>, String) -> Unit = { song, list, source ->
         isMiniPlayerDismissed = false
         if (manager.currentSong?.id == song.id) {
@@ -711,6 +714,7 @@ fun MelovishRootApp(manager: MusicManager) {
                         activeScreen == "search" -> SearchScreen(
                             manager = manager,
                             listState = searchListState,
+                            focusSearchTrigger = focusSearchTrigger,
                             onSongMenuClick = { song: Song -> activeSongForMenu = song },
                             onSongClick = { song, songs -> handleSmartSongClick(song, songs, "Search Results") }
                         )
@@ -744,7 +748,10 @@ fun MelovishRootApp(manager: MusicManager) {
                     BottomNavBar(
                         manager = manager,
                         activeTab = activeScreen,
-                        onTabSelected = { tab ->
+                        onTabSelected = { tab, shouldFocusSearch ->
+                            if (shouldFocusSearch) {
+                                focusSearchTrigger = System.currentTimeMillis()
+                            }
                             if (activeScreen == tab) {
                                 coroutineScope.launch {
                                     isTopBarVisible = true
@@ -764,12 +771,13 @@ fun MelovishRootApp(manager: MusicManager) {
                 }
             }
 
-            if (manager.currentSong != null && !isPlayerExpanded && !isMiniPlayerDismissed) {
+            // 🚀 MiniPlayer automatically hides when any dialog opens, placed below modals (zIndex 10f)
+            if (manager.currentSong != null && !isPlayerExpanded && !isMiniPlayerDismissed && !isAnyRootModalOpen) {
                 Box(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .padding(bottom = if (isMainTabScreen) 66.dp else 12.dp)
-                        .zIndex(15f)
+                        .zIndex(10f)
                 ) {
                     MiniPlayerDock(
                         manager = manager,
@@ -797,10 +805,12 @@ fun MelovishRootApp(manager: MusicManager) {
                 )
             }
 
+            // 🚀 Modal Background Scrim placed at zIndex(100f) above the MiniPlayer
             AnimatedVisibility(
                 visible = isAnyRootModalOpen,
                 enter = fadeIn(tween(250)),
-                exit = fadeOut(tween(200))
+                exit = fadeOut(tween(200)),
+                modifier = Modifier.zIndex(100f)
             ) {
                 Box(
                     modifier = Modifier
@@ -812,52 +822,65 @@ fun MelovishRootApp(manager: MusicManager) {
             AnimatedVisibility(
                 visible = isPlayerExpanded,
                 enter = slideInVertically(initialOffsetY = { it }),
-                exit = slideOutVertically(targetOffsetY = { it })
+                exit = slideOutVertically(targetOffsetY = { it }),
+                modifier = Modifier.zIndex(200f)
             ) {
                 FullPlayerSheet(manager = manager, onDismiss = { isPlayerExpanded = false })
             }
 
             if (isSettingsEqOpen) {
-                EqualizerSheet(manager = manager, onDismiss = { isSettingsEqOpen = false })
+                Box(modifier = Modifier.zIndex(150f)) {
+                    EqualizerSheet(manager = manager, onDismiss = { isSettingsEqOpen = false })
+                }
             }
 
             if (showRootCreatePlaylistDialog) {
-                CreatePlaylistDialog(
-                    manager = manager,
-                    onDismiss = { showRootCreatePlaylistDialog = false }
-                )
+                Box(modifier = Modifier.zIndex(150f)) {
+                    CreatePlaylistDialog(
+                        manager = manager,
+                        onDismiss = { showRootCreatePlaylistDialog = false }
+                    )
+                }
             }
 
             if (showRootCreateArtistDialog) {
-                CreateArtistDialog(
-                    manager = manager,
-                    onDismiss = { showRootCreateArtistDialog = false }
-                )
+                Box(modifier = Modifier.zIndex(150f)) {
+                    CreateArtistDialog(
+                        manager = manager,
+                        onDismiss = { showRootCreateArtistDialog = false }
+                    )
+                }
             }
 
             if (showRootArtistAddSongsDialog && selectedArtist != null) {
-                ArtistAddSongsDialog(
-                    artistName = selectedArtist!!.name,
-                    manager = manager,
-                    onDismiss = { showRootArtistAddSongsDialog = false }
-                )
+                Box(modifier = Modifier.zIndex(150f)) {
+                    ArtistAddSongsDialog(
+                        artistName = selectedArtist!!.name,
+                        manager = manager,
+                        onDismiss = { showRootArtistAddSongsDialog = false }
+                    )
+                }
             }
 
             if (showRootManagePlaylistsDialog) {
-                ManagePlaylistsDialog(
-                    manager = manager,
-                    isDark = isDark,
-                    onAddNew = { showRootCreatePlaylistDialog = true },
-                    onDismiss = { showRootManagePlaylistsDialog = false }
-                )
+                Box(modifier = Modifier.zIndex(150f)) {
+                    ManagePlaylistsDialog(
+                        manager = manager,
+                        isDark = isDark,
+                        onAddNew = { showRootCreatePlaylistDialog = true },
+                        onDismiss = { showRootManagePlaylistsDialog = false }
+                    )
+                }
             }
 
             if (showRootArrangePlaylistsDialog) {
-                ArrangePlaylistsDialog(
-                    manager = manager,
-                    isDark = isDark,
-                    onDismiss = { showRootArrangePlaylistsDialog = false }
-                )
+                Box(modifier = Modifier.zIndex(150f)) {
+                    ArrangePlaylistsDialog(
+                        manager = manager,
+                        isDark = isDark,
+                        onDismiss = { showRootArrangePlaylistsDialog = false }
+                    )
+                }
             }
 
             if (showRootGridSizeDialog) {
@@ -869,62 +892,68 @@ fun MelovishRootApp(manager: MusicManager) {
                     activeScreen == "artists" -> manager.artistsViewMode
                     else -> manager.homeViewMode
                 }
-                GridSizeDialog(
-                    currentMode = currentMode,
-                    isDark = isDark,
-                    accent = manager.accentColor,
-                    onSelectMode = { newMode ->
-                        when {
-                            selectedArtist != null -> manager.updateArtistInnerViewMode(newMode)
-                            selectedFolder != null -> manager.updateFolderInnerViewMode(newMode)
-                            selectedPlaylist != null -> manager.updatePlaylistInnerViewMode(newMode)
-                            activeScreen == "library" -> manager.updateLibraryFoldersViewMode(newMode)
-                            activeScreen == "artists" -> manager.updateArtistsViewMode(newMode)
-                            else -> manager.updateHomeViewMode(newMode)
-                        }
-                    },
-                    onDismiss = { showRootGridSizeDialog = false }
-                )
+                Box(modifier = Modifier.zIndex(150f)) {
+                    GridSizeDialog(
+                        currentMode = currentMode,
+                        isDark = isDark,
+                        accent = manager.accentColor,
+                        onSelectMode = { newMode ->
+                            when {
+                                selectedArtist != null -> manager.updateArtistInnerViewMode(newMode)
+                                selectedFolder != null -> manager.updateFolderInnerViewMode(newMode)
+                                selectedPlaylist != null -> manager.updatePlaylistInnerViewMode(newMode)
+                                activeScreen == "library" -> manager.updateLibraryFoldersViewMode(newMode)
+                                activeScreen == "artists" -> manager.updateArtistsViewMode(newMode)
+                                else -> manager.updateHomeViewMode(newMode)
+                            }
+                        },
+                        onDismiss = { showRootGridSizeDialog = false }
+                    )
+                }
             }
 
             if (showRootDarkSubStyleDialog) {
-                DarkThemeVariantDialog(
-                    manager = manager,
-                    currentStyle = manager.darkThemeSubStyle,
-                    accent = manager.accentColor,
-                    isDark = isDark,
-                    onSelect = { selected ->
-                        manager.triggerHapticFeedback(true)
-                        manager.setDarkSubStyle(selected)
-                        manager.setTheme("Dark")
-                        showRootDarkSubStyleDialog = false
-                    },
-                    onOpenColorWheel = {
-                        showRootDarkSubStyleDialog = false
-                        rootColorPickerMode = "dark_theme"
-                    },
-                    onDismiss = { showRootDarkSubStyleDialog = false }
-                )
+                Box(modifier = Modifier.zIndex(150f)) {
+                    DarkThemeVariantDialog(
+                        manager = manager,
+                        currentStyle = manager.darkThemeSubStyle,
+                        accent = manager.accentColor,
+                        isDark = isDark,
+                        onSelect = { selected ->
+                            manager.triggerHapticFeedback(true)
+                            manager.setDarkSubStyle(selected)
+                            manager.setTheme("Dark")
+                            showRootDarkSubStyleDialog = false
+                        },
+                        onOpenColorWheel = {
+                            showRootDarkSubStyleDialog = false
+                            rootColorPickerMode = "dark_theme"
+                        },
+                        onDismiss = { showRootDarkSubStyleDialog = false }
+                    )
+                }
             }
 
             if (showRootLightSubStyleDialog) {
-                LightThemeVariantDialog(
-                    manager = manager,
-                    currentStyle = manager.lightThemeSubStyle,
-                    accent = manager.accentColor,
-                    isDark = isDark,
-                    onSelect = { selected ->
-                        manager.triggerHapticFeedback(true)
-                        manager.setLightSubStyle(selected)
-                        manager.setTheme("Light")
-                        showRootLightSubStyleDialog = false
-                    },
-                    onOpenColorWheel = {
-                        showRootLightSubStyleDialog = false
-                        rootColorPickerMode = "light_theme"
-                    },
-                    onDismiss = { showRootLightSubStyleDialog = false }
-                )
+                Box(modifier = Modifier.zIndex(150f)) {
+                    LightThemeVariantDialog(
+                        manager = manager,
+                        currentStyle = manager.lightThemeSubStyle,
+                        accent = manager.accentColor,
+                        isDark = isDark,
+                        onSelect = { selected ->
+                            manager.triggerHapticFeedback(true)
+                            manager.setLightSubStyle(selected)
+                            manager.setTheme("Light")
+                            showRootLightSubStyleDialog = false
+                        },
+                        onOpenColorWheel = {
+                            showRootLightSubStyleDialog = false
+                            rootColorPickerMode = "light_theme"
+                        },
+                        onDismiss = { showRootLightSubStyleDialog = false }
+                    )
+                }
             }
 
             if (rootColorPickerMode != null) {
@@ -941,235 +970,244 @@ fun MelovishRootApp(manager: MusicManager) {
                     else -> manager.accentColor
                 }
 
-                FolderColourPickerDialog(
-                    manager = manager,
-                    title = pickerTitle,
-                    initialColor = initialCol,
-                    onColorSelected = { col ->
-                        manager.triggerHapticFeedback(true)
-                        when (mode) {
-                            "accent" -> {
-                                manager.updateAccent(col)
+                Box(modifier = Modifier.zIndex(160f)) {
+                    FolderColourPickerDialog(
+                        manager = manager,
+                        title = pickerTitle,
+                        initialColor = initialCol,
+                        onColorSelected = { col ->
+                            manager.triggerHapticFeedback(true)
+                            when (mode) {
+                                "accent" -> {
+                                    manager.updateAccent(col)
+                                }
+                                "dark_theme" -> {
+                                    manager.setCustomDarkFrostedHue(col)
+                                    manager.setTheme("Dark")
+                                }
+                                "light_theme" -> {
+                                    manager.setCustomFrostedHue(col)
+                                    manager.setTheme("Light")
+                                }
                             }
-                            "dark_theme" -> {
-                                manager.setCustomDarkFrostedHue(col)
-                                manager.setTheme("Dark")
-                            }
-                            "light_theme" -> {
-                                manager.setCustomFrostedHue(col)
-                                manager.setTheme("Light")
-                            }
-                        }
-                        rootColorPickerMode = null
-                    },
-                    onDismiss = { rootColorPickerMode = null }
-                )
+                            rootColorPickerMode = null
+                        },
+                        onDismiss = { rootColorPickerMode = null }
+                    )
+                }
             }
 
             if (rootCustomizingFolder != null) {
                 val folder = rootCustomizingFolder!!
                 var showRainbowWheelForFolder by remember { mutableStateOf(false) }
-                if (!showRainbowWheelForFolder) {
-                    FolderColorDialog(
-                        manager = manager,
-                        folderName = folder,
-                        currentColor = manager.getFolderColor(folder),
-                        isDark = isDark,
-                        onColorSelected = { newColor ->
-                            manager.updateFolderColorOnly(folder, newColor.toArgb().toLong())
-                            rootCustomizingFolder = null
-                        },
-                        onOpenRainbowPicker = { showRainbowWheelForFolder = true },
-                        onDismiss = { rootCustomizingFolder = null }
-                    )
-                } else {
-                    FolderColourPickerDialog(
-                        manager = manager,
-                        title = "Colour Picker",
-                        initialColor = manager.getFolderColor(folder),
-                        onColorSelected = { newColor ->
-                            manager.updateFolderColorOnly(folder, newColor.toArgb().toLong())
-                            rootCustomizingFolder = null
-                        },
-                        onDismiss = { rootCustomizingFolder = null }
-                    )
+                Box(modifier = Modifier.zIndex(150f)) {
+                    if (!showRainbowWheelForFolder) {
+                        FolderColorDialog(
+                            manager = manager,
+                            folderName = folder,
+                            currentColor = manager.getFolderColor(folder),
+                            isDark = isDark,
+                            onColorSelected = { newColor ->
+                                manager.updateFolderColorOnly(folder, newColor.toArgb().toLong())
+                                rootCustomizingFolder = null
+                            },
+                            onOpenRainbowPicker = { showRainbowWheelForFolder = true },
+                            onDismiss = { rootCustomizingFolder = null }
+                        )
+                    } else {
+                        FolderColourPickerDialog(
+                            manager = manager,
+                            title = "Colour Picker",
+                            initialColor = manager.getFolderColor(folder),
+                            onColorSelected = { newColor ->
+                                manager.updateFolderColorOnly(folder, newColor.toArgb().toLong())
+                                rootCustomizingFolder = null
+                            },
+                            onDismiss = { rootCustomizingFolder = null }
+                        )
+                    }
                 }
             }
 
             if (rootCustomizingPlaylist != null) {
                 val pl = rootCustomizingPlaylist!!
                 var showRainbowWheelForPl by remember { mutableStateOf(false) }
-                if (!showRainbowWheelForPl) {
-                    FavouritePlaylistLongPressDialog(
-                        playlist = pl,
-                        manager = manager,
-                        isDark = isDark,
-                        onOpenRainbowPicker = { showRainbowWheelForPl = true },
-                        onDismiss = { rootCustomizingPlaylist = null }
-                    )
-                } else {
-                    FolderColourPickerDialog(
-                        manager = manager,
-                        title = "Colour Picker",
-                        initialColor = Color(pl.iconColorHex),
-                        onColorSelected = { newColor ->
-                            manager.updatePlaylistColorOnly(pl, newColor.toArgb().toLong())
-                            rootCustomizingPlaylist = null
-                        },
-                        onDismiss = { rootCustomizingPlaylist = null }
-                    )
+                Box(modifier = Modifier.zIndex(150f)) {
+                    if (!showRainbowWheelForPl) {
+                        FavouritePlaylistLongPressDialog(
+                            playlist = pl,
+                            manager = manager,
+                            isDark = isDark,
+                            onOpenRainbowPicker = { showRainbowWheelForPl = true },
+                            onDismiss = { rootCustomizingPlaylist = null }
+                        )
+                    } else {
+                        FolderColourPickerDialog(
+                            manager = manager,
+                            title = "Colour Picker",
+                            initialColor = Color(pl.iconColorHex),
+                            onColorSelected = { newColor ->
+                                manager.updatePlaylistColorOnly(pl, newColor.toArgb().toLong())
+                                rootCustomizingPlaylist = null
+                            },
+                            onDismiss = { rootCustomizingPlaylist = null }
+                        )
+                    }
                 }
             }
 
             if (rootSelectedArtistForActions != null) {
                 val targetArtist = rootSelectedArtistForActions!!
-                RootArtistActionModal(
-                    artist = targetArtist,
-                    manager = manager,
-                    isDark = isDark,
-                    onDismiss = { rootSelectedArtistForActions = null }
-                )
+                Box(modifier = Modifier.zIndex(150f)) {
+                    RootArtistActionModal(
+                        artist = targetArtist,
+                        manager = manager,
+                        isDark = isDark,
+                        onDismiss = { rootSelectedArtistForActions = null }
+                    )
+                }
             }
 
             if (rootSelectedArtistSongForAction != null) {
                 val (song, artistName) = rootSelectedArtistSongForAction!!
                 var showMoveTargetDialog by remember { mutableStateOf(false) }
 
-                if (!showMoveTargetDialog) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
-                                rootSelectedArtistSongForAction = null
-                            },
-                        contentAlignment = Alignment.BottomCenter
-                    ) {
+                Box(modifier = Modifier.zIndex(150f)) {
+                    if (!showMoveTargetDialog) {
                         Box(
                             modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
-                                .background(manager.getCurrentDialogColor())
-                                .border(1.2.dp, manager.getGlassBorderBrush(), RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
-                                .clickable(enabled = false) {}
-                                .padding(22.dp)
+                                .fillMaxSize()
+                                .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
+                                    rootSelectedArtistSongForAction = null
+                                },
+                            contentAlignment = Alignment.BottomCenter
                         ) {
-                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Text(song.title, fontSize = 17.sp, fontWeight = FontWeight.Bold, color = manager.getCurrentTextColor(), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                Spacer(modifier = Modifier.height(4.dp))
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
+                                    .background(manager.getCurrentDialogColor())
+                                    .border(1.2.dp, manager.getGlassBorderBrush(), RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
+                                    .clickable(enabled = false) {}
+                                    .padding(22.dp)
+                            ) {
+                                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Text(song.title, fontSize = 17.sp, fontWeight = FontWeight.Bold, color = manager.getCurrentTextColor(), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    Spacer(modifier = Modifier.height(4.dp))
 
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clip(RoundedCornerShape(12.dp))
-                                        .clickable { showMoveTargetDialog = true }
-                                        .padding(12.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text("➡", fontSize = 18.sp)
-                                    Spacer(modifier = Modifier.width(12.dp))
-                                    Text("Move track to another artist...", fontSize = 15.sp, color = manager.getCurrentTextColor(), fontWeight = FontWeight.SemiBold)
-                                }
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clip(RoundedCornerShape(12.dp))
+                                            .clickable { showMoveTargetDialog = true }
+                                            .padding(12.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text("➡", fontSize = 18.sp)
+                                        Spacer(modifier = Modifier.width(12.dp))
+                                        Text("Move track to another artist...", fontSize = 15.sp, color = manager.getCurrentTextColor(), fontWeight = FontWeight.SemiBold)
+                                    }
 
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clip(RoundedCornerShape(12.dp))
-                                        .clickable {
-                                            ArtistDataManager.removeSongFromArtist(artistName, song.id)
-                                            val updated = ArtistParsingEngine.parseAndGroupArtists(manager.allSongs)
-                                            manager.parsedArtistsList.clear()
-                                            manager.parsedArtistsList.addAll(updated)
-                                            rootSelectedArtistSongForAction = null
-                                        }
-                                        .padding(12.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text("🗑", fontSize = 18.sp)
-                                    Spacer(modifier = Modifier.width(12.dp))
-                                    Text("Remove track from this artist", fontSize = 15.sp, color = Color(0xFFEF4444), fontWeight = FontWeight.SemiBold)
-                                }
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clip(RoundedCornerShape(12.dp))
+                                            .clickable {
+                                                ArtistDataManager.removeSongFromArtist(artistName, song.id)
+                                                val updated = ArtistParsingEngine.parseAndGroupArtists(manager.allSongs)
+                                                manager.parsedArtistsList.clear()
+                                                manager.parsedArtistsList.addAll(updated)
+                                                rootSelectedArtistSongForAction = null
+                                            }
+                                            .padding(12.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text("🗑", fontSize = 18.sp)
+                                        Spacer(modifier = Modifier.width(12.dp))
+                                        Text("Remove track from this artist", fontSize = 15.sp, color = Color(0xFFEF4444), fontWeight = FontWeight.SemiBold)
+                                    }
 
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clip(RoundedCornerShape(12.dp))
-                                        .clickable {
-                                            rootSelectedArtistSongForAction = null
-                                            activeSongForMenu = song
-                                        }
-                                        .padding(12.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text("⚙️", fontSize = 18.sp)
-                                    Spacer(modifier = Modifier.width(12.dp))
-                                    Text("Other song options...", fontSize = 15.sp, color = manager.getCurrentTextColor(), fontWeight = FontWeight.SemiBold)
-                                }
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clip(RoundedCornerShape(12.dp))
+                                            .clickable {
+                                                rootSelectedArtistSongForAction = null
+                                                activeSongForMenu = song
+                                            }
+                                            .padding(12.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text("⚙️", fontSize = 18.sp)
+                                        Spacer(modifier = Modifier.width(12.dp))
+                                        Text("Other song options...", fontSize = 15.sp, color = manager.getCurrentTextColor(), fontWeight = FontWeight.SemiBold)
+                                    }
 
-                                Spacer(modifier = Modifier.height(8.dp))
-                                Button(
-                                    onClick = { rootSelectedArtistSongForAction = null },
-                                    modifier = Modifier.fillMaxWidth().height(48.dp),
-                                    colors = ButtonDefaults.buttonColors(containerColor = if (isDark) Color(0x22FFFFFF) else Color(0xFFF1F5F9)),
-                                    shape = RoundedCornerShape(12.dp)
-                                ) {
-                                    Text("Cancel", color = manager.getCurrentTextColor(), fontWeight = FontWeight.Bold)
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Button(
+                                        onClick = { rootSelectedArtistSongForAction = null },
+                                        modifier = Modifier.fillMaxWidth().height(48.dp),
+                                        colors = ButtonDefaults.buttonColors(containerColor = if (isDark) Color(0x22FFFFFF) else Color(0xFFF1F5F9)),
+                                        shape = RoundedCornerShape(12.dp)
+                                    ) {
+                                        Text("Cancel", color = manager.getCurrentTextColor(), fontWeight = FontWeight.Bold)
+                                    }
                                 }
                             }
                         }
-                    }
-                } else {
-                    var destSearch by remember { mutableStateOf("") }
-                    val allArtists = manager.parsedArtistsList
-                    val destCandidates = allArtists.filter { it.name != artistName && it.name.contains(destSearch, ignoreCase = true) }
+                    } else {
+                        var destSearch by remember { mutableStateOf("") }
+                        val allArtists = manager.parsedArtistsList
+                        val destCandidates = allArtists.filter { it.name != artistName && it.name.contains(destSearch, ignoreCase = true) }
 
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
-                                rootSelectedArtistSongForAction = null
-                            },
-                        contentAlignment = Alignment.BottomCenter
-                    ) {
                         Box(
                             modifier = Modifier
-                                .fillMaxWidth()
-                                .height(550.dp)
-                                .clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
-                                .background(manager.getCurrentDialogColor())
-                                .border(1.2.dp, manager.getGlassBorderBrush(), RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
-                                .clickable(enabled = false) {}
-                                .padding(20.dp)
+                                .fillMaxSize()
+                                .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
+                                    rootSelectedArtistSongForAction = null
+                                },
+                            contentAlignment = Alignment.BottomCenter
                         ) {
-                            Column {
-                                Text("Move '${song.title}' to:", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = manager.getCurrentTextColor())
-                                Spacer(modifier = Modifier.height(10.dp))
-                                OutlinedTextField(
-                                    value = destSearch,
-                                    onValueChange = { destSearch = it },
-                                    placeholder = { Text("Search target artist...") },
-                                    modifier = Modifier.fillMaxWidth(),
-                                    colors = OutlinedTextFieldDefaults.colors(
-                                        focusedTextColor = manager.getCurrentTextColor(),
-                                        unfocusedTextColor = manager.getCurrentTextColor(),
-                                        focusedContainerColor = manager.getCurrentSurfaceColor(),
-                                        unfocusedContainerColor = manager.getCurrentSurfaceColor(),
-                                        focusedBorderColor = manager.accentColor,
-                                        cursorColor = manager.accentColor
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(550.dp)
+                                    .clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
+                                    .background(manager.getCurrentDialogColor())
+                                    .border(1.2.dp, manager.getGlassBorderBrush(), RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
+                                    .clickable(enabled = false) {}
+                                    .padding(20.dp)
+                            ) {
+                                Column {
+                                    Text("Move '${song.title}' to:", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = manager.getCurrentTextColor())
+                                    Spacer(modifier = Modifier.height(10.dp))
+                                    OutlinedTextField(
+                                        value = destSearch,
+                                        onValueChange = { destSearch = it },
+                                        placeholder = { Text("Search target artist...") },
+                                        modifier = Modifier.fillMaxWidth(),
+                                        colors = OutlinedTextFieldDefaults.colors(
+                                            focusedTextColor = manager.getCurrentTextColor(),
+                                            unfocusedTextColor = manager.getCurrentTextColor(),
+                                            focusedContainerColor = manager.getCurrentSurfaceColor(),
+                                            unfocusedContainerColor = manager.getCurrentSurfaceColor(),
+                                            focusedBorderColor = manager.accentColor,
+                                            cursorColor = manager.accentColor
+                                        )
                                     )
-                                )
-                                Spacer(modifier = Modifier.height(10.dp))
+                                    Spacer(modifier = Modifier.height(10.dp))
 
-                                LazyColumn(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    items(
-                                        items = destCandidates,
-                                        key = { it.name },
-                                        contentType = { "move_dest_row" }
-                                    ) { target ->
-                                        Row(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .clip(RoundedCornerShape(12.dp))
-                                                .background(if (isDark) Color(0x1AFFFFFF) else Color(0xFFF1F5F9))
+                                    LazyColumn(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        items(
+                                            items = destCandidates,
+                                            key = { it.name },
+                                            contentType = { "move_dest_row" }
+                                        ) { target ->
+                                            Row(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .clip(RoundedCornerShape(12.dp))
+                                                    .background(if (isDark) Color(0x1AFFFFFF) else Color(0xFFF1F5F9))
                                                 .clickable {
                                                     ArtistDataManager.moveSongToArtist(song, artistName, target.name)
                                                     val updated = ArtistParsingEngine.parseAndGroupArtists(manager.allSongs)
@@ -1202,70 +1240,79 @@ fun MelovishRootApp(manager: MusicManager) {
                     }
                 }
             }
+        }
 
             if (activeSongForMenu != null) {
                 val s = activeSongForMenu!!
-                SongItemActionModal(
-                    manager = manager,
-                    song = s,
-                    isDark = isDark,
-                    onDismiss = { activeSongForMenu = null },
-                    onPlayNext = {
-                        manager.playNextInQueue(s)
-                        activeSongForMenu = null
-                    },
-                    onAddToPlaylist = {
-                        activeAddToPlaylistSong = s
-                        activeSongForMenu = null
-                    },
-                    onGoToAlbum = {
-                        selectedAlbum = s.album
-                        activeSongForMenu = null
-                    },
-                    onGoToArtist = {
-                        val matchingArtist = manager.parsedArtistsList.find { it.name.equals(s.artist, ignoreCase = true) }
-                            ?: ArtistItem(name = s.artist, songs = listOf(s).toImmutableList())
-                        selectedArtist = matchingArtist
-                        activeSongForMenu = null
-                    },
-                    onShare = {
-                        val shareIntent = Intent(Intent.ACTION_SEND).apply {
-                            type = "audio/*"
-                            putExtra(Intent.EXTRA_STREAM, s.uri)
+                Box(modifier = Modifier.zIndex(150f)) {
+                    SongItemActionModal(
+                        manager = manager,
+                        song = s,
+                        isDark = isDark,
+                        onDismiss = { activeSongForMenu = null },
+                        onPlayNext = {
+                            manager.playNextInQueue(s)
+                            activeSongForMenu = null
+                        },
+                        onAddToPlaylist = {
+                            activeAddToPlaylistSong = s
+                            activeSongForMenu = null
+                        },
+                        onGoToAlbum = {
+                            selectedAlbum = s.album
+                            activeSongForMenu = null
+                        },
+                        onGoToArtist = {
+                            val matchingArtist = manager.parsedArtistsList.find { it.name.equals(s.artist, ignoreCase = true) }
+                                ?: ArtistItem(name = s.artist, songs = listOf(s).toImmutableList())
+                            selectedArtist = matchingArtist
+                            activeSongForMenu = null
+                        },
+                        onShare = {
+                            val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                                type = "audio/*"
+                                putExtra(Intent.EXTRA_STREAM, s.uri)
+                            }
+                            context.startActivity(Intent.createChooser(shareIntent, "Share ${s.title}"))
+                            activeSongForMenu = null
+                        },
+                        onTagEditor = {
+                            activeTagEditSong = s
+                            activeSongForMenu = null
+                        },
+                        onDetails = {
+                            activeSongInfo = s
+                            activeSongForMenu = null
+                        },
+                        onSetRingtone = {
+                            manager.setAsRingtone(s)
+                            activeSongForMenu = null
+                        },
+                        onDelete = {
+                            manager.deleteSongFromDevice(s)
+                            activeSongForMenu = null
                         }
-                        context.startActivity(Intent.createChooser(shareIntent, "Share ${s.title}"))
-                        activeSongForMenu = null
-                    },
-                    onTagEditor = {
-                        activeTagEditSong = s
-                        activeSongForMenu = null
-                    },
-                    onDetails = {
-                        activeSongInfo = s
-                        activeSongForMenu = null
-                    },
-                    onSetRingtone = {
-                        manager.setAsRingtone(s)
-                        activeSongForMenu = null
-                    },
-                    onDelete = {
-                        manager.deleteSongFromDevice(s)
-                        activeSongForMenu = null
-                    }
-                )
+                    )
+                }
             }
 
             if (activeTagEditSong != null) {
-                TagEditorDialog(manager = manager, song = activeTagEditSong!!, onDismiss = { activeTagEditSong = null })
+                Box(modifier = Modifier.zIndex(150f)) {
+                    TagEditorDialog(manager = manager, song = activeTagEditSong!!, onDismiss = { activeTagEditSong = null })
+                }
             }
 
             if (activeAddToPlaylistSong != null) {
-                AddToPlaylistDialog(manager = manager, song = activeAddToPlaylistSong!!, onDismiss = { activeAddToPlaylistSong = null })
+                Box(modifier = Modifier.zIndex(150f)) {
+                    AddToPlaylistDialog(manager = manager, song = activeAddToPlaylistSong!!, onDismiss = { activeAddToPlaylistSong = null })
+                }
             }
 
             if (activeSongInfo != null) {
                 val s = activeSongInfo!!
-                SongInfoDialog(manager = manager, song = s, isDark = isDark, onDismiss = { activeSongInfo = null })
+                Box(modifier = Modifier.zIndex(150f)) {
+                    SongInfoDialog(manager = manager, song = s, isDark = isDark, onDismiss = { activeSongInfo = null })
+                }
             }
         }
     }
@@ -2267,10 +2314,12 @@ fun PlaylistDetailScreen(
     }
 
     if (showAddSongsSearchPicker) {
-        PlaylistAddSearchDialog(playlist = playlist, manager = manager, onDismiss = { showAddSongsSearchPicker = false }, onNavigateToFolder = { folder ->
-            showAddSongsSearchPicker = false
-            onFolderClick(folder)
-        })
+        Box(modifier = Modifier.zIndex(160f)) {
+            PlaylistAddSearchDialog(playlist = playlist, manager = manager, onDismiss = { showAddSongsSearchPicker = false }, onNavigateToFolder = { folder ->
+                showAddSongsSearchPicker = false
+                onFolderClick(folder)
+            })
+        }
     }
 }
 
@@ -2590,6 +2639,7 @@ fun ManagePlaylistsDialog(
     Box(
         modifier = Modifier
             .fillMaxSize()
+            .zIndex(150f)
             .background(Color(0x77000000))
             .nestedScroll(dialogScrollInterceptor)
             .clickable(
@@ -2867,6 +2917,7 @@ fun CreatePlaylistDialog(manager: MusicManager, onDismiss: () -> Unit) {
     Box(
         modifier = Modifier
             .fillMaxSize()
+            .zIndex(150f)
             .background(Color(0x77000000))
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
@@ -3264,6 +3315,7 @@ fun GridSizeDialog(
     Box(
         modifier = Modifier
             .fillMaxSize()
+            .zIndex(150f)
             .background(Color(0x77000000))
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
@@ -3374,6 +3426,7 @@ fun FolderColorDialog(
     Box(
         modifier = Modifier
             .fillMaxSize()
+            .zIndex(150f)
             .background(Color(0x77000000))
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
@@ -3496,6 +3549,7 @@ fun FavouritePlaylistLongPressDialog(
     Box(
         modifier = Modifier
             .fillMaxSize()
+            .zIndex(150f)
             .background(Color(0x77000000))
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
@@ -3625,6 +3679,7 @@ fun FolderColourPickerDialog(
     Box(
         modifier = Modifier
             .fillMaxSize()
+            .zIndex(160f)
             .background(Color(0x77000000))
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
@@ -3809,7 +3864,7 @@ fun LibraryFolderSquareCard(
 }
 
 // =========================================================================
-// 📌 SEARCH SCREEN (Pure, Fast & Light - Zero Mood Dependencies)
+// 📌 SEARCH SCREEN (With Double-Tap / Re-click Auto-Focus & Soft Keyboard)
 // =========================================================================
 
 @UnstableApi
@@ -3817,10 +3872,12 @@ fun LibraryFolderSquareCard(
 fun SearchScreen(
     manager: MusicManager,
     listState: LazyListState,
+    focusSearchTrigger: Long = 0L,
     onSongMenuClick: (Song) -> Unit,
     onSongClick: (Song, List<Song>) -> Unit = { song, list -> manager.playSong(song, list, "Search Results") }
 ) {
     val context = LocalContext.current
+    val keyboardController = LocalSoftwareKeyboardController.current
     val prefs = remember { context.getSharedPreferences("melovish_search_prefs_v1", Context.MODE_PRIVATE) }
 
     val searchHistory = remember {
@@ -3865,6 +3922,17 @@ fun SearchScreen(
     val accent = manager.accentColor
     val textColor = manager.getCurrentTextColor()
     val glassBorderBrush = manager.getGlassBorderBrush()
+
+    // 🚀 React to Search Tab double-tap / re-click to request focus & open software keyboard
+    LaunchedEffect(focusSearchTrigger) {
+        if (focusSearchTrigger > 0L) {
+            delay(120)
+            try {
+                focusRequester.requestFocus()
+                keyboardController?.show()
+            } catch (_: Exception) {}
+        }
+    }
 
     val filtered: ImmutableList<Song> = remember(query, manager.allSongs.size) {
         val q = query.trim()
@@ -4056,6 +4124,7 @@ fun PlaylistAddSearchDialog(playlist: Playlist, manager: MusicManager, onDismiss
     Box(
         modifier = Modifier
             .fillMaxSize()
+            .zIndex(150f)
             .background(Color(0x77000000))
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
@@ -4317,6 +4386,7 @@ fun SongItemActionModal(
     Box(
         modifier = Modifier
             .fillMaxSize()
+            .zIndex(150f)
             .background(Color(0x77000000))
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
@@ -4389,6 +4459,7 @@ fun SongInfoDialog(manager: MusicManager, song: Song, isDark: Boolean, onDismiss
     Box(
         modifier = Modifier
             .fillMaxSize()
+            .zIndex(150f)
             .background(Color(0x77000000))
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
@@ -4428,11 +4499,17 @@ fun SongInfoDialog(manager: MusicManager, song: Song, isDark: Boolean, onDismiss
     }
 }
 
+// 🚀 Enhanced BottomNavBar with double-click and re-click soft keyboard triggers
 @Composable
-fun BottomNavBar(manager: MusicManager, activeTab: String, onTabSelected: (String) -> Unit) {
+fun BottomNavBar(
+    manager: MusicManager,
+    activeTab: String,
+    onTabSelected: (tab: String, shouldFocusSearch: Boolean) -> Unit
+) {
     val cardBg = manager.getCurrentSurfaceColor()
     val glassBorderBrush = manager.getGlassBorderBrush()
     val accent = manager.accentColor
+    var lastSearchClickTimestamp by remember { mutableLongStateOf(0L) }
 
     Row(
         modifier = Modifier
@@ -4454,7 +4531,19 @@ fun BottomNavBar(manager: MusicManager, activeTab: String, onTabSelected: (Strin
                 horizontalAlignment = Alignment.CenterHorizontally,
                 modifier = Modifier
                     .clip(RoundedCornerShape(8.dp))
-                    .clickable { onTabSelected(key) }
+                    .clickable {
+                        if (key == "search") {
+                            val now = System.currentTimeMillis()
+                            val isDoubleClick = (now - lastSearchClickTimestamp) < 350L
+                            val isAlreadyOnSearch = (activeTab == "search")
+                            lastSearchClickTimestamp = now
+
+                            val shouldOpenKeyboard = isDoubleClick || isAlreadyOnSearch
+                            onTabSelected(key, shouldOpenKeyboard)
+                        } else {
+                            onTabSelected(key, false)
+                        }
+                    }
                     .padding(horizontal = 10.dp, vertical = 4.dp)
             ) {
                 Text(icon, fontSize = 20.sp)
