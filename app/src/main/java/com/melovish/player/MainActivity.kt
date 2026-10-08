@@ -74,8 +74,10 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -99,6 +101,7 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -498,6 +501,7 @@ fun MelovishRootApp(manager: MusicManager) {
     val homeListState = rememberLazyListState()
     val libraryListState = rememberLazyListState()
     val artistsListState = rememberLazyListState()
+    val artistsGridState = rememberLazyGridState()
     val searchListState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
 
@@ -706,6 +710,7 @@ fun MelovishRootApp(manager: MusicManager) {
                         activeScreen == "artists" -> ArtistsScreen(
                             manager = manager,
                             listState = artistsListState,
+                            gridState = artistsGridState,
                             onArtistClick = { artist: ArtistItem -> selectedArtist = artist },
                             onArtistLongClick = { artist: ArtistItem -> rootSelectedArtistForActions = artist },
                             onOpenCreateArtist = { showRootCreateArtistDialog = true },
@@ -758,7 +763,10 @@ fun MelovishRootApp(manager: MusicManager) {
                                     when (tab) {
                                         "home" -> homeListState.animateScrollToItem(0)
                                         "library" -> libraryListState.animateScrollToItem(0)
-                                        "artists" -> artistsListState.animateScrollToItem(0)
+                                        "artists" -> {
+                                            launch { artistsListState.animateScrollToItem(0) }
+                                            launch { artistsGridState.animateScrollToItem(0) }
+                                        }
                                         "search" -> searchListState.animateScrollToItem(0)
                                     }
                                 }

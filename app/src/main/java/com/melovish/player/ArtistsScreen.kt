@@ -13,8 +13,10 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
@@ -869,7 +871,7 @@ fun ArtistSquareCard(
 }
 
 // =========================================================================
-// 📌 ARTISTS SCREEN
+// 📌 ARTISTS SCREEN (With Persistent Scroll State & Sleek Search Icon)
 // =========================================================================
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -878,6 +880,7 @@ fun ArtistSquareCard(
 fun ArtistsScreen(
     manager: MusicManager,
     listState: LazyListState,
+    gridState: LazyGridState = rememberLazyGridState(),
     onArtistClick: (ArtistItem) -> Unit,
     onArtistLongClick: (ArtistItem) -> Unit,
     onOpenCreateArtist: () -> Unit = {},
@@ -893,6 +896,7 @@ fun ArtistsScreen(
     val coroutineScope = rememberCoroutineScope()
 
     var query by remember { mutableStateOf("") }
+    var isSearchFieldVisible by remember { mutableStateOf(false) }
     var showSortMenu by remember { mutableStateOf(false) }
 
     val artistsList = remember(manager.allSongs.size, ArtistDataManager.refreshTrigger) {
@@ -926,6 +930,14 @@ fun ArtistsScreen(
         (pinned + unpinned).toImmutableList()
     }
 
+    // 🚀 Auto-scroll to top immediately whenever sorting order changes
+    LaunchedEffect(manager.artistsSortOrder) {
+        coroutineScope.launch {
+            try { listState.scrollToItem(0) } catch (_: Exception) {}
+            try { gridState.scrollToItem(0) } catch (_: Exception) {}
+        }
+    }
+
     val alphabet = remember { listOf('#') + ('A'..'Z').toList() }
     var activeBubbleChar by remember { mutableStateOf<Char?>(null) }
 
@@ -946,6 +958,28 @@ fun ArtistsScreen(
                 }
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
+                    // 🚀 Compact Search Action Button to the left of the ViewMode button
+                    Box(
+                        modifier = Modifier
+                            .size(38.dp)
+                            .clip(CircleShape)
+                            .background(if (isSearchFieldVisible || query.isNotEmpty()) accentColor.copy(alpha = 0.22f) else cardBg)
+                            .border(
+                                1.2.dp,
+                                if (isSearchFieldVisible || query.isNotEmpty()) accentColor else Color.White.copy(alpha = 0.25f),
+                                CircleShape
+                            )
+                            .clickable {
+                                isSearchFieldVisible = !isSearchFieldVisible
+                                if (!isSearchFieldVisible) query = ""
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(text = "🔍", fontSize = 16.sp)
+                    }
+
+                    Spacer(modifier = Modifier.width(8.dp))
+
                     Box(
                         modifier = Modifier
                             .size(38.dp)
@@ -1008,27 +1042,48 @@ fun ArtistsScreen(
                 }
             }
 
+            // 🚀 Collapsible animated search bar (only takes space when opened)
+            AnimatedVisibility(
+                visible = isSearchFieldVisible,
+                enter = expandVertically(animationSpec = spring(stiffness = 550f)) + fadeIn(tween(180)),
+                exit = shrinkVertically(animationSpec = spring(stiffness = 550f)) + fadeOut(tween(140))
+            ) {
+                Column {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = query,
+                        onValueChange = { query = it },
+                        placeholder = { Text("Search artists...", color = Color(0xFF64748B)) },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(16.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = textColor,
+                            unfocusedTextColor = textColor,
+                            focusedContainerColor = cardBg,
+                            unfocusedContainerColor = cardBg,
+                            focusedBorderColor = accentColor,
+                            unfocusedBorderColor = manager.getCurrentBorderColor(),
+                            cursorColor = accentColor
+                        ),
+                        trailingIcon = {
+                            if (query.isNotEmpty()) {
+                                Text(
+                                    text = "✕",
+                                    color = Color(0xFF64748B),
+                                    fontSize = 16.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier
+                                        .clickable { query = "" }
+                                        .padding(8.dp)
+                                )
+                            }
+                        },
+                        singleLine = true
+                    )
+                }
+            }
+
             Spacer(modifier = Modifier.height(10.dp))
-
-            OutlinedTextField(
-                value = query,
-                onValueChange = { query = it },
-                placeholder = { Text("Search artists...", color = Color(0xFF64748B)) },
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedTextColor = textColor,
-                    unfocusedTextColor = textColor,
-                    focusedContainerColor = cardBg,
-                    unfocusedContainerColor = cardBg,
-                    focusedBorderColor = accentColor,
-                    unfocusedBorderColor = manager.getCurrentBorderColor(),
-                    cursorColor = accentColor
-                ),
-                singleLine = true
-            )
-
-            Spacer(modifier = Modifier.height(12.dp))
 
             if (sortedArtists.isEmpty()) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -1115,6 +1170,7 @@ fun ArtistsScreen(
                         }
                         GridViewMode.GRID_2 -> {
                             LazyVerticalGrid(
+                                state = gridState,
                                 columns = GridCells.Fixed(2),
                                 contentPadding = PaddingValues(bottom = 80.dp),
                                 horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -1144,6 +1200,7 @@ fun ArtistsScreen(
                         }
                         GridViewMode.GRID_3 -> {
                             LazyVerticalGrid(
+                                state = gridState,
                                 columns = GridCells.Fixed(3),
                                 contentPadding = PaddingValues(bottom = 80.dp),
                                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -1173,6 +1230,7 @@ fun ArtistsScreen(
                         }
                         GridViewMode.GRID_4 -> {
                             LazyVerticalGrid(
+                                state = gridState,
                                 columns = GridCells.Fixed(4),
                                 contentPadding = PaddingValues(bottom = 80.dp),
                                 horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -1202,6 +1260,7 @@ fun ArtistsScreen(
                         }
                         GridViewMode.HERO_GRID -> {
                             LazyVerticalGrid(
+                                state = gridState,
                                 columns = GridCells.Fixed(2),
                                 contentPadding = PaddingValues(bottom = 80.dp),
                                 horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -1249,7 +1308,10 @@ fun ArtistsScreen(
                                             sortedArtists.indexOfFirst { it.name.startsWith(char, ignoreCase = true) }
                                         }
                                         if (targetIndex != -1) {
-                                            coroutineScope.launch { listState.scrollToItem(targetIndex) }
+                                            coroutineScope.launch {
+                                                listState.scrollToItem(targetIndex)
+                                                gridState.scrollToItem(targetIndex)
+                                            }
                                         }
                                     },
                                     onDragEnd = { activeBubbleChar = null },
@@ -1265,7 +1327,10 @@ fun ArtistsScreen(
                                             sortedArtists.indexOfFirst { it.name.startsWith(char, ignoreCase = true) }
                                         }
                                         if (targetIndex != -1) {
-                                            coroutineScope.launch { listState.scrollToItem(targetIndex) }
+                                            coroutineScope.launch {
+                                                listState.scrollToItem(targetIndex)
+                                                gridState.scrollToItem(targetIndex)
+                                            }
                                         }
                                     }
                                 )
@@ -1288,7 +1353,10 @@ fun ArtistsScreen(
                                             sortedArtists.indexOfFirst { it.name.startsWith(char, ignoreCase = true) }
                                         }
                                         if (targetIndex != -1) {
-                                            coroutineScope.launch { listState.scrollToItem(targetIndex) }
+                                            coroutineScope.launch {
+                                                listState.scrollToItem(targetIndex)
+                                                gridState.scrollToItem(targetIndex)
+                                            }
                                         }
                                     }
                                     .padding(horizontal = 4.dp, vertical = 0.5.dp)
@@ -1579,7 +1647,7 @@ fun ArtistDetailScreen(
 }
 
 // =========================================================================
-// 📌 ARTIST ADD SONGS DIALOG (Rendered directly with high zIndex)
+// 📌 ARTIST ADD SONGS DIALOG
 // =========================================================================
 
 @Composable
