@@ -101,7 +101,7 @@ data class PendingTagWrite(
 )
 
 @UnstableApi
-class MusicManager(private val context: Context) {
+class MusicManager(val context: Context) {
 
     companion object {
         @Volatile
@@ -630,6 +630,21 @@ class MusicManager(private val context: Context) {
         applyChannelMixing()
         registerAudioDeviceCallback()
         updateDeviceRoutingAndHighlight()
+
+        // 🎵 WIRING LO-FI DYNAMIC SPEED & PITCH CALLBACK
+        AudioEffectsManager.onPlaybackSpeedChangeRequested = { speed, pitch ->
+            try {
+                playbackSpeed = speed
+                player.playbackParameters = PlaybackParameters(speed, pitch)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+
+        // Apply initial Lo-Fi parameters if already turned on in preferences
+        if (AudioEffectsManager.isLofiEnabled.value) {
+            player.playbackParameters = PlaybackParameters(0.83f, 0.88f)
+        }
 
         managerScope.launch(Dispatchers.IO) {
             loadInstantCacheAsync()
@@ -1743,6 +1758,16 @@ class MusicManager(private val context: Context) {
             withContext(Dispatchers.Main.immediate) {
                 player.setMediaItems(mediaItems, targetIndex, initialPositionMs)
                 player.prepare()
+
+                // Preserve Lo-Fi speed/pitch if active, otherwise standard 1.0f
+                if (AudioEffectsManager.isLofiEnabled.value) {
+                    playbackSpeed = 0.83f
+                    player.playbackParameters = PlaybackParameters(0.83f, 0.88f)
+                } else {
+                    playbackSpeed = 1.0f
+                    player.playbackParameters = PlaybackParameters(1.0f, 1.0f)
+                }
+
                 if (isFadeOnStart && !isCrossfadeEnabled) {
                     triggerFadeIn(1000L)
                 } else {

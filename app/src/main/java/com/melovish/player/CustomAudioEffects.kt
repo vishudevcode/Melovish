@@ -28,6 +28,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.media3.common.C
+import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.audio.AudioProcessor
 import androidx.media3.common.audio.BaseAudioProcessor
 import androidx.media3.common.util.UnstableApi
@@ -43,13 +44,14 @@ import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.sin
 import kotlin.math.sqrt
+import kotlin.math.tanh
 
 // =========================================================================
 // 📌 1. THREAD-SAFE AUDIO EFFECTS STATE CONTROLLER
 // =========================================================================
 
 object AudioEffectsManager {
-    private const val PREFS_NAME = "melovish_custom_audio_effects_prefs"
+    private const val PREFS_NAME = "melovish_custom_audio_effects_prefs_v2"
     private const val KEY_3D_SPATIAL = "key_3d_spatial_enabled"
     private const val KEY_LOFI = "key_lofi_enabled"
 
@@ -61,6 +63,9 @@ object AudioEffectsManager {
 
     val spatialProcessor = Spatial3DAudioProcessor()
     val lofiProcessor = LofiAudioProcessor()
+
+    // Hook callback so ExoPlayer speed & pitch adjust automatically without coupling
+    var onPlaybackSpeedChangeRequested: ((speed: Float, pitch: Float) -> Unit)? = null
 
     fun init(context: Context) {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -79,45 +84,54 @@ object AudioEffectsManager {
     fun setLofiEnabled(enabled: Boolean, context: Context? = null) {
         _isLofiEnabled.value = enabled
         context?.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)?.edit()?.putBoolean(KEY_LOFI, enabled)?.apply()
+
+        // 🎵 SLOWED & PITCHED DOWN FOR AUTHENTIC LO-FI GROOVE:
+        // Speed = 0.83x (drops typical 100-110 BPM tracks into the sweet 75-88 BPM range)
+        // Pitch = 0.88x (drops pitch by ~2.2 semitones for deep, mellow vocals)
+        if (enabled) {
+            onPlaybackSpeedChangeRequested?.invoke(0.83f, 0.88f)
+        } else {
+            onPlaybackSpeedChangeRequested?.invoke(1.0f, 1.0f)
+        }
     }
 }
 
 // =========================================================================
-// 📌 2. REAL-TIME 3D SPATIAL ORBIT & BINAURAL AUDIO PROCESSOR
+// 📌 2. TRUE 3D BINAURAL HRTF & 360° SPATIAL SPHERE PROCESSOR
 // =========================================================================
 
 @UnstableApi
 class Spatial3DAudioProcessor : BaseAudioProcessor() {
 
-    // Orbit parameters
-    private var orbitPhase = 0.0
-    // Slower rotation: 1 full orbit around head every 12 seconds
-    private val orbitSpeedHz = 1.0 / 12.0
+    private var azimuthPhase = 0.0
+    private var elevationPhase = 0.0
+    private val azimuthSpeedHz = 1.0 / 14.0   // 14-second horizontal 360° orbit
+    private val elevationSpeedHz = 1.0 / 9.0   // 9-second undulating height elevation
 
-    // Interaural Time Difference (ITD) delay buffer (max human ITD is ~0.7 ms, we allocate 4 ms)
-    private var itdDelayBufferL = FloatArray(0)
-    private var itdDelayBufferR = FloatArray(0)
-    private var itdWriteIndex = 0
+    private var delayBufferL = FloatArray(0)
+    private var delayBufferR = FloatArray(0)
+    private var delayWriteIndex = 0
 
-    // Head-Shadow IIR Low-Pass Filters (Frequency attenuation when sound is on opposite ear)
-    private var filterL_x1 = 0.0f
-    private var filterL_y1 = 0.0f
-    private var filterR_x1 = 0.0f
-    private var filterR_y1 = 0.0f
+    private var headShadowL = 0.0f
+    private var headShadowR = 0.0f
+    private var pinnaNotchL_x1 = 0.0f; private var pinnaNotchL_y1 = 0.0f
+    private var pinnaNotchR_x1 = 0.0f; private var pinnaNotchR_y1 = 0.0f
 
     override fun onConfigure(inputAudioFormat: AudioProcessor.AudioFormat): AudioProcessor.AudioFormat {
         if (inputAudioFormat.encoding != C.ENCODING_PCM_16BIT) {
             throw AudioProcessor.UnhandledAudioFormatException(inputAudioFormat)
         }
         val sampleRate = inputAudioFormat.sampleRate
-        val maxDelaySamples = (sampleRate * 0.005f).toInt() // 5ms buffer
-        itdDelayBufferL = FloatArray(maxDelaySamples)
-        itdDelayBufferR = FloatArray(maxDelaySamples)
-        itdWriteIndex = 0
+        val maxDelaySamples = (sampleRate * 0.010f).toInt()
+        delayBufferL = FloatArray(maxDelaySamples)
+        delayBufferR = FloatArray(maxDelaySamples)
+        delayWriteIndex = 0
 
-        filterL_x1 = 0f; filterL_y1 = 0f
-        filterR_x1 = 0f; filterR_y1 = 0f
-        orbitPhase = 0.0
+        headShadowL = 0f; headShadowR = 0f
+        pinnaNotchL_x1 = 0f; pinnaNotchL_y1 = 0f
+        pinnaNotchR_x1 = 0f; pinnaNotchR_y1 = 0f
+        azimuthPhase = 0.0
+        elevationPhase = 0.0
 
         return AudioProcessor.AudioFormat(sampleRate, 2, C.ENCODING_PCM_16BIT)
     }
@@ -128,7 +142,6 @@ class Spatial3DAudioProcessor : BaseAudioProcessor() {
         if (remaining == 0) return
 
         if (!isEnabled || inputAudioFormat.channelCount != 2) {
-            // Bypass mode: Zero latency, zero allocation pass-through
             val output = replaceOutputBuffer(remaining)
             output.put(inputBuffer)
             output.flip()
@@ -136,9 +149,10 @@ class Spatial3DAudioProcessor : BaseAudioProcessor() {
         }
 
         val sampleRate = inputAudioFormat.sampleRate.toDouble()
-        val phaseIncrement = (2.0 * PI * orbitSpeedHz) / sampleRate
-        val maxItdSamples = (inputAudioFormat.sampleRate * 0.0007).toFloat() // ~0.7ms maximum interaural time difference
-        val bufferCapacity = itdDelayBufferL.size
+        val azimuthInc = (2.0 * PI * azimuthSpeedHz) / sampleRate
+        val elevationInc = (2.0 * PI * elevationSpeedHz) / sampleRate
+        val maxItdSamples = (inputAudioFormat.sampleRate * 0.00075f)
+        val bufferCapacity = delayBufferL.size
 
         val output = replaceOutputBuffer(remaining)
 
@@ -149,56 +163,62 @@ class Spatial3DAudioProcessor : BaseAudioProcessor() {
             val inL = s16L / 32768.0f
             val inR = s16R / 32768.0f
 
-            // Mono center collapse for 3D trajectory placement
-            val monoSignal = (inL + inR) * 0.5f
+            azimuthPhase += azimuthInc
+            if (azimuthPhase >= 2.0 * PI) azimuthPhase -= 2.0 * PI
 
-            // Current azimuth angle in orbit around the listener
-            val azimuth = orbitPhase
-            orbitPhase += phaseIncrement
-            if (orbitPhase >= 2.0 * PI) orbitPhase -= 2.0 * PI
+            elevationPhase += elevationInc
+            if (elevationPhase >= 2.0 * PI) elevationPhase -= 2.0 * PI
 
-            val panX = sin(azimuth) // -1.0 (full left) to +1.0 (full right)
-            val distance = (1.0 + 0.15 * cos(azimuth)).toFloat() // Elliptical front/back depth distance attenuation
+            val x = sin(azimuthPhase)
+            val y = cos(azimuthPhase)
+            val z = sin(elevationPhase) * 0.45
 
-            // Constant-Power Panning Law (ILD - Interaural Level Difference)
-            val panNormalized = ((panX + 1.0) * 0.5).coerceIn(0.0, 1.0)
-            val ildGainL = (cos(panNormalized * (PI / 2.0)) * (1.0 / distance)).toFloat()
-            val ildGainR = (sin(panNormalized * (PI / 2.0)) * (1.0 / distance)).toFloat()
+            val distance = (1.0 + 0.20 * y).toFloat()
 
-            // Interaural Time Difference (ITD) fractional delay
-            val delayL = if (panX > 0) (panX * maxItdSamples).toFloat() else 0.0f
-            val delayR = if (panX < 0) (-panX * maxItdSamples).toFloat() else 0.0f
+            val panAngle = (x + 1.0) * 0.5
+            val ildL = (cos(panAngle * (PI / 2.0)) * (1.15 / distance)).toFloat()
+            val ildR = (sin(panAngle * (PI / 2.0)) * (1.15 / distance)).toFloat()
 
-            // Store current frame into delay line
-            itdDelayBufferL[itdWriteIndex] = monoSignal
-            itdDelayBufferR[itdWriteIndex] = monoSignal
+            val delayL = if (x > 0) (x * maxItdSamples).toFloat() else 0.0f
+            val delayR = if (x < 0) (-x * maxItdSamples).toFloat() else 0.0f
 
-            // Read with linear interpolation for fractional sample delays
-            val readPosL = (itdWriteIndex - delayL + bufferCapacity) % bufferCapacity
+            delayBufferL[delayWriteIndex] = inL
+            delayBufferR[delayWriteIndex] = inR
+
+            val readPosL = (delayWriteIndex - delayL + bufferCapacity) % bufferCapacity
             val idxL0 = readPosL.toInt()
             val fracL = readPosL - idxL0
             val idxL1 = (idxL0 + 1) % bufferCapacity
-            val delayedSampleL = itdDelayBufferL[idxL0] * (1.0f - fracL) + itdDelayBufferL[idxL1] * fracL
+            val delayedSampleL = delayBufferL[idxL0] * (1.0f - fracL) + delayBufferL[idxL1] * fracL
 
-            val readPosR = (itdWriteIndex - delayR + bufferCapacity) % bufferCapacity
+            val readPosR = (delayWriteIndex - delayR + bufferCapacity) % bufferCapacity
             val idxR0 = readPosR.toInt()
             val fracR = readPosR - idxR0
             val idxR1 = (idxR0 + 1) % bufferCapacity
-            val delayedSampleR = itdDelayBufferR[idxR0] * (1.0f - fracR) + itdDelayBufferR[idxR1] * fracR
+            val delayedSampleR = delayBufferR[idxR0] * (1.0f - fracR) + delayBufferR[idxR1] * fracR
 
-            itdWriteIndex = (itdWriteIndex + 1) % bufferCapacity
+            delayWriteIndex = (delayWriteIndex + 1) % bufferCapacity
 
-            // Head-Shadow Spectral Filtering (High-frequency rolloff for the shadowed ear)
-            // Cutoff is dynamically modulated by head occlusion
-            val alphaL = (0.35f + 0.65f * (1.0f - max(0.0f, panX.toFloat()))).coerceIn(0.15f, 1.0f)
-            val alphaR = (0.35f + 0.65f * (1.0f - max(0.0f, -panX.toFloat()))).coerceIn(0.15f, 1.0f)
+            val shadowCoeffL = (0.28f + 0.72f * (1.0f - max(0.0f, x.toFloat()))).coerceIn(0.12f, 1.0f)
+            val shadowCoeffR = (0.28f + 0.72f * (1.0f - max(0.0f, -x.toFloat()))).coerceIn(0.12f, 1.0f)
 
-            filterL_y1 += alphaL * (delayedSampleL - filterL_y1)
-            filterR_y1 += alphaR * (delayedSampleR - filterR_y1)
+            headShadowL += shadowCoeffL * (delayedSampleL - headShadowL)
+            headShadowR += shadowCoeffR * (delayedSampleR - headShadowR)
 
-            // Combine spatial cues with ambient preservation
-            val outL = (filterL_y1 * ildGainL * 1.25f + inL * 0.15f).coerceIn(-1.0f, 1.0f)
-            val outR = (filterR_y1 * ildGainR * 1.25f + inR * 0.15f).coerceIn(-1.0f, 1.0f)
+            val pinnaDepth = ((1.0f - y.toFloat()) * 0.5f + (z.toFloat() * 0.5f)).coerceIn(0.0f, 1.0f)
+            val notchAlpha = 0.40f * pinnaDepth
+
+            val notchedL = headShadowL - notchAlpha * pinnaNotchL_x1
+            pinnaNotchL_x1 = headShadowL
+            val notchedR = headShadowR - notchAlpha * pinnaNotchR_x1
+            pinnaNotchR_x1 = headShadowR
+
+            val crossfeedGain = 0.18f
+            val binauralL = (notchedL * ildL) + (notchedR * ildR * crossfeedGain)
+            val binauralR = (notchedR * ildR) + (notchedL * ildL * crossfeedGain)
+
+            val outL = (binauralL * 1.12f + inL * 0.22f).coerceIn(-1.0f, 1.0f)
+            val outR = (binauralR * 1.12f + inR * 0.22f).coerceIn(-1.0f, 1.0f)
 
             output.putShort((outL * 32767.0f).toInt().toShort())
             output.putShort((outR * 32767.0f).toInt().toShort())
@@ -208,13 +228,12 @@ class Spatial3DAudioProcessor : BaseAudioProcessor() {
 }
 
 // =========================================================================
-// 📌 3. REAL-TIME VINTAGE LO-FI TAPE & ANALOG VINYL PROCESSOR
+// 📌 3. MELODIOUS LO-FI TAPE, REVERB DIFFUSION & WARMTH PROCESSOR
 // =========================================================================
 
 @UnstableApi
 class LofiAudioProcessor : BaseAudioProcessor() {
 
-    // Biquad 2nd-order resonant low-pass filter states (L & R)
     private var lpf_b0 = 0.0f; private var lpf_b1 = 0.0f; private var lpf_b2 = 0.0f
     private var lpf_a1 = 0.0f; private var lpf_a2 = 0.0f
     private var lpfL_x1 = 0.0f; private var lpfL_x2 = 0.0f
@@ -222,17 +241,26 @@ class LofiAudioProcessor : BaseAudioProcessor() {
     private var lpfR_x1 = 0.0f; private var lpfR_x2 = 0.0f
     private var lpfR_y1 = 0.0f; private var lpfR_y2 = 0.0f
 
-    // Wow & Flutter modulated fractional tape delay line
-    private var tapeDelayBufferL = FloatArray(0)
-    private var tapeDelayBufferR = FloatArray(0)
+    private var mid_b0 = 0.0f; private var mid_b1 = 0.0f; private var mid_b2 = 0.0f
+    private var mid_a1 = 0.0f; private var mid_a2 = 0.0f
+    private var midL_x1 = 0f; private var midL_x2 = 0f; private var midL_y1 = 0f; private var midL_y2 = 0f
+    private var midR_x1 = 0f; private var midR_x2 = 0f; private var midR_y1 = 0f; private var midR_y2 = 0f
+
+    private var tapeBufferL = FloatArray(0)
+    private var tapeBufferR = FloatArray(0)
     private var tapeWriteIndex = 0
     private var wowPhase = 0.0
     private var flutterPhase = 0.0
 
-    // Vinyl crackle generator state
+    private var combBuffer1 = FloatArray(0)
+    private var combBuffer2 = FloatArray(0)
+    private var combBuffer3 = FloatArray(0)
+    private var combBuffer4 = FloatArray(0)
+    private var combIdx1 = 0; private var combIdx2 = 0; private var combIdx3 = 0; private var combIdx4 = 0
+
     private var crackleHold = 0
     private var crackleAmp = 0.0f
-    private var pseudoRandomSeed = 123456789L
+    private var pseudoRandomSeed = 987654321L
 
     override fun onConfigure(inputAudioFormat: AudioProcessor.AudioFormat): AudioProcessor.AudioFormat {
         if (inputAudioFormat.encoding != C.ENCODING_PCM_16BIT) {
@@ -240,18 +268,24 @@ class LofiAudioProcessor : BaseAudioProcessor() {
         }
         val sampleRate = inputAudioFormat.sampleRate
 
-        // Pre-allocate 35ms fractional tape buffer for wow/flutter modulation
-        val maxBuffer = (sampleRate * 0.035f).toInt()
-        tapeDelayBufferL = FloatArray(maxBuffer)
-        tapeDelayBufferR = FloatArray(maxBuffer)
+        val maxTapeBuffer = (sampleRate * 0.040f).toInt()
+        tapeBufferL = FloatArray(maxTapeBuffer)
+        tapeBufferR = FloatArray(maxTapeBuffer)
         tapeWriteIndex = 0
 
-        // Compute 2nd-Order Butterworth Low-Pass Filter @ 3800 Hz (Warm vintage tape ceiling)
-        computeBiquadLowPass(cutoffHz = 3800.0f, q = 0.707f, sampleRate = sampleRate.toFloat())
+        combBuffer1 = FloatArray((sampleRate * 0.0297f).toInt())
+        combBuffer2 = FloatArray((sampleRate * 0.0371f).toInt())
+        combBuffer3 = FloatArray((sampleRate * 0.0411f).toInt())
+        combBuffer4 = FloatArray((sampleRate * 0.0437f).toInt())
+        combIdx1 = 0; combIdx2 = 0; combIdx3 = 0; combIdx4 = 0
 
-        // Reset filter histories
+        computeBiquadLowPass(cutoffHz = 5500.0f, q = 0.65f, sampleRate = sampleRate.toFloat())
+        computeBiquadPeak(centerHz = 350.0f, gainDb = 2.8f, q = 1.0f, sampleRate = sampleRate.toFloat())
+
         lpfL_x1 = 0f; lpfL_x2 = 0f; lpfL_y1 = 0f; lpfL_y2 = 0f
         lpfR_x1 = 0f; lpfR_x2 = 0f; lpfR_y1 = 0f; lpfR_y2 = 0f
+        midL_x1 = 0f; midL_x2 = 0f; midL_y1 = 0f; midL_y2 = 0f
+        midR_x1 = 0f; midR_x2 = 0f; midR_y1 = 0f; midR_y2 = 0f
         wowPhase = 0.0
         flutterPhase = 0.0
 
@@ -272,6 +306,21 @@ class LofiAudioProcessor : BaseAudioProcessor() {
         lpf_a2 = (1.0f - alpha) / a0
     }
 
+    private fun computeBiquadPeak(centerHz: Float, gainDb: Float, q: Float, sampleRate: Float) {
+        val a = sqrt(Math.pow(10.0, (gainDb / 20.0).toDouble())).toFloat()
+        val omega = (2.0 * PI * centerHz / sampleRate).toFloat()
+        val sn = sin(omega)
+        val cs = cos(omega)
+        val alpha = sn / (2.0f * q)
+
+        val a0 = 1.0f + (alpha / a)
+        mid_b0 = (1.0f + alpha * a) / a0
+        mid_b1 = (-2.0f * cs) / a0
+        mid_b2 = (1.0f - alpha * a) / a0
+        mid_a1 = (-2.0f * cs) / a0
+        mid_a2 = (1.0f - (alpha / a)) / a0
+    }
+
     private fun nextRandom(): Float {
         pseudoRandomSeed = (pseudoRandomSeed * 1103515245L + 12345L) and 0x7fffffffL
         return (pseudoRandomSeed.toFloat() / 0x7fffffffL) * 2.0f - 1.0f
@@ -283,7 +332,6 @@ class LofiAudioProcessor : BaseAudioProcessor() {
         if (remaining == 0) return
 
         if (!isEnabled || inputAudioFormat.channelCount != 2) {
-            // Bypass mode: Zero latency, zero allocation pass-through
             val output = replaceOutputBuffer(remaining)
             output.put(inputBuffer)
             output.flip()
@@ -291,13 +339,12 @@ class LofiAudioProcessor : BaseAudioProcessor() {
         }
 
         val sampleRate = inputAudioFormat.sampleRate.toDouble()
-        val bufferCapacity = tapeDelayBufferL.size
+        val bufferCapacity = tapeBufferL.size
         val output = replaceOutputBuffer(remaining)
 
-        // Wow: 0.65 Hz pitch drift, Flutter: 6.2 Hz micro-vibrato
-        val wowInc = (2.0 * PI * 0.65) / sampleRate
-        val flutterInc = (2.0 * PI * 6.20) / sampleRate
-        val baseDelaySamples = (inputAudioFormat.sampleRate * 0.012f) // 12ms nominal center
+        val wowInc = (2.0 * PI * 0.42) / sampleRate
+        val flutterInc = (2.0 * PI * 4.80) / sampleRate
+        val baseDelay = (inputAudioFormat.sampleRate * 0.010f)
 
         while (inputBuffer.remaining() >= 4) {
             val s16L = inputBuffer.short
@@ -306,65 +353,81 @@ class LofiAudioProcessor : BaseAudioProcessor() {
             val inL = s16L / 32768.0f
             val inR = s16R / 32768.0f
 
-            // 1. Wow & Flutter Fractional Delay Line
-            tapeDelayBufferL[tapeWriteIndex] = inL
-            tapeDelayBufferR[tapeWriteIndex] = inR
+            tapeBufferL[tapeWriteIndex] = inL
+            tapeBufferR[tapeWriteIndex] = inR
 
-            val modDepth = (sin(wowPhase) * 18.0 + sin(flutterPhase) * 4.0).toFloat()
+            val modL = (sin(wowPhase) * 12.0 + sin(flutterPhase) * 2.2).toFloat()
+            val modR = (sin(wowPhase + 0.65) * 12.0 + sin(flutterPhase + 0.85) * 2.2).toFloat()
+
             wowPhase += wowInc
             if (wowPhase >= 2.0 * PI) wowPhase -= 2.0 * PI
             flutterPhase += flutterInc
             if (flutterPhase >= 2.0 * PI) flutterPhase -= 2.0 * PI
 
-            val readPos = (tapeWriteIndex - (baseDelaySamples + modDepth) + bufferCapacity) % bufferCapacity
-            val idx0 = readPos.toInt()
-            val frac = readPos - idx0
-            val idx1 = (idx0 + 1) % bufferCapacity
+            val readPosL = (tapeWriteIndex - (baseDelay + modL) + bufferCapacity) % bufferCapacity
+            val idxL0 = readPosL.toInt()
+            val fracL = readPosL - idxL0
+            val idxL1 = (idxL0 + 1) % bufferCapacity
+            val wowL = tapeBufferL[idxL0] * (1.0f - fracL) + tapeBufferL[idxL1] * fracL
 
-            val delayedL = tapeDelayBufferL[idx0] * (1.0f - frac) + tapeDelayBufferL[idx1] * frac
-            val delayedR = tapeDelayBufferR[idx0] * (1.0f - frac) + tapeDelayBufferR[idx1] * frac
+            val readPosR = (tapeWriteIndex - (baseDelay + modR) + bufferCapacity) % bufferCapacity
+            val idxR0 = readPosR.toInt()
+            val fracR = readPosR - idxR0
+            val idxR1 = (idxR0 + 1) % bufferCapacity
+            val wowR = tapeBufferR[idxR0] * (1.0f - fracR) + tapeBufferR[idxR1] * fracR
 
             tapeWriteIndex = (tapeWriteIndex + 1) % bufferCapacity
 
-            // 2. Analog 2nd-Order Resonant Low-Pass Filtering
-            val filteredL = lpf_b0 * delayedL + lpf_b1 * lpfL_x1 + lpf_b2 * lpfL_x2 - lpf_a1 * lpfL_y1 - lpf_a2 * lpfL_y2
-            lpfL_x2 = lpfL_x1; lpfL_x1 = delayedL
-            lpfL_y2 = lpfL_y1; lpfL_y1 = filteredL
+            val midL = mid_b0 * wowL + mid_b1 * midL_x1 + mid_b2 * midL_x2 - mid_a1 * midL_y1 - mid_a2 * midL_y2
+            midL_x2 = midL_x1; midL_x1 = wowL; midL_y2 = midL_y1; midL_y1 = midL
 
-            val filteredR = lpf_b0 * delayedR + lpf_b1 * lpfR_x1 + lpf_b2 * lpfR_x2 - lpf_a1 * lpfR_y1 - lpf_a2 * lpfR_y2
-            lpfR_x2 = lpfR_x1; lpfR_x1 = delayedR
-            lpfR_y2 = lpfR_y1; lpfR_y1 = filteredR
+            val midR = mid_b0 * wowR + mid_b1 * midR_x1 + mid_b2 * midR_x2 - mid_a1 * midR_y1 - mid_a2 * midR_y2
+            midR_x2 = midR_x1; midR_x1 = wowR; midR_y2 = midR_y1; midR_y1 = midR
 
-            // 3. Smooth Harmonic Soft-Clipping Saturation: f(x) = 1.5x - 0.5x^3
-            val satInputL = (filteredL * 1.45f).coerceIn(-1.5f, 1.5f)
-            val satInputR = (filteredR * 1.45f).coerceIn(-1.5f, 1.5f)
+            val warmL = lpf_b0 * midL + lpf_b1 * lpfL_x1 + lpf_b2 * lpfL_x2 - lpf_a1 * lpfL_y1 - lpf_a2 * lpfL_y2
+            lpfL_x2 = lpfL_x1; lpfL_x1 = midL; lpfL_y2 = lpfL_y1; lpfL_y1 = warmL
 
-            val saturatedL = if (abs(satInputL) <= 1.0f) {
-                1.5f * satInputL - 0.5f * (satInputL * satInputL * satInputL)
-            } else {
-                if (satInputL > 0f) 1.0f else -1.0f
-            }
+            val warmR = lpf_b0 * midR + lpf_b1 * lpfR_x1 + lpf_b2 * lpfR_x2 - lpf_a1 * lpfR_y1 - lpf_a2 * lpfR_y2
+            lpfR_x2 = lpfR_x1; lpfR_x1 = midR; lpfR_y2 = lpfR_y1; lpfR_y1 = warmR
 
-            val saturatedR = if (abs(satInputR) <= 1.0f) {
-                1.5f * satInputR - 0.5f * (satInputR * satInputR * satInputR)
-            } else {
-                if (satInputR > 0f) 1.0f else -1.0f
-            }
+            val saturatedL = tanh((warmL * 1.15f).toDouble()).toFloat()
+            val saturatedR = tanh((warmR * 1.15f).toDouble()).toFloat()
 
-            // 4. Subtle Vinyl Static & Needle Noise
-            var vinylNoise = nextRandom() * 0.0028f
+            val monoReverbIn = (saturatedL + saturatedR) * 0.45f
+            val fb = 0.76f
+
+            val c1 = combBuffer1[combIdx1]
+            combBuffer1[combIdx1] = monoReverbIn + c1 * fb
+            combIdx1 = (combIdx1 + 1) % combBuffer1.size
+
+            val c2 = combBuffer2[combIdx2]
+            combBuffer2[combIdx2] = monoReverbIn + c2 * fb
+            combIdx2 = (combIdx2 + 1) % combBuffer2.size
+
+            val c3 = combBuffer3[combIdx3]
+            combBuffer3[combIdx3] = monoReverbIn + c3 * fb
+            combIdx3 = (combIdx3 + 1) % combBuffer3.size
+
+            val c4 = combBuffer4[combIdx4]
+            combBuffer4[combIdx4] = monoReverbIn + c4 * fb
+            combIdx4 = (combIdx4 + 1) % combBuffer4.size
+
+            val reverbTailL = (c1 - c2 + c3) * 0.18f
+            val reverbTailR = (c2 - c3 + c4) * 0.18f
+
+            var vinylNoise = nextRandom() * 0.0012f
             if (crackleHold <= 0) {
-                if (nextRandom() > 0.9985f) { // Occasional vinyl dust pop
-                    crackleAmp = nextRandom() * 0.024f
-                    crackleHold = (sampleRate * 0.0015).toInt()
+                if (nextRandom() > 0.9991f) {
+                    crackleAmp = nextRandom() * 0.015f
+                    crackleHold = (sampleRate * 0.0012).toInt()
                 }
             } else {
                 vinylNoise += crackleAmp
                 crackleHold--
             }
 
-            val outL = ((saturatedL * 0.88f) + vinylNoise).coerceIn(-1.0f, 1.0f)
-            val outR = ((saturatedR * 0.88f) + vinylNoise).coerceIn(-1.0f, 1.0f)
+            val outL = (saturatedL * 0.82f + reverbTailL + vinylNoise).coerceIn(-1.0f, 1.0f)
+            val outR = (saturatedR * 0.82f + reverbTailR + vinylNoise).coerceIn(-1.0f, 1.0f)
 
             output.putShort((outL * 32767.0f).toInt().toShort())
             output.putShort((outR * 32767.0f).toInt().toShort())
@@ -412,7 +475,7 @@ fun AudioEffectsSettingsSection(
                     fontWeight = FontWeight.Bold
                 )
                 Text(
-                    text = "Offline real-time DSP acoustic filters",
+                    text = "Real-time 360° binaural sphere & melodious Lo-Fi engine",
                     color = Color(0xFF64748B),
                     fontSize = 12.sp
                 )
@@ -423,7 +486,7 @@ fun AudioEffectsSettingsSection(
                     .background(accent.copy(alpha = 0.16f))
                     .padding(horizontal = 8.dp, vertical = 4.dp)
             ) {
-                Text("DSP ENGINE", color = accent, fontSize = 10.sp, fontWeight = FontWeight.Black)
+                Text("PRO DSP", color = accent, fontSize = 10.sp, fontWeight = FontWeight.Black)
             }
         }
 
@@ -432,14 +495,14 @@ fun AudioEffectsSettingsSection(
         // 3D Spatial Audio Orbit Toggle
         AudioEffectToggleRow(
             icon = "🌐",
-            title = "3D Spatial Audio",
-            description = "Simulates a rotating 360° binaural orbit around your head with Interaural Time & Level Differences.",
+            title = "3D Spatial Surround Sound",
+            description = "Places sound in a true 360° spherical field with height elevation, pinna reflections, and ear crossfeed.",
             isChecked = isSpatialActive,
             accentColor = accent,
             textColor = textColor,
             onCheckedChange = {
                 manager.triggerHapticFeedback(false)
-                AudioEffectsManager.set3DSpatialEnabled(it)
+                AudioEffectsManager.set3DSpatialEnabled(it, manager.context)
             }
         )
 
@@ -448,14 +511,14 @@ fun AudioEffectsSettingsSection(
         // Lo-Fi Vintage Tape Filter Toggle
         AudioEffectToggleRow(
             icon = "📻",
-            title = "Lo-Fi Tape & Vinyl",
-            description = "Warm analog tape harmonics, 3.8 kHz biquad ceiling, wow/flutter pitch drift, and vinyl texture.",
+            title = "Melodic Lo-Fi & Slowed Tape",
+            description = "Slows to 0.83x, drops pitch, adds warm tube saturation, tape wow/flutter, room reverb & vinyl crackle.",
             isChecked = isLofiActive,
             accentColor = accent,
             textColor = textColor,
             onCheckedChange = {
                 manager.triggerHapticFeedback(false)
-                AudioEffectsManager.setLofiEnabled(it)
+                AudioEffectsManager.setLofiEnabled(it, manager.context)
             }
         )
     }
