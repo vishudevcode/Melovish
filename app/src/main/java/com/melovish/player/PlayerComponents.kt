@@ -268,7 +268,7 @@ fun FolderColorDialog(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .zIndex(150f)
+            .zIndex(999f)
             .background(if (isDark) Color(0x66000000) else Color(0x40000000))
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
@@ -1138,8 +1138,8 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                                 val iconTint = if (isDark) Color(0xFF0F172A) else Color.White
                                 if (isThisSongPlaying) {
                                     Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                                        Box(modifier = Modifier.size(7.5.dp, 28.dp).clip(RoundedCornerShape(4.dp)).background(iconTint))
-                                        Box(modifier = Modifier.size(7.5.dp, 28.dp).clip(RoundedCornerShape(4.dp)).background(iconTint))
+                                        Box(modifier = Modifier.size(7.5.dp, 28.dp).clip(RoundedCornerShape(2.dp)).background(iconTint))
+                                        Box(modifier = Modifier.size(7.5.dp, 28.dp).clip(RoundedCornerShape(2.dp)).background(iconTint))
                                     }
                                 } else {
                                     Canvas(
@@ -1261,7 +1261,7 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .zIndex(150f)
+                    .zIndex(999f)
                     .background(Color.Transparent)
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },
@@ -1332,7 +1332,7 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
             visible = showQueueSheet,
             enter = slideInVertically(initialOffsetY = { it }, animationSpec = spring(stiffness = 500f, dampingRatio = 0.85f)),
             exit = slideOutVertically(targetOffsetY = { it }, animationSpec = spring(stiffness = 500f, dampingRatio = 0.85f)),
-            modifier = Modifier.fillMaxSize().zIndex(150f)
+            modifier = Modifier.fillMaxSize().zIndex(999f)
         ) {
             QueueSheet(
                 manager = manager,
@@ -1509,7 +1509,7 @@ fun QueueSheet(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .zIndex(150f)
+            .zIndex(999f)
             .background(if (isDark) Color(0x66000000) else Color(0x40000000))
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
@@ -1835,7 +1835,7 @@ fun EqualizerSheet(manager: MusicManager, onDismiss: () -> Unit) {
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .zIndex(150f)
+            .zIndex(999f)
             .background(if (isDark) Color(0x66000000) else Color(0x40000000))
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
@@ -2235,7 +2235,7 @@ fun MiniPlayerDock(
                 modifier = Modifier
                     .size(46.dp)
                     .clip(RoundedCornerShape(12.dp))
-                    .background(Color(0xFF1E293B)),
+                    .background(manager.getCurrentSurfaceColor()),
                 contentAlignment = Alignment.Center
             ) {
                 if (albumArtBitmap != null) {
@@ -2323,7 +2323,7 @@ fun SleepTimerDialog(manager: MusicManager, onDismiss: () -> Unit) {
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .zIndex(150f)
+            .zIndex(999f)
             .background(if (isDark) Color(0x66000000) else Color(0x40000000))
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
@@ -2463,7 +2463,7 @@ fun LyricsDialog(song: Song, manager: MusicManager, onDismiss: () -> Unit) {
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .zIndex(150f)
+            .zIndex(999f)
             .background(if (isDark) Color(0x66000000) else Color(0x40000000))
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
@@ -2512,7 +2512,7 @@ fun AddToPlaylistDialog(manager: MusicManager, song: Song, onDismiss: () -> Unit
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .zIndex(150f)
+            .zIndex(999f)
             .background(if (isDark) Color(0x66000000) else Color(0x40000000))
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
@@ -2649,7 +2649,7 @@ fun MagneticSpeedDialog(manager: MusicManager, onDismiss: () -> Unit) {
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .zIndex(150f)
+            .zIndex(999f)
             .background(if (isDark) Color(0x66000000) else Color(0x40000000))
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },

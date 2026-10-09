@@ -813,12 +813,12 @@ fun MelovishRootApp(manager: MusicManager) {
                 )
             }
 
-            // 🚀 Modal Background Scrim placed at zIndex(100f) above the MiniPlayer
+            // 🚀 Modal Background Scrim placed at zIndex(999f) above the MiniPlayer
             AnimatedVisibility(
                 visible = isAnyRootModalOpen,
                 enter = fadeIn(tween(250)),
                 exit = fadeOut(tween(200)),
-                modifier = Modifier.zIndex(100f)
+                modifier = Modifier.zIndex(999f)
             ) {
                 Box(
                     modifier = Modifier
@@ -831,19 +831,19 @@ fun MelovishRootApp(manager: MusicManager) {
                 visible = isPlayerExpanded,
                 enter = slideInVertically(initialOffsetY = { it }),
                 exit = slideOutVertically(targetOffsetY = { it }),
-                modifier = Modifier.zIndex(200f)
+                modifier = Modifier.zIndex(1000f)
             ) {
                 FullPlayerSheet(manager = manager, onDismiss = { isPlayerExpanded = false })
             }
 
             if (isSettingsEqOpen) {
-                Box(modifier = Modifier.zIndex(150f)) {
+                Box(modifier = Modifier.zIndex(999f)) {
                     EqualizerSheet(manager = manager, onDismiss = { isSettingsEqOpen = false })
                 }
             }
 
             if (showRootCreatePlaylistDialog) {
-                Box(modifier = Modifier.zIndex(150f)) {
+                Box(modifier = Modifier.zIndex(999f)) {
                     CreatePlaylistDialog(
                         manager = manager,
                         onDismiss = { showRootCreatePlaylistDialog = false }
@@ -852,7 +852,7 @@ fun MelovishRootApp(manager: MusicManager) {
             }
 
             if (showRootCreateArtistDialog) {
-                Box(modifier = Modifier.zIndex(150f)) {
+                Box(modifier = Modifier.zIndex(999f)) {
                     CreateArtistDialog(
                         manager = manager,
                         onDismiss = { showRootCreateArtistDialog = false }
@@ -861,7 +861,7 @@ fun MelovishRootApp(manager: MusicManager) {
             }
 
             if (showRootArtistAddSongsDialog && selectedArtist != null) {
-                Box(modifier = Modifier.zIndex(150f)) {
+                Box(modifier = Modifier.zIndex(999f)) {
                     ArtistAddSongsDialog(
                         artistName = selectedArtist!!.name,
                         manager = manager,
@@ -871,7 +871,7 @@ fun MelovishRootApp(manager: MusicManager) {
             }
 
             if (showRootManagePlaylistsDialog) {
-                Box(modifier = Modifier.zIndex(150f)) {
+                Box(modifier = Modifier.zIndex(999f)) {
                     ManagePlaylistsDialog(
                         manager = manager,
                         isDark = isDark,
@@ -882,7 +882,7 @@ fun MelovishRootApp(manager: MusicManager) {
             }
 
             if (showRootArrangePlaylistsDialog) {
-                Box(modifier = Modifier.zIndex(150f)) {
+                Box(modifier = Modifier.zIndex(999f)) {
                     ArrangePlaylistsDialog(
                         manager = manager,
                         isDark = isDark,
@@ -900,7 +900,7 @@ fun MelovishRootApp(manager: MusicManager) {
                     activeScreen == "artists" -> manager.artistsViewMode
                     else -> manager.homeViewMode
                 }
-                Box(modifier = Modifier.zIndex(150f)) {
+                Box(modifier = Modifier.zIndex(999f)) {
                     GridSizeDialog(
                         currentMode = currentMode,
                         isDark = isDark,
@@ -921,7 +921,7 @@ fun MelovishRootApp(manager: MusicManager) {
             }
 
             if (showRootDarkSubStyleDialog) {
-                Box(modifier = Modifier.zIndex(150f)) {
+                Box(modifier = Modifier.zIndex(999f)) {
                     DarkThemeVariantDialog(
                         manager = manager,
                         currentStyle = manager.darkThemeSubStyle,
@@ -943,7 +943,7 @@ fun MelovishRootApp(manager: MusicManager) {
             }
 
             if (showRootLightSubStyleDialog) {
-                Box(modifier = Modifier.zIndex(150f)) {
+                Box(modifier = Modifier.zIndex(999f)) {
                     LightThemeVariantDialog(
                         manager = manager,
                         currentStyle = manager.lightThemeSubStyle,
@@ -978,7 +978,7 @@ fun MelovishRootApp(manager: MusicManager) {
                     else -> manager.accentColor
                 }
 
-                Box(modifier = Modifier.zIndex(160f)) {
+                Box(modifier = Modifier.zIndex(999f)) {
                     FolderColourPickerDialog(
                         manager = manager,
                         title = pickerTitle,
@@ -1008,7 +1008,7 @@ fun MelovishRootApp(manager: MusicManager) {
             if (rootCustomizingFolder != null) {
                 val folder = rootCustomizingFolder!!
                 var showRainbowWheelForFolder by remember { mutableStateOf(false) }
-                Box(modifier = Modifier.zIndex(150f)) {
+                Box(modifier = Modifier.zIndex(999f)) {
                     if (!showRainbowWheelForFolder) {
                         FolderColorDialog(
                             manager = manager,
@@ -1040,7 +1040,7 @@ fun MelovishRootApp(manager: MusicManager) {
             if (rootCustomizingPlaylist != null) {
                 val pl = rootCustomizingPlaylist!!
                 var showRainbowWheelForPl by remember { mutableStateOf(false) }
-                Box(modifier = Modifier.zIndex(150f)) {
+                Box(modifier = Modifier.zIndex(999f)) {
                     if (!showRainbowWheelForPl) {
                         FavouritePlaylistLongPressDialog(
                             playlist = pl,
@@ -1066,7 +1066,7 @@ fun MelovishRootApp(manager: MusicManager) {
 
             if (rootSelectedArtistForActions != null) {
                 val targetArtist = rootSelectedArtistForActions!!
-                Box(modifier = Modifier.zIndex(150f)) {
+                Box(modifier = Modifier.zIndex(999f)) {
                     RootArtistActionModal(
                         artist = targetArtist,
                         manager = manager,
@@ -1080,7 +1080,7 @@ fun MelovishRootApp(manager: MusicManager) {
                 val (song, artistName) = rootSelectedArtistSongForAction!!
                 var showMoveTargetDialog by remember { mutableStateOf(false) }
 
-                Box(modifier = Modifier.zIndex(150f)) {
+                Box(modifier = Modifier.zIndex(999f)) {
                     if (!showMoveTargetDialog) {
                         Box(
                             modifier = Modifier
@@ -1252,7 +1252,7 @@ fun MelovishRootApp(manager: MusicManager) {
 
             if (activeSongForMenu != null) {
                 val s = activeSongForMenu!!
-                Box(modifier = Modifier.zIndex(150f)) {
+                Box(modifier = Modifier.zIndex(999f)) {
                     SongItemActionModal(
                         manager = manager,
                         song = s,
@@ -1305,20 +1305,20 @@ fun MelovishRootApp(manager: MusicManager) {
             }
 
             if (activeTagEditSong != null) {
-                Box(modifier = Modifier.zIndex(150f)) {
+                Box(modifier = Modifier.zIndex(999f)) {
                     TagEditorDialog(manager = manager, song = activeTagEditSong!!, onDismiss = { activeTagEditSong = null })
                 }
             }
 
             if (activeAddToPlaylistSong != null) {
-                Box(modifier = Modifier.zIndex(150f)) {
+                Box(modifier = Modifier.zIndex(999f)) {
                     AddToPlaylistDialog(manager = manager, song = activeAddToPlaylistSong!!, onDismiss = { activeAddToPlaylistSong = null })
                 }
             }
 
             if (activeSongInfo != null) {
                 val s = activeSongInfo!!
-                Box(modifier = Modifier.zIndex(150f)) {
+                Box(modifier = Modifier.zIndex(999f)) {
                     SongInfoDialog(manager = manager, song = s, isDark = isDark, onDismiss = { activeSongInfo = null })
                 }
             }
@@ -2322,7 +2322,7 @@ fun PlaylistDetailScreen(
     }
 
     if (showAddSongsSearchPicker) {
-        Box(modifier = Modifier.zIndex(160f)) {
+        Box(modifier = Modifier.zIndex(999f)) {
             PlaylistAddSearchDialog(playlist = playlist, manager = manager, onDismiss = { showAddSongsSearchPicker = false }, onNavigateToFolder = { folder ->
                 showAddSongsSearchPicker = false
                 onFolderClick(folder)
@@ -2647,7 +2647,7 @@ fun ManagePlaylistsDialog(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .zIndex(150f)
+            .zIndex(999f)
             .background(Color(0x77000000))
             .nestedScroll(dialogScrollInterceptor)
             .clickable(
@@ -2925,7 +2925,7 @@ fun CreatePlaylistDialog(manager: MusicManager, onDismiss: () -> Unit) {
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .zIndex(150f)
+            .zIndex(999f)
             .background(Color(0x77000000))
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
@@ -3091,7 +3091,7 @@ fun ShimmerSkeletonGridItem(aspectRatio: Float = 1f, isDark: Boolean, isHero: Bo
     )
 }
 
-// ⚡ 120Hz Hardware-Buffered Square Album Card using Coil AsyncImage
+// ⚡ Hardware-Buffered Square Album Card (Instant Zero-Delay Render)
 @UnstableApi
 @Composable
 fun SquareAlbumOverlayCard(
@@ -3106,13 +3106,14 @@ fun SquareAlbumOverlayCard(
     val accent = manager.accentColor
     val glassBorderBrush = manager.getGlassBorderBrush()
     val artUri = remember(song.id, song.albumId, song.customCoverPath) { manager.getAlbumArtUri(song) }
+    val cardSurface = manager.getCurrentSurfaceColor()
 
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .aspectRatio(1f)
             .clip(RoundedCornerShape(18.dp))
-            .background(Color(0xFF1E293B))
+            .background(cardSurface)
             .border(
                 width = if (isPlayingThis) 2.dp else 1.2.dp,
                 brush = if (isPlayingThis) Brush.linearGradient(listOf(accent, accent)) else glassBorderBrush,
@@ -3126,7 +3127,6 @@ fun SquareAlbumOverlayCard(
                     .data(artUri)
                     .size(140, 140)
                     .precision(Precision.INEXACT)
-                    .crossfade(80)
                     .build(),
                 contentDescription = song.title,
                 contentScale = ContentScale.Crop,
@@ -3179,7 +3179,7 @@ fun SquareAlbumOverlayCard(
     }
 }
 
-// ⚡ 120Hz Hardware-Buffered Hero Album Card using Coil AsyncImage
+// ⚡ Hardware-Buffered Hero Album Card (Instant Zero-Delay Render)
 @UnstableApi
 @Composable
 fun HeroAlbumCard(
@@ -3194,13 +3194,14 @@ fun HeroAlbumCard(
     val accent = manager.accentColor
     val glassBorderBrush = manager.getGlassBorderBrush()
     val artUri = remember(song.id, song.albumId, song.customCoverPath) { manager.getAlbumArtUri(song) }
+    val cardSurface = manager.getCurrentSurfaceColor()
 
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .aspectRatio(1f)
             .clip(RoundedCornerShape(20.dp))
-            .background(Color(0xFF1E293B))
+            .background(cardSurface)
             .border(
                 width = if (isPlayingThis) 2.5.dp else 1.2.dp,
                 brush = if (isPlayingThis) Brush.linearGradient(listOf(accent, accent)) else glassBorderBrush,
@@ -3214,7 +3215,6 @@ fun HeroAlbumCard(
                     .data(artUri)
                     .size(240, 240)
                     .precision(Precision.INEXACT)
-                    .crossfade(80)
                     .build(),
                 contentDescription = song.title,
                 contentScale = ContentScale.Crop,
@@ -3323,7 +3323,7 @@ fun GridSizeDialog(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .zIndex(150f)
+            .zIndex(999f)
             .background(Color(0x77000000))
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
@@ -3434,7 +3434,7 @@ fun FolderColorDialog(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .zIndex(150f)
+            .zIndex(999f)
             .background(Color(0x77000000))
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
@@ -3557,7 +3557,7 @@ fun FavouritePlaylistLongPressDialog(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .zIndex(150f)
+            .zIndex(999f)
             .background(Color(0x77000000))
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
@@ -3687,7 +3687,7 @@ fun FolderColourPickerDialog(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .zIndex(160f)
+            .zIndex(999f)
             .background(Color(0x77000000))
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
@@ -3872,7 +3872,7 @@ fun LibraryFolderSquareCard(
 }
 
 // =========================================================================
-// 📌 SEARCH SCREEN (With Double-Tap / Re-click Auto-Focus & Soft Keyboard)
+// 📌 SEARCH SCREEN (Pure, Fast & Light - With Instant Double-Tap Automation)
 // =========================================================================
 
 @UnstableApi
@@ -3934,7 +3934,7 @@ fun SearchScreen(
     // 🚀 React to Search Tab double-tap / re-click to request focus & open software keyboard
     LaunchedEffect(focusSearchTrigger) {
         if (focusSearchTrigger > 0L) {
-            delay(120)
+            delay(100)
             try {
                 focusRequester.requestFocus()
                 keyboardController?.show()
@@ -4132,7 +4132,7 @@ fun PlaylistAddSearchDialog(playlist: Playlist, manager: MusicManager, onDismiss
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .zIndex(150f)
+            .zIndex(999f)
             .background(Color(0x77000000))
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
@@ -4394,7 +4394,7 @@ fun SongItemActionModal(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .zIndex(150f)
+            .zIndex(999f)
             .background(Color(0x77000000))
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
@@ -4467,7 +4467,7 @@ fun SongInfoDialog(manager: MusicManager, song: Song, isDark: Boolean, onDismiss
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .zIndex(150f)
+            .zIndex(999f)
             .background(Color(0x77000000))
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
@@ -4566,20 +4566,21 @@ fun BottomNavBar(
     }
 }
 
-// ⚡ 120Hz Hardware-Buffered Recently Played Card with Pre-Scaled AsyncImage
+// ⚡ Hardware-Buffered Recently Played Card (Instant Zero-Delay Render)
 @UnstableApi
 @Composable
 fun RecentlyPlayedCard(song: Song, manager: MusicManager, onClick: () -> Unit) {
     val context = LocalContext.current
     val glassBorderBrush = manager.getGlassBorderBrush()
     val artUri = remember(song.id, song.albumId, song.customCoverPath) { manager.getAlbumArtUri(song) }
+    val cardSurface = manager.getCurrentSurfaceColor()
 
     Box(
         modifier = Modifier
             .width(116.dp)
             .height(116.dp)
             .clip(RoundedCornerShape(20.dp))
-            .background(Color(0xFF1E293B))
+            .background(cardSurface)
             .border(1.2.dp, glassBorderBrush, RoundedCornerShape(20.dp))
             .clickable { onClick() }
     ) {
@@ -4589,7 +4590,6 @@ fun RecentlyPlayedCard(song: Song, manager: MusicManager, onClick: () -> Unit) {
                     .data(artUri)
                     .size(140, 140)
                     .precision(Precision.INEXACT)
-                    .crossfade(80)
                     .build(),
                 contentDescription = song.title,
                 contentScale = ContentScale.Crop,
@@ -4740,7 +4740,7 @@ fun TopBar(manager: MusicManager, onProfileClick: () -> Unit, onSettingsClick: (
     }
 }
 
-// ⚡ 120Hz Hardware-Buffered Universal Song Row with Pre-Scaled AsyncImage
+// ⚡ Hardware-Buffered Universal Song Row (Instant Zero-Delay Render)
 @UnstableApi
 @Composable
 fun UniversalSongRow(song: Song, manager: MusicManager, isDark: Boolean, onPlay: () -> Unit, onMenuClick: () -> Unit) {
@@ -4767,16 +4767,15 @@ fun UniversalSongRow(song: Song, manager: MusicManager, isDark: Boolean, onPlay:
             modifier = Modifier
                 .size(46.dp)
                 .clip(RoundedCornerShape(10.dp))
-                .background(Color(0xFF1E293B)),
+                .background(manager.getCurrentSurfaceColor()),
             contentAlignment = Alignment.Center
         ) {
             if (artUri != null) {
                 AsyncImage(
                     model = ImageRequest.Builder(context)
                         .data(artUri)
-                        .size(140, 140)
+                        .size(100, 100)
                         .precision(Precision.INEXACT)
-                        .crossfade(80)
                         .build(),
                     contentDescription = "Art",
                     modifier = Modifier.fillMaxSize(),

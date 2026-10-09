@@ -789,9 +789,8 @@ fun ArtistSquareCard(
                     AsyncImage(
                         model = ImageRequest.Builder(context)
                             .data(artUri)
-                            .size(140, 140)
+                            .size(120, 120)
                             .precision(Precision.INEXACT)
-                            .crossfade(80)
                             .build(),
                         contentDescription = artist.name,
                         contentScale = ContentScale.Crop,
@@ -872,7 +871,7 @@ fun ArtistSquareCard(
 }
 
 // =========================================================================
-// 📌 ARTISTS SCREEN (With Persistent Scroll State & Sleek Search Icon)
+// 📌 ARTISTS SCREEN (Super-Fast Direct Memory Feed with Zero Parsing Lag)
 // =========================================================================
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -900,16 +899,17 @@ fun ArtistsScreen(
     var isSearchFieldVisible by remember { mutableStateOf(false) }
     var showSortMenu by remember { mutableStateOf(false) }
 
-    val artistsList = remember(manager.allSongs.size, ArtistDataManager.refreshTrigger) {
-        val updated = ArtistParsingEngine.parseAndGroupArtists(manager.allSongs)
-        manager.parsedArtistsList.clear()
-        manager.parsedArtistsList.addAll(updated)
-        updated
-    }
-
-    val sortedArtists: ImmutableList<ArtistItem> = remember(artistsList, query, manager.artistsSortOrder, ArtistDataManager.refreshTrigger) {
-        val filtered = if (query.isBlank()) artistsList
-        else artistsList.filter { it.name.contains(query, ignoreCase = true) }
+    // 🚀 Directly consumes pre-computed entries from manager.parsedArtistsList: Zero main-thread regex computation
+    val sortedArtists: ImmutableList<ArtistItem> = remember(
+        manager.parsedArtistsList.size,
+        manager.parsedArtistsList.toList(),
+        query,
+        manager.artistsSortOrder,
+        ArtistDataManager.refreshTrigger
+    ) {
+        val source = manager.parsedArtistsList
+        val filtered = if (query.isBlank()) source
+        else source.filter { it.name.contains(query, ignoreCase = true) }
 
         val comparator = when (manager.artistsSortOrder) {
             ArtistSortOrder.NAME_A_TO_Z -> Comparator<ArtistItem> { a, b ->
@@ -931,7 +931,6 @@ fun ArtistsScreen(
         (pinned + unpinned).toImmutableList()
     }
 
-    // 🚀 Auto-scroll to top immediately whenever sorting order changes
     LaunchedEffect(manager.artistsSortOrder) {
         coroutineScope.launch {
             try { listState.scrollToItem(0) } catch (_: Exception) {}
@@ -959,7 +958,6 @@ fun ArtistsScreen(
                 }
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    // 🚀 Compact Search Action Button to the left of the ViewMode button
                     Box(
                         modifier = Modifier
                             .size(38.dp)
@@ -1043,7 +1041,6 @@ fun ArtistsScreen(
                 }
             }
 
-            // 🚀 Collapsible animated search bar (only takes space when opened)
             AnimatedVisibility(
                 visible = isSearchFieldVisible,
                 enter = expandVertically(animationSpec = spring(stiffness = 550f)) + fadeIn(tween(180)),
@@ -1141,9 +1138,8 @@ fun ArtistsScreen(
                                                 AsyncImage(
                                                     model = ImageRequest.Builder(context)
                                                         .data(artUri)
-                                                        .size(100, 100)
+                                                        .size(90, 90)
                                                         .precision(Precision.INEXACT)
-                                                        .crossfade(80)
                                                         .build(),
                                                     contentDescription = artist.name,
                                                     contentScale = ContentScale.Crop,
@@ -1291,7 +1287,6 @@ fun ArtistsScreen(
                         }
                     }
 
-                    // Alphabet Fast-Scroll Bar
                     Column(
                         modifier = Modifier
                             .align(Alignment.CenterEnd)
@@ -1411,9 +1406,8 @@ fun ArtistDetailScreen(
 
     var showSortMenu by remember { mutableStateOf(false) }
 
-    val currentSongs = remember(artistItem.name, manager.parsedArtistsList, ArtistDataManager.refreshTrigger) {
-        val updatedGroup = ArtistParsingEngine.parseAndGroupArtists(manager.allSongs)
-        updatedGroup.find { it.name.equals(artistItem.name, ignoreCase = true) }?.songs ?: artistItem.songs
+    val currentSongs = remember(artistItem.name, manager.parsedArtistsList.size, ArtistDataManager.refreshTrigger) {
+        manager.parsedArtistsList.find { it.name.equals(artistItem.name, ignoreCase = true) }?.songs ?: artistItem.songs
     }
 
     val sortedSongs: ImmutableList<Song> = remember(currentSongs, manager.artistInnerSortOrder) {
@@ -1670,9 +1664,8 @@ fun ArtistAddSongsDialog(
         }
     }
 
-    val currentArtist = remember(artistName, manager.parsedArtistsList, ArtistDataManager.refreshTrigger) {
-        val updatedGroup = ArtistParsingEngine.parseAndGroupArtists(manager.allSongs)
-        updatedGroup.find { it.name.equals(artistName, ignoreCase = true) }
+    val currentArtist = remember(artistName, manager.parsedArtistsList.size, ArtistDataManager.refreshTrigger) {
+        manager.parsedArtistsList.find { it.name.equals(artistName, ignoreCase = true) }
     }
     val currentSongIdSet = remember(currentArtist) {
         currentArtist?.songs?.map { it.id }?.toHashSet() ?: hashSetOf()
