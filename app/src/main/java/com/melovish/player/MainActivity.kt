@@ -516,7 +516,6 @@ fun MelovishRootApp(manager: MusicManager) {
             isSettingsEqOpen || activeSongForMenu != null || activeTagEditSong != null || activeAddToPlaylistSong != null ||
             activeSongInfo != null
 
-    // 🚀 RESPONSIVE COLLAPSING/EXPANDING TOP BAR CONNECTION
     val topBarNestedScrollConnection = remember(isMainTabScreen, isAnyRootModalOpen) {
         object : NestedScrollConnection {
             override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
@@ -779,7 +778,6 @@ fun MelovishRootApp(manager: MusicManager) {
                 }
             }
 
-            // 🚀 MiniPlayer placed below modals (zIndex 10f) and hidden when any modal dialog is active
             if (manager.currentSong != null && !isPlayerExpanded && !isMiniPlayerDismissed && !isAnyRootModalOpen) {
                 Box(
                     modifier = Modifier
@@ -813,7 +811,6 @@ fun MelovishRootApp(manager: MusicManager) {
                 )
             }
 
-            // 🚀 Modal Scrim placed at zIndex(100f) strictly above the MiniPlayer
             AnimatedVisibility(
                 visible = isAnyRootModalOpen,
                 enter = fadeIn(tween(250)),
@@ -1086,8 +1083,8 @@ fun MelovishRootApp(manager: MusicManager) {
                             modifier = Modifier
                                 .fillMaxSize()
                                 .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
-                                rootSelectedArtistSongForAction = null
-                            },
+                                    rootSelectedArtistSongForAction = null
+                                },
                             contentAlignment = Alignment.BottomCenter
                         ) {
                             Box(
@@ -1170,8 +1167,8 @@ fun MelovishRootApp(manager: MusicManager) {
                             modifier = Modifier
                                 .fillMaxSize()
                                 .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
-                                rootSelectedArtistSongForAction = null
-                            },
+                                    rootSelectedArtistSongForAction = null
+                                },
                             contentAlignment = Alignment.BottomCenter
                         ) {
                             Box(
@@ -4556,7 +4553,7 @@ fun BottomNavBar(
     }
 }
 
-// ⚡ 120Hz Hardware-Buffered Recently Played Card with Pre-Scaled Bitmap Loading & Fallback
+// ⚡ 120Hz Hardware-Buffered Recently Played Card with Individual Bitmap Artwork & Fallback
 @UnstableApi
 @Composable
 fun RecentlyPlayedCard(song: Song, manager: MusicManager, onClick: () -> Unit) {
@@ -4727,7 +4724,7 @@ fun TopBar(manager: MusicManager, onProfileClick: () -> Unit, onSettingsClick: (
     }
 }
 
-// ⚡ 120Hz Hardware-Buffered Universal Song Row with Pre-Scaled Bitmap Loading & Fallback
+// ⚡ 120Hz Hardware-Buffered Universal Song Row with Individual Bitmap Artwork & Fallback
 @UnstableApi
 @Composable
 fun UniversalSongRow(song: Song, manager: MusicManager, isDark: Boolean, onPlay: () -> Unit, onMenuClick: () -> Unit) {

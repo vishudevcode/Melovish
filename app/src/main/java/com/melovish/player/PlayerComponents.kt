@@ -127,6 +127,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.File
 import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -1136,8 +1137,8 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                                 val iconTint = if (isDark) Color(0xFF0F172A) else Color.White
                                 if (isThisSongPlaying) {
                                     Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                                        Box(modifier = Modifier.size(7.5.dp, 28.dp).clip(RoundedCornerShape(2.dp)).background(iconTint))
-                                        Box(modifier = Modifier.size(7.5.dp, 28.dp).clip(RoundedCornerShape(2.dp)).background(iconTint))
+                                        Box(modifier = Modifier.size(7.5.dp, 28.dp).clip(RoundedCornerShape(4.dp)).background(iconTint))
+                                        Box(modifier = Modifier.size(7.5.dp, 28.dp).clip(RoundedCornerShape(4.dp)).background(iconTint))
                                     }
                                 } else {
                                     Canvas(
@@ -1461,8 +1462,8 @@ fun QueueSheet(
                                         val clampedTarget = targetIndex.coerceIn(0, tempQueue.size - 1)
                                         if (clampedTarget != fromIndex) {
                                             manager.triggerHapticFeedback(false)
-                                            val moved = tempQueue.removeAt(fromIndex)
-                                            tempQueue.add(clampedTarget, moved)
+                                            val movedSong = tempQueue.removeAt(fromIndex)
+                                            tempQueue.add(clampedTarget, movedSong)
                                         }
                                     }
                                 }
@@ -2180,10 +2181,14 @@ fun MenuRow(icon: String, text: String, isDark: Boolean, isDanger: Boolean = fal
     }
 }
 
-// Mini Player Dock with Frosted Specular Border & Uniform Clean Background
+// Mini Player Dock with Frosted Specular Border & Individual Track Artwork
 @UnstableApi
 @Composable
-fun MiniPlayerDock(manager: MusicManager, onClick: () -> Unit) {
+fun MiniPlayerDock(
+    manager: MusicManager,
+    onClick: () -> Unit,
+    onDismiss: () -> Unit = {}
+) {
     val song = manager.currentSong ?: return
     val accent = manager.accentColor
     val isDark = manager.isDarkMode
@@ -2193,40 +2198,82 @@ fun MiniPlayerDock(manager: MusicManager, onClick: () -> Unit) {
         if (albumArtBitmap == null) albumArtBitmap = manager.loadAlbumArtAsync(song)
     }
 
+    val baseScrimAlpha = (0.55f + (manager.frostedGlassOpacity * 0.40f)).coerceIn(0.50f, 0.96f)
+    val scrimColor = if (isDark) Color(0xFF050811).copy(alpha = baseScrimAlpha) else Color(0xFFE2E8F0).copy(alpha = baseScrimAlpha)
+    val dialogColor = manager.getCurrentDialogColor()
+
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 6.dp)
+            .padding(horizontal = 14.dp, vertical = 6.dp)
+            .shadow(
+                elevation = 16.dp,
+                shape = RoundedCornerShape(22.dp),
+                spotColor = accent.copy(alpha = 0.35f),
+                ambientColor = if (isDark) Color.Black.copy(alpha = 0.70f) else Color(0x44000000)
+            )
             .clip(RoundedCornerShape(22.dp))
-            .background(manager.getCurrentBackgroundColor().copy(alpha = 0.85f))
-            .background(manager.getCurrentSurfaceColor())
+            .background(scrimColor)
+            .background(dialogColor)
             .border(1.2.dp, manager.getGlassBorderBrush(), RoundedCornerShape(22.dp))
-            .pointerInput(Unit) {
+            .pointerInput(manager.isPlaying) {
                 detectVerticalDragGestures { _, dragAmount ->
-                    if (dragAmount < -24f) {
+                    if (dragAmount < -22f) {
                         onClick()
+                    } else if (dragAmount > 32f && !manager.isPlaying) {
+                        manager.triggerHapticFeedback(false)
+                        onDismiss()
                     }
                 }
             }
             .clickable { onClick() }
-            .padding(horizontal = 14.dp, vertical = 8.dp)
+            .padding(horizontal = 14.dp, vertical = 9.dp)
     ) {
         Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Box(modifier = Modifier.size(44.dp).clip(RoundedCornerShape(10.dp)).background(Color(0xFF1E293B)), contentAlignment = Alignment.Center) {
+            Box(
+                modifier = Modifier
+                    .size(46.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Color(0xFF1E293B)),
+                contentAlignment = Alignment.Center
+            ) {
                 if (albumArtBitmap != null) {
-                    Image(bitmap = albumArtBitmap!!.asImageBitmap(), contentDescription = "Art", modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                    Image(
+                        bitmap = albumArtBitmap!!.asImageBitmap(),
+                        contentDescription = "Art",
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop
+                    )
                 } else {
                     Text("🎵", fontSize = 20.sp)
                 }
             }
+
             Spacer(modifier = Modifier.width(12.dp))
+
             Column(modifier = Modifier.weight(1f)) {
-                Text(song.title, color = manager.getCurrentTextColor(), fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text("${formatFileSize(song.size)} • ${if (song.artist.isNotBlank()) song.artist else "Melovish"}", color = accent, fontSize = 11.sp, maxLines = 1)
+                Text(
+                    text = song.title,
+                    color = manager.getCurrentTextColor(),
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = "${formatFileSize(song.size)} • ${if (song.artist.isNotBlank()) song.artist else "Melovish"}",
+                    color = accent,
+                    fontSize = 11.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
             }
+
+            Spacer(modifier = Modifier.width(8.dp))
+
             Box(
                 modifier = Modifier
-                    .size(40.dp)
+                    .size(42.dp)
                     .shadow(elevation = 6.dp, shape = CircleShape, spotColor = accent)
                     .clip(CircleShape)
                     .background(accent)
