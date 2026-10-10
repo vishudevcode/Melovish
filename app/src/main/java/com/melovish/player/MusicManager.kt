@@ -78,10 +78,6 @@ import org.jaudiotagger.tag.FieldKey
 import org.jaudiotagger.tag.images.ArtworkFactory
 import org.json.JSONArray
 import org.json.JSONObject
-import java.io.BufferedInputStream
-import java.io.BufferedOutputStream
-import java.io.DataInputStream
-import java.io.DataOutputStream
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
@@ -333,7 +329,7 @@ class MusicManager(val context: Context) {
     )
 
     // =========================================================================
-    // 🎨 THEME & SPECULAR FROSTED GLASS ENGINE
+    // THEME & SPECULAR FROSTED GLASS ENGINE
     // =========================================================================
 
     var themeMode by mutableStateOf(prefs.getString("theme_mode", "System") ?: "System")
@@ -1472,84 +1468,67 @@ class MusicManager(val context: Context) {
         } catch (_: Exception) {}
     }
 
-    // ⚡ Ultra-Fast Binary Cache: Zero JSON parsing delay on cold boot
+    // Instant Startup Cache Engine
     private suspend fun loadInstantCacheAsync() = withContext(Dispatchers.IO) {
-        val cacheFile = File(context.filesDir, "songs_catalog.bin")
-        if (!cacheFile.exists() || cacheFile.length() == 0L) {
-            withContext(Dispatchers.Main.immediate) { isInitialLoading = false }
-            return@withContext
-        }
-
         try {
-            DataInputStream(BufferedInputStream(FileInputStream(cacheFile), 65536)).use { dis ->
-                val count = dis.readInt()
-                val list = ArrayList<Song>(count)
-                for (i in 0 until count) {
-                    val id = dis.readLong()
-                    val title = dis.readUTF()
-                    val artist = dis.readUTF()
-                    val album = dis.readUTF()
-                    val albumId = dis.readLong()
-                    val duration = dis.readLong()
-                    val size = dis.readLong()
-                    val uriStr = dis.readUTF()
-                    val path = dis.readUTF()
-                    val folderName = dis.readUTF()
-                    val releaseDate = dis.readUTF()
-                    val playCount = dis.readInt()
-                    val lastPlayed = dis.readLong()
-                    val isFav = dis.readBoolean()
-                    val customCover = dis.readUTF().ifBlank { null }
-                    val audioFormat = dis.readUTF()
-                    val sampleRateHz = dis.readInt()
-                    val bitDepth = dis.readInt()
+            val cachedJson = prefs.getString("cached_songs_catalog", null)
+            if (cachedJson.isNullOrBlank()) {
+                withContext(Dispatchers.Main.immediate) { isInitialLoading = false }
+                return@withContext
+            }
 
-                    list.add(
-                        Song(
-                            id = id,
-                            title = title,
-                            artist = artist,
-                            album = album,
-                            albumId = albumId,
-                            duration = duration,
-                            size = size,
-                            uri = Uri.parse(uriStr),
-                            path = path,
-                            folderName = folderName,
-                            releaseDate = releaseDate,
-                            playCount = playCount,
-                            lastPlayed = lastPlayed,
-                            isFavorite = isFav,
-                            customCoverPath = customCover,
-                            audioFormat = audioFormat,
-                            sampleRateHz = sampleRateHz,
-                            bitDepth = bitDepth,
-                            replayGainTrackDb = -3.0f,
-                            replayGainAlbumDb = -3.0f
-                        )
+            val arr = JSONArray(cachedJson)
+            val list = ArrayList<Song>(arr.length())
+            for (i in 0 until arr.length()) {
+                val o = arr.getJSONObject(i)
+                list.add(
+                    Song(
+                        id = o.getLong("id"),
+                        title = o.getString("title"),
+                        artist = o.getString("artist"),
+                        album = o.getString("album"),
+                        albumId = o.getLong("albumId"),
+                        duration = o.getLong("duration"),
+                        size = o.getLong("size"),
+                        uri = Uri.parse(o.getString("uri")),
+                        path = o.getString("path"),
+                        folderName = o.getString("folderName"),
+                        releaseDate = o.optString("releaseDate", ""),
+                        playCount = o.optInt("playCount", 0),
+                        lastPlayed = o.optLong("lastPlayed", 0L),
+                        isFavorite = o.optBoolean("isFavorite", false),
+                        customCoverPath = o.optString("customCoverPath", null),
+                        audioFormat = o.optString("audioFormat", "MP3"),
+                        sampleRateHz = o.optInt("sampleRateHz", 44100),
+                        bitDepth = o.optInt("bitDepth", 16),
+                        replayGainTrackDb = -3.0f,
+                        replayGainAlbumDb = -3.0f
                     )
+                )
+            }
+            if (list.isNotEmpty()) {
+                ArtistDataManager.init(context)
+                val preParsedArtists = withContext(Dispatchers.Default) {
+                    ArtistParsingEngine.parseAndGroupArtists(list)
                 }
 
-                if (list.isNotEmpty()) {
-                    ArtistDataManager.init(context)
-                    val parsed = ArtistParsingEngine.parseAndGroupArtists(list)
-
-                    withContext(Dispatchers.Main.immediate) {
-                        allSongs.clear()
-                        allSongs.addAll(list)
-                        rawStorageSongs.clear()
-                        rawStorageSongs.addAll(list)
-                        parsedArtistsList.clear()
-                        parsedArtistsList.addAll(parsed)
-                        refreshHistory()
-                        isInitialLoading = false
-                    }
-                } else {
-                    withContext(Dispatchers.Main.immediate) { isInitialLoading = false }
+                withContext(Dispatchers.Main.immediate) {
+                    allSongs.clear()
+                    allSongs.addAll(list)
+                    rawStorageSongs.clear()
+                    rawStorageSongs.addAll(list)
+                    refreshHistory()
+                    parsedArtistsList.clear()
+                    parsedArtistsList.addAll(preParsedArtists)
+                    isInitialLoading = false
                 }
+            } else {
+                withContext(Dispatchers.Main.immediate) { isInitialLoading = false }
             }
         } catch (e: Throwable) {
-            try { cacheFile.delete() } catch (_: Exception) {}
+            try {
+                prefs.edit().remove("cached_songs_catalog").apply()
+            } catch (_: Exception) {}
             withContext(Dispatchers.Main.immediate) { isInitialLoading = false }
         }
     }
@@ -1557,38 +1536,44 @@ class MusicManager(val context: Context) {
     private fun persistSongsCache(songs: List<Song>) {
         managerScope.launch(Dispatchers.IO) {
             try {
-                val cacheFile = File(context.filesDir, "songs_catalog.bin")
-                val tempFile = File(context.filesDir, "songs_catalog.tmp")
-
-                DataOutputStream(BufferedOutputStream(FileOutputStream(tempFile), 65536)).use { dos ->
-                    val writeCount = songs.size.coerceAtMost(3000)
-                    dos.writeInt(writeCount)
-                    for (i in 0 until writeCount) {
-                        val s = songs[i]
-                        dos.writeLong(s.id)
-                        dos.writeUTF(s.title)
-                        dos.writeUTF(s.artist)
-                        dos.writeUTF(s.album)
-                        dos.writeLong(s.albumId)
-                        dos.writeLong(s.duration)
-                        dos.writeLong(s.size)
-                        dos.writeUTF(s.uri.toString())
-                        dos.writeUTF(s.path)
-                        dos.writeUTF(s.folderName)
-                        dos.writeUTF(s.releaseDate)
-                        dos.writeInt(s.playCount)
-                        dos.writeLong(s.lastPlayed)
-                        dos.writeBoolean(s.isFavorite)
-                        dos.writeUTF(s.customCoverPath ?: "")
-                        dos.writeUTF(s.audioFormat)
-                        dos.writeInt(s.sampleRateHz)
-                        dos.writeInt(s.bitDepth)
+                val arr = JSONArray()
+                songs.take(100).forEach { s ->
+                    val o = JSONObject().apply {
+                        put("id", s.id)
+                        put("title", s.title)
+                        put("artist", s.artist)
+                        put("album", s.album)
+                        put("albumId", s.albumId)
+                        put("duration", s.duration)
+                        put("size", s.size)
+                        put("uri", s.uri.toString())
+                        put("path", s.path)
+                        put("folderName", s.folderName)
+                        put("releaseDate", s.releaseDate)
+                        put("playCount", s.playCount)
+                        put("lastPlayed", s.lastPlayed)
+                        put("isFavorite", s.isFavorite)
+                        put("customCoverPath", s.customCoverPath ?: "")
+                        put("audioFormat", s.audioFormat)
+                        put("sampleRateHz", s.sampleRateHz)
+                        put("bitDepth", s.bitDepth)
                     }
+                    arr.put(o)
                 }
-                if (tempFile.exists()) {
-                    tempFile.renameTo(cacheFile)
-                }
+                prefs.edit().putString("cached_songs_catalog", arr.toString()).apply()
             } catch (_: Exception) {}
+        }
+    }
+
+    // Background Threaded Artist Sync
+    fun refreshArtistsInBackground() {
+        managerScope.launch(Dispatchers.Default) {
+            ArtistDataManager.init(context)
+            val parsed = ArtistParsingEngine.parseAndGroupArtists(allSongs)
+            withContext(Dispatchers.Main.immediate) {
+                parsedArtistsList.clear()
+                parsedArtistsList.addAll(parsed)
+            }
         }
     }
 
@@ -1819,7 +1804,7 @@ class MusicManager(val context: Context) {
         }
     }
 
-    // 🚀 Safe Queue Item Moving: preserves current playback and never pauses the track
+    // Queue Item Moving: preserves uninterrupted playback and current track selection
     fun moveQueueItem(fromIndex: Int, toIndex: Int) {
         if (fromIndex in playbackQueue.indices && toIndex in playbackQueue.indices && fromIndex != toIndex) {
             val currentActiveSong = currentSong
@@ -1832,7 +1817,6 @@ class MusicManager(val context: Context) {
                 player.moveMediaItem(fromIndex, toIndex)
             } catch (_: Exception) {}
 
-            // Keep the active song pinned to whatever was playing
             if (currentActiveSong != null) {
                 currentSong = currentActiveSong
                 if (isPlayingOriginal && !player.isPlaying) {
@@ -2349,13 +2333,7 @@ class MusicManager(val context: Context) {
                 ).show()
             }
 
-            val parsed = withContext(Dispatchers.Default) {
-                ArtistParsingEngine.parseAndGroupArtists(allSongs)
-            }
-            withContext(Dispatchers.Main.immediate) {
-                parsedArtistsList.clear()
-                parsedArtistsList.addAll(parsed)
-            }
+            refreshArtistsInBackground()
         }
     }
 
@@ -2527,13 +2505,7 @@ class MusicManager(val context: Context) {
             playbackQueue.removeAll { it.id == song.id }
             historySongs.removeAll { it.id == song.id }
 
-            managerScope.launch(Dispatchers.Default) {
-                val parsed = ArtistParsingEngine.parseAndGroupArtists(allSongs)
-                withContext(Dispatchers.Main.immediate) {
-                    parsedArtistsList.clear()
-                    parsedArtistsList.addAll(parsed)
-                }
-            }
+            refreshArtistsInBackground()
             true
         } catch (_: Exception) {
             false

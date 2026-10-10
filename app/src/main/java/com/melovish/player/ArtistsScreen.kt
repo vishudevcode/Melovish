@@ -498,9 +498,7 @@ fun RootArtistActionModal(
     ) { uri: Uri? ->
         if (uri != null && artistForCustomImage != null) {
             ArtistDataManager.setArtistCustomImage(context, artistForCustomImage!!.name, uri)
-            val updated = ArtistParsingEngine.parseAndGroupArtists(manager.allSongs)
-            manager.parsedArtistsList.clear()
-            manager.parsedArtistsList.addAll(updated)
+            manager.refreshArtistsInBackground()
             Toast.makeText(context, "Artist image updated!", Toast.LENGTH_SHORT).show()
         }
         artistForCustomImage = null
@@ -568,9 +566,7 @@ fun RootArtistActionModal(
                                     .background(if (manager.isDarkMode) Color(0x1AFFFFFF) else Color(0xFFF1F5F9))
                                     .clickable {
                                         ArtistDataManager.mergeArtists(src.name, targetArtist.name)
-                                        val updated = ArtistParsingEngine.parseAndGroupArtists(manager.allSongs)
-                                        manager.parsedArtistsList.clear()
-                                        manager.parsedArtistsList.addAll(updated)
+                                        manager.refreshArtistsInBackground()
                                         Toast.makeText(context, "Merged into ${targetArtist.name}", Toast.LENGTH_SHORT).show()
                                         onDismiss()
                                     }
@@ -629,9 +625,7 @@ fun RootArtistActionModal(
                         .clip(RoundedCornerShape(12.dp))
                         .clickable {
                             ArtistDataManager.togglePinArtist(artist.name)
-                            val updated = ArtistParsingEngine.parseAndGroupArtists(manager.allSongs)
-                            manager.parsedArtistsList.clear()
-                            manager.parsedArtistsList.addAll(updated)
+                            manager.refreshArtistsInBackground()
                             onDismiss()
                         }
                         .padding(12.dp),
@@ -695,9 +689,7 @@ fun RootArtistActionModal(
                         .clip(RoundedCornerShape(12.dp))
                         .clickable {
                             ArtistDataManager.hideArtist(artist.name)
-                            val updated = ArtistParsingEngine.parseAndGroupArtists(manager.allSongs)
-                            manager.parsedArtistsList.clear()
-                            manager.parsedArtistsList.addAll(updated)
+                            manager.refreshArtistsInBackground()
                             onDismiss()
                         }
                         .padding(12.dp),
@@ -789,8 +781,9 @@ fun ArtistSquareCard(
                     AsyncImage(
                         model = ImageRequest.Builder(context)
                             .data(artUri)
-                            .size(120, 120)
+                            .size(140, 140)
                             .precision(Precision.INEXACT)
+                            .crossfade(80)
                             .build(),
                         contentDescription = artist.name,
                         contentScale = ContentScale.Crop,
@@ -871,7 +864,7 @@ fun ArtistSquareCard(
 }
 
 // =========================================================================
-// 📌 ARTISTS SCREEN (Super-Fast Direct Memory Feed with Zero Parsing Lag)
+// 📌 ARTISTS SCREEN (Pre-Parsed Background Cache with 0ms Tab Switching)
 // =========================================================================
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -887,7 +880,12 @@ fun ArtistsScreen(
     onOpenGridSizeDialog: () -> Unit = {}
 ) {
     val context = LocalContext.current
-    remember { ArtistDataManager.init(context) }
+    LaunchedEffect(Unit) {
+        ArtistDataManager.init(context)
+        if (manager.parsedArtistsList.isEmpty() && manager.allSongs.isNotEmpty()) {
+            manager.refreshArtistsInBackground()
+        }
+    }
 
     val textColor = manager.getCurrentTextColor()
     val cardBg = manager.getCurrentSurfaceColor()
@@ -899,17 +897,12 @@ fun ArtistsScreen(
     var isSearchFieldVisible by remember { mutableStateOf(false) }
     var showSortMenu by remember { mutableStateOf(false) }
 
-    // 🚀 Directly consumes pre-computed entries from manager.parsedArtistsList: Zero main-thread regex computation
-    val sortedArtists: ImmutableList<ArtistItem> = remember(
-        manager.parsedArtistsList.size,
-        manager.parsedArtistsList.toList(),
-        query,
-        manager.artistsSortOrder,
-        ArtistDataManager.refreshTrigger
-    ) {
-        val source = manager.parsedArtistsList
-        val filtered = if (query.isBlank()) source
-        else source.filter { it.name.contains(query, ignoreCase = true) }
+    // Instant read: precomputed in background
+    val artistsList = manager.parsedArtistsList
+
+    val sortedArtists: ImmutableList<ArtistItem> = remember(artistsList.size, artistsList.toList(), query, manager.artistsSortOrder, ArtistDataManager.refreshTrigger) {
+        val filtered = if (query.isBlank()) artistsList
+        else artistsList.filter { it.name.contains(query, ignoreCase = true) }
 
         val comparator = when (manager.artistsSortOrder) {
             ArtistSortOrder.NAME_A_TO_Z -> Comparator<ArtistItem> { a, b ->
@@ -931,15 +924,28 @@ fun ArtistsScreen(
         (pinned + unpinned).toImmutableList()
     }
 
+    // O(1) Precomputed alphabet jump map
+    val alphabet = remember { listOf('#') + ('A'..'Z').toList() }
+    val alphabetIndexMap = remember(sortedArtists) {
+        val map = HashMap<Char, Int>()
+        sortedArtists.forEachIndexed { index, artist ->
+            val firstChar = artist.name.firstOrNull()?.uppercaseChar() ?: '#'
+            val key = if (firstChar in 'A'..'Z') firstChar else '#'
+            if (!map.containsKey(key)) {
+                map[key] = index
+            }
+        }
+        map
+    }
+
+    var activeBubbleChar by remember { mutableStateOf<Char?>(null) }
+
     LaunchedEffect(manager.artistsSortOrder) {
         coroutineScope.launch {
             try { listState.scrollToItem(0) } catch (_: Exception) {}
             try { gridState.scrollToItem(0) } catch (_: Exception) {}
         }
     }
-
-    val alphabet = remember { listOf('#') + ('A'..'Z').toList() }
-    var activeBubbleChar by remember { mutableStateOf<Char?>(null) }
 
     Box(modifier = Modifier.fillMaxSize()) {
         Column(
@@ -1138,8 +1144,9 @@ fun ArtistsScreen(
                                                 AsyncImage(
                                                     model = ImageRequest.Builder(context)
                                                         .data(artUri)
-                                                        .size(90, 90)
+                                                        .size(100, 100)
                                                         .precision(Precision.INEXACT)
+                                                        .crossfade(80)
                                                         .build(),
                                                     contentDescription = artist.name,
                                                     contentScale = ContentScale.Crop,
@@ -1287,23 +1294,19 @@ fun ArtistsScreen(
                         }
                     }
 
+                    // Alphabet Fast-Scroll Bar with O(1) jump
                     Column(
                         modifier = Modifier
                             .align(Alignment.CenterEnd)
                             .padding(bottom = 80.dp)
-                            .pointerInput(sortedArtists) {
+                            .pointerInput(alphabetIndexMap) {
                                 detectVerticalDragGestures(
                                     onDragStart = { offset ->
                                         val total = alphabet.size
                                         val index = ((offset.y / size.height) * total).toInt().coerceIn(0, total - 1)
                                         val char = alphabet[index]
                                         activeBubbleChar = char
-                                        val targetIndex = if (char == '#') {
-                                            sortedArtists.indexOfFirst { it.name.isNotEmpty() && !it.name.first().isLetter() }
-                                        } else {
-                                            sortedArtists.indexOfFirst { it.name.startsWith(char, ignoreCase = true) }
-                                        }
-                                        if (targetIndex != -1) {
+                                        alphabetIndexMap[char]?.let { targetIndex ->
                                             coroutineScope.launch {
                                                 listState.scrollToItem(targetIndex)
                                                 gridState.scrollToItem(targetIndex)
@@ -1317,12 +1320,7 @@ fun ArtistsScreen(
                                         val index = ((change.position.y / size.height) * total).toInt().coerceIn(0, total - 1)
                                         val char = alphabet[index]
                                         activeBubbleChar = char
-                                        val targetIndex = if (char == '#') {
-                                            sortedArtists.indexOfFirst { it.name.isNotEmpty() && !it.name.first().isLetter() }
-                                        } else {
-                                            sortedArtists.indexOfFirst { it.name.startsWith(char, ignoreCase = true) }
-                                        }
-                                        if (targetIndex != -1) {
+                                        alphabetIndexMap[char]?.let { targetIndex ->
                                             coroutineScope.launch {
                                                 listState.scrollToItem(targetIndex)
                                                 gridState.scrollToItem(targetIndex)
@@ -1343,12 +1341,7 @@ fun ArtistsScreen(
                                 modifier = Modifier
                                     .clip(CircleShape)
                                     .clickable {
-                                        val targetIndex = if (char == '#') {
-                                            sortedArtists.indexOfFirst { it.name.isNotEmpty() && !it.name.first().isLetter() }
-                                        } else {
-                                            sortedArtists.indexOfFirst { it.name.startsWith(char, ignoreCase = true) }
-                                        }
-                                        if (targetIndex != -1) {
+                                        alphabetIndexMap[char]?.let { targetIndex ->
                                             coroutineScope.launch {
                                                 listState.scrollToItem(targetIndex)
                                                 gridState.scrollToItem(targetIndex)
@@ -1406,8 +1399,9 @@ fun ArtistDetailScreen(
 
     var showSortMenu by remember { mutableStateOf(false) }
 
-    val currentSongs = remember(artistItem.name, manager.parsedArtistsList.size, ArtistDataManager.refreshTrigger) {
-        manager.parsedArtistsList.find { it.name.equals(artistItem.name, ignoreCase = true) }?.songs ?: artistItem.songs
+    val currentSongs = remember(artistItem.name, manager.parsedArtistsList, ArtistDataManager.refreshTrigger) {
+        val updatedGroup = manager.parsedArtistsList
+        updatedGroup.find { it.name.equals(artistItem.name, ignoreCase = true) }?.songs ?: artistItem.songs
     }
 
     val sortedSongs: ImmutableList<Song> = remember(currentSongs, manager.artistInnerSortOrder) {
@@ -1664,8 +1658,9 @@ fun ArtistAddSongsDialog(
         }
     }
 
-    val currentArtist = remember(artistName, manager.parsedArtistsList.size, ArtistDataManager.refreshTrigger) {
-        manager.parsedArtistsList.find { it.name.equals(artistName, ignoreCase = true) }
+    val currentArtist = remember(artistName, manager.parsedArtistsList, ArtistDataManager.refreshTrigger) {
+        val updatedGroup = manager.parsedArtistsList
+        updatedGroup.find { it.name.equals(artistName, ignoreCase = true) }
     }
     val currentSongIdSet = remember(currentArtist) {
         currentArtist?.songs?.map { it.id }?.toHashSet() ?: hashSetOf()
@@ -1741,9 +1736,7 @@ fun ArtistAddSongsDialog(
                                 .background(if (isDark) Color(0x1AFFFFFF) else Color(0xFFF1F5F9))
                                 .clickable {
                                     ArtistDataManager.addSongToArtist(artistName, song.id)
-                                    val updated = ArtistParsingEngine.parseAndGroupArtists(manager.allSongs)
-                                    manager.parsedArtistsList.clear()
-                                    manager.parsedArtistsList.addAll(updated)
+                                    manager.refreshArtistsInBackground()
                                     Toast.makeText(context, "Added ${song.title}", Toast.LENGTH_SHORT).show()
                                 }
                                 .padding(12.dp),
@@ -1901,9 +1894,7 @@ fun CreateArtistDialog(
                         val name = artistName.trim()
                         if (name.isNotBlank()) {
                             ArtistDataManager.createNewArtist(name, selectedSongs)
-                            val updated = ArtistParsingEngine.parseAndGroupArtists(manager.allSongs)
-                            manager.parsedArtistsList.clear()
-                            manager.parsedArtistsList.addAll(updated)
+                            manager.refreshArtistsInBackground()
                             Toast.makeText(context, "Artist created!", Toast.LENGTH_SHORT).show()
                             onDismiss()
                         } else {

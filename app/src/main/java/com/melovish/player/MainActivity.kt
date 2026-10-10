@@ -779,7 +779,7 @@ fun MelovishRootApp(manager: MusicManager) {
                 }
             }
 
-            // 🚀 MiniPlayer automatically hides when any dialog opens, placed below modals (zIndex 10f)
+            // 🚀 MiniPlayer placed below modals (zIndex 10f) and hidden when any modal dialog is active
             if (manager.currentSong != null && !isPlayerExpanded && !isMiniPlayerDismissed && !isAnyRootModalOpen) {
                 Box(
                     modifier = Modifier
@@ -813,12 +813,12 @@ fun MelovishRootApp(manager: MusicManager) {
                 )
             }
 
-            // 🚀 Modal Background Scrim placed at zIndex(999f) above the MiniPlayer
+            // 🚀 Modal Scrim placed at zIndex(100f) strictly above the MiniPlayer
             AnimatedVisibility(
                 visible = isAnyRootModalOpen,
                 enter = fadeIn(tween(250)),
                 exit = fadeOut(tween(200)),
-                modifier = Modifier.zIndex(999f)
+                modifier = Modifier.zIndex(100f)
             ) {
                 Box(
                     modifier = Modifier
@@ -831,7 +831,7 @@ fun MelovishRootApp(manager: MusicManager) {
                 visible = isPlayerExpanded,
                 enter = slideInVertically(initialOffsetY = { it }),
                 exit = slideOutVertically(targetOffsetY = { it }),
-                modifier = Modifier.zIndex(1000f)
+                modifier = Modifier.zIndex(200f)
             ) {
                 FullPlayerSheet(manager = manager, onDismiss = { isPlayerExpanded = false })
             }
@@ -1086,8 +1086,8 @@ fun MelovishRootApp(manager: MusicManager) {
                             modifier = Modifier
                                 .fillMaxSize()
                                 .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
-                                    rootSelectedArtistSongForAction = null
-                                },
+                                rootSelectedArtistSongForAction = null
+                            },
                             contentAlignment = Alignment.BottomCenter
                         ) {
                             Box(
@@ -1122,9 +1122,7 @@ fun MelovishRootApp(manager: MusicManager) {
                                             .clip(RoundedCornerShape(12.dp))
                                             .clickable {
                                                 ArtistDataManager.removeSongFromArtist(artistName, song.id)
-                                                val updated = ArtistParsingEngine.parseAndGroupArtists(manager.allSongs)
-                                                manager.parsedArtistsList.clear()
-                                                manager.parsedArtistsList.addAll(updated)
+                                                manager.refreshArtistsInBackground()
                                                 rootSelectedArtistSongForAction = null
                                             }
                                             .padding(12.dp),
@@ -1172,8 +1170,8 @@ fun MelovishRootApp(manager: MusicManager) {
                             modifier = Modifier
                                 .fillMaxSize()
                                 .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
-                                    rootSelectedArtistSongForAction = null
-                                },
+                                rootSelectedArtistSongForAction = null
+                            },
                             contentAlignment = Alignment.BottomCenter
                         ) {
                             Box(
@@ -1218,9 +1216,7 @@ fun MelovishRootApp(manager: MusicManager) {
                                                     .background(if (isDark) Color(0x1AFFFFFF) else Color(0xFFF1F5F9))
                                                 .clickable {
                                                     ArtistDataManager.moveSongToArtist(song, artistName, target.name)
-                                                    val updated = ArtistParsingEngine.parseAndGroupArtists(manager.allSongs)
-                                                    manager.parsedArtistsList.clear()
-                                                    manager.parsedArtistsList.addAll(updated)
+                                                    manager.refreshArtistsInBackground()
                                                     Toast.makeText(context, "Moved to ${target.name}", Toast.LENGTH_SHORT).show()
                                                     rootSelectedArtistSongForAction = null
                                                 }
@@ -3091,7 +3087,7 @@ fun ShimmerSkeletonGridItem(aspectRatio: Float = 1f, isDark: Boolean, isHero: Bo
     )
 }
 
-// ⚡ Hardware-Buffered Square Album Card (Instant Zero-Delay Render)
+// ⚡ 120Hz Hardware-Buffered Square Album Card using Coil AsyncImage
 @UnstableApi
 @Composable
 fun SquareAlbumOverlayCard(
@@ -3106,14 +3102,13 @@ fun SquareAlbumOverlayCard(
     val accent = manager.accentColor
     val glassBorderBrush = manager.getGlassBorderBrush()
     val artUri = remember(song.id, song.albumId, song.customCoverPath) { manager.getAlbumArtUri(song) }
-    val cardSurface = manager.getCurrentSurfaceColor()
 
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .aspectRatio(1f)
             .clip(RoundedCornerShape(18.dp))
-            .background(cardSurface)
+            .background(Color(0xFF1E293B))
             .border(
                 width = if (isPlayingThis) 2.dp else 1.2.dp,
                 brush = if (isPlayingThis) Brush.linearGradient(listOf(accent, accent)) else glassBorderBrush,
@@ -3127,6 +3122,7 @@ fun SquareAlbumOverlayCard(
                     .data(artUri)
                     .size(140, 140)
                     .precision(Precision.INEXACT)
+                    .crossfade(80)
                     .build(),
                 contentDescription = song.title,
                 contentScale = ContentScale.Crop,
@@ -3179,7 +3175,7 @@ fun SquareAlbumOverlayCard(
     }
 }
 
-// ⚡ Hardware-Buffered Hero Album Card (Instant Zero-Delay Render)
+// ⚡ 120Hz Hardware-Buffered Hero Album Card using Coil AsyncImage
 @UnstableApi
 @Composable
 fun HeroAlbumCard(
@@ -3194,14 +3190,13 @@ fun HeroAlbumCard(
     val accent = manager.accentColor
     val glassBorderBrush = manager.getGlassBorderBrush()
     val artUri = remember(song.id, song.albumId, song.customCoverPath) { manager.getAlbumArtUri(song) }
-    val cardSurface = manager.getCurrentSurfaceColor()
 
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .aspectRatio(1f)
             .clip(RoundedCornerShape(20.dp))
-            .background(cardSurface)
+            .background(Color(0xFF1E293B))
             .border(
                 width = if (isPlayingThis) 2.5.dp else 1.2.dp,
                 brush = if (isPlayingThis) Brush.linearGradient(listOf(accent, accent)) else glassBorderBrush,
@@ -3215,6 +3210,7 @@ fun HeroAlbumCard(
                     .data(artUri)
                     .size(240, 240)
                     .precision(Precision.INEXACT)
+                    .crossfade(80)
                     .build(),
                 contentDescription = song.title,
                 contentScale = ContentScale.Crop,
@@ -3872,7 +3868,7 @@ fun LibraryFolderSquareCard(
 }
 
 // =========================================================================
-// 📌 SEARCH SCREEN (Pure, Fast & Light - With Instant Double-Tap Automation)
+// 📌 SEARCH SCREEN (With Double-Tap / Re-click Auto-Focus & Soft Keyboard)
 // =========================================================================
 
 @UnstableApi
@@ -3934,7 +3930,7 @@ fun SearchScreen(
     // 🚀 React to Search Tab double-tap / re-click to request focus & open software keyboard
     LaunchedEffect(focusSearchTrigger) {
         if (focusSearchTrigger > 0L) {
-            delay(100)
+            delay(120)
             try {
                 focusRequester.requestFocus()
                 keyboardController?.show()
@@ -4566,21 +4562,20 @@ fun BottomNavBar(
     }
 }
 
-// ⚡ Hardware-Buffered Recently Played Card (Instant Zero-Delay Render)
+// ⚡ 120Hz Hardware-Buffered Recently Played Card with Pre-Scaled AsyncImage
 @UnstableApi
 @Composable
 fun RecentlyPlayedCard(song: Song, manager: MusicManager, onClick: () -> Unit) {
     val context = LocalContext.current
     val glassBorderBrush = manager.getGlassBorderBrush()
     val artUri = remember(song.id, song.albumId, song.customCoverPath) { manager.getAlbumArtUri(song) }
-    val cardSurface = manager.getCurrentSurfaceColor()
 
     Box(
         modifier = Modifier
             .width(116.dp)
             .height(116.dp)
             .clip(RoundedCornerShape(20.dp))
-            .background(cardSurface)
+            .background(Color(0xFF1E293B))
             .border(1.2.dp, glassBorderBrush, RoundedCornerShape(20.dp))
             .clickable { onClick() }
     ) {
@@ -4590,6 +4585,7 @@ fun RecentlyPlayedCard(song: Song, manager: MusicManager, onClick: () -> Unit) {
                     .data(artUri)
                     .size(140, 140)
                     .precision(Precision.INEXACT)
+                    .crossfade(80)
                     .build(),
                 contentDescription = song.title,
                 contentScale = ContentScale.Crop,
@@ -4740,7 +4736,7 @@ fun TopBar(manager: MusicManager, onProfileClick: () -> Unit, onSettingsClick: (
     }
 }
 
-// ⚡ Hardware-Buffered Universal Song Row (Instant Zero-Delay Render)
+// ⚡ 120Hz Hardware-Buffered Universal Song Row with Pre-Scaled AsyncImage
 @UnstableApi
 @Composable
 fun UniversalSongRow(song: Song, manager: MusicManager, isDark: Boolean, onPlay: () -> Unit, onMenuClick: () -> Unit) {
@@ -4767,15 +4763,16 @@ fun UniversalSongRow(song: Song, manager: MusicManager, isDark: Boolean, onPlay:
             modifier = Modifier
                 .size(46.dp)
                 .clip(RoundedCornerShape(10.dp))
-                .background(manager.getCurrentSurfaceColor()),
+                .background(Color(0xFF1E293B)),
             contentAlignment = Alignment.Center
         ) {
             if (artUri != null) {
                 AsyncImage(
                     model = ImageRequest.Builder(context)
                         .data(artUri)
-                        .size(100, 100)
+                        .size(140, 140)
                         .precision(Precision.INEXACT)
+                        .crossfade(80)
                         .build(),
                     contentDescription = "Art",
                     modifier = Modifier.fillMaxSize(),
