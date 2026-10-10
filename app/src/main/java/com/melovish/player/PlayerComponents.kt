@@ -268,7 +268,7 @@ fun FolderColorDialog(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .zIndex(150f)
+            .zIndex(999f)
             .background(if (isDark) Color(0x66000000) else Color(0x40000000))
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
@@ -460,7 +460,7 @@ suspend fun extractMaterialYouPaletteAsync(bitmap: Bitmap?, isDarkMode: Boolean,
     }
 }
 
-// 100% Mathematically Centered Progress Bar with Zero-Recomposition Layout Optimization
+// 100% Mathematically Centered Progress Bar
 @Composable
 fun IsolatedScrubberLeaf(
     currentPositionMs: Long,
@@ -474,9 +474,7 @@ fun IsolatedScrubberLeaf(
     var dragFraction by remember { mutableFloatStateOf(0f) }
 
     val maxDuration = durationMs.coerceAtLeast(1L)
-    val playbackFraction by remember(currentPositionMs, maxDuration) {
-        derivedStateOf { (currentPositionMs.toFloat() / maxDuration.toFloat()).coerceIn(0f, 1f) }
-    }
+    val playbackFraction = (currentPositionMs.toFloat() / maxDuration.toFloat()).coerceIn(0f, 1f)
     val currentFraction = if (isDragging) dragFraction else playbackFraction
     val displayPos = if (isDragging) (dragFraction * maxDuration).toLong() else currentPositionMs
     val inactiveTrackColor = if (isDark) Color(0xFF475569) else Color(0xFFD1D5DB)
@@ -1138,8 +1136,8 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
                                 val iconTint = if (isDark) Color(0xFF0F172A) else Color.White
                                 if (isThisSongPlaying) {
                                     Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                                        Box(modifier = Modifier.size(7.5.dp, 28.dp).clip(RoundedCornerShape(4.dp)).background(iconTint))
-                                        Box(modifier = Modifier.size(7.5.dp, 28.dp).clip(RoundedCornerShape(4.dp)).background(iconTint))
+                                        Box(modifier = Modifier.size(7.5.dp, 28.dp).clip(RoundedCornerShape(2.dp)).background(iconTint))
+                                        Box(modifier = Modifier.size(7.5.dp, 28.dp).clip(RoundedCornerShape(2.dp)).background(iconTint))
                                     }
                                 } else {
                                     Canvas(
@@ -1261,7 +1259,7 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .zIndex(150f)
+                    .zIndex(999f)
                     .background(Color.Transparent)
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },
@@ -1332,7 +1330,7 @@ fun FullPlayerSheet(manager: MusicManager, onDismiss: () -> Unit) {
             visible = showQueueSheet,
             enter = slideInVertically(initialOffsetY = { it }, animationSpec = spring(stiffness = 500f, dampingRatio = 0.85f)),
             exit = slideOutVertically(targetOffsetY = { it }, animationSpec = spring(stiffness = 500f, dampingRatio = 0.85f)),
-            modifier = Modifier.fillMaxSize().zIndex(150f)
+            modifier = Modifier.fillMaxSize().zIndex(999f)
         ) {
             QueueSheet(
                 manager = manager,
@@ -1509,7 +1507,7 @@ fun QueueSheet(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .zIndex(150f)
+            .zIndex(999f)
             .background(if (isDark) Color(0x66000000) else Color(0x40000000))
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
@@ -1835,7 +1833,7 @@ fun EqualizerSheet(manager: MusicManager, onDismiss: () -> Unit) {
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .zIndex(150f)
+            .zIndex(999f)
             .background(if (isDark) Color(0x66000000) else Color(0x40000000))
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
@@ -2182,14 +2180,10 @@ fun MenuRow(icon: String, text: String, isDark: Boolean, isDanger: Boolean = fal
     }
 }
 
-// 🌟 Mini Player Dock with Dialog-Box Multi-Pass Frosted Diffusion System
+// Mini Player Dock with Frosted Specular Border & Uniform Clean Background
 @UnstableApi
 @Composable
-fun MiniPlayerDock(
-    manager: MusicManager,
-    onClick: () -> Unit,
-    onDismiss: () -> Unit = {}
-) {
+fun MiniPlayerDock(manager: MusicManager, onClick: () -> Unit) {
     val song = manager.currentSong ?: return
     val accent = manager.accentColor
     val isDark = manager.isDarkMode
@@ -2199,82 +2193,40 @@ fun MiniPlayerDock(
         if (albumArtBitmap == null) albumArtBitmap = manager.loadAlbumArtAsync(song)
     }
 
-    val baseScrimAlpha = (0.55f + (manager.frostedGlassOpacity * 0.40f)).coerceIn(0.50f, 0.96f)
-    val scrimColor = if (isDark) Color(0xFF050811).copy(alpha = baseScrimAlpha) else Color(0xFFE2E8F0).copy(alpha = baseScrimAlpha)
-    val dialogColor = manager.getCurrentDialogColor()
-
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 14.dp, vertical = 6.dp)
-            .shadow(
-                elevation = 16.dp,
-                shape = RoundedCornerShape(22.dp),
-                spotColor = accent.copy(alpha = 0.35f),
-                ambientColor = if (isDark) Color.Black.copy(alpha = 0.70f) else Color(0x44000000)
-            )
+            .padding(horizontal = 16.dp, vertical = 6.dp)
             .clip(RoundedCornerShape(22.dp))
-            .background(scrimColor)
-            .background(dialogColor)
+            .background(manager.getCurrentBackgroundColor().copy(alpha = 0.85f))
+            .background(manager.getCurrentSurfaceColor())
             .border(1.2.dp, manager.getGlassBorderBrush(), RoundedCornerShape(22.dp))
-            .pointerInput(manager.isPlaying) {
+            .pointerInput(Unit) {
                 detectVerticalDragGestures { _, dragAmount ->
-                    if (dragAmount < -22f) {
+                    if (dragAmount < -24f) {
                         onClick()
-                    } else if (dragAmount > 32f && !manager.isPlaying) {
-                        manager.triggerHapticFeedback(false)
-                        onDismiss()
                     }
                 }
             }
             .clickable { onClick() }
-            .padding(horizontal = 14.dp, vertical = 9.dp)
+            .padding(horizontal = 14.dp, vertical = 8.dp)
     ) {
         Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                modifier = Modifier
-                    .size(46.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(Color(0xFF1E293B)),
-                contentAlignment = Alignment.Center
-            ) {
+            Box(modifier = Modifier.size(44.dp).clip(RoundedCornerShape(10.dp)).background(Color(0xFF1E293B)), contentAlignment = Alignment.Center) {
                 if (albumArtBitmap != null) {
-                    Image(
-                        bitmap = albumArtBitmap!!.asImageBitmap(),
-                        contentDescription = "Art",
-                        modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Crop
-                    )
+                    Image(bitmap = albumArtBitmap!!.asImageBitmap(), contentDescription = "Art", modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
                 } else {
                     Text("🎵", fontSize = 20.sp)
                 }
             }
-
             Spacer(modifier = Modifier.width(12.dp))
-
             Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = song.title,
-                    color = manager.getCurrentTextColor(),
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Text(
-                    text = "${formatFileSize(song.size)} • ${if (song.artist.isNotBlank()) song.artist else "Melovish"}",
-                    color = accent,
-                    fontSize = 11.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
+                Text(song.title, color = manager.getCurrentTextColor(), fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text("${formatFileSize(song.size)} • ${if (song.artist.isNotBlank()) song.artist else "Melovish"}", color = accent, fontSize = 11.sp, maxLines = 1)
             }
-
-            Spacer(modifier = Modifier.width(8.dp))
-
             Box(
                 modifier = Modifier
-                    .size(42.dp)
+                    .size(40.dp)
                     .shadow(elevation = 6.dp, shape = CircleShape, spotColor = accent)
                     .clip(CircleShape)
                     .background(accent)
@@ -2323,7 +2275,7 @@ fun SleepTimerDialog(manager: MusicManager, onDismiss: () -> Unit) {
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .zIndex(150f)
+            .zIndex(999f)
             .background(if (isDark) Color(0x66000000) else Color(0x40000000))
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
@@ -2463,7 +2415,7 @@ fun LyricsDialog(song: Song, manager: MusicManager, onDismiss: () -> Unit) {
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .zIndex(150f)
+            .zIndex(999f)
             .background(if (isDark) Color(0x66000000) else Color(0x40000000))
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
@@ -2512,7 +2464,7 @@ fun AddToPlaylistDialog(manager: MusicManager, song: Song, onDismiss: () -> Unit
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .zIndex(150f)
+            .zIndex(999f)
             .background(if (isDark) Color(0x66000000) else Color(0x40000000))
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
@@ -2649,7 +2601,7 @@ fun MagneticSpeedDialog(manager: MusicManager, onDismiss: () -> Unit) {
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .zIndex(150f)
+            .zIndex(999f)
             .background(if (isDark) Color(0x66000000) else Color(0x40000000))
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },

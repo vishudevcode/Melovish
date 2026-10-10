@@ -3087,7 +3087,7 @@ fun ShimmerSkeletonGridItem(aspectRatio: Float = 1f, isDark: Boolean, isHero: Bo
     )
 }
 
-// ⚡ 120Hz Hardware-Buffered Square Album Card using Coil AsyncImage
+// ⚡ Hardware Bitmap-Cached Square Album Card: Individual Track Art + Music Note Fallback
 @UnstableApi
 @Composable
 fun SquareAlbumOverlayCard(
@@ -3097,11 +3097,13 @@ fun SquareAlbumOverlayCard(
     onPlay: () -> Unit,
     onMenuClick: () -> Unit
 ) {
-    val context = LocalContext.current
     val isPlayingThis = manager.currentSong?.id == song.id
     val accent = manager.accentColor
     val glassBorderBrush = manager.getGlassBorderBrush()
-    val artUri = remember(song.id, song.albumId, song.customCoverPath) { manager.getAlbumArtUri(song) }
+    var albumArtBitmap by remember(song.id) { mutableStateOf(manager.getCachedAlbumArt(song.id)) }
+    LaunchedEffect(song.id) {
+        if (albumArtBitmap == null) albumArtBitmap = manager.loadAlbumArtAsync(song)
+    }
 
     Box(
         modifier = Modifier
@@ -3116,14 +3118,9 @@ fun SquareAlbumOverlayCard(
             )
             .clickable { onPlay() }
     ) {
-        if (artUri != null) {
-            AsyncImage(
-                model = ImageRequest.Builder(context)
-                    .data(artUri)
-                    .size(140, 140)
-                    .precision(Precision.INEXACT)
-                    .crossfade(80)
-                    .build(),
+        if (albumArtBitmap != null) {
+            Image(
+                bitmap = albumArtBitmap!!.asImageBitmap(),
                 contentDescription = song.title,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize()
@@ -3175,7 +3172,7 @@ fun SquareAlbumOverlayCard(
     }
 }
 
-// ⚡ 120Hz Hardware-Buffered Hero Album Card using Coil AsyncImage
+// ⚡ Hardware Bitmap-Cached Hero Album Card: Individual Track Art + Music Note Fallback
 @UnstableApi
 @Composable
 fun HeroAlbumCard(
@@ -3185,11 +3182,13 @@ fun HeroAlbumCard(
     onPlay: () -> Unit,
     onMenuClick: () -> Unit
 ) {
-    val context = LocalContext.current
     val isPlayingThis = manager.currentSong?.id == song.id
     val accent = manager.accentColor
     val glassBorderBrush = manager.getGlassBorderBrush()
-    val artUri = remember(song.id, song.albumId, song.customCoverPath) { manager.getAlbumArtUri(song) }
+    var albumArtBitmap by remember(song.id) { mutableStateOf(manager.getCachedAlbumArt(song.id)) }
+    LaunchedEffect(song.id) {
+        if (albumArtBitmap == null) albumArtBitmap = manager.loadAlbumArtAsync(song)
+    }
 
     Box(
         modifier = Modifier
@@ -3204,14 +3203,9 @@ fun HeroAlbumCard(
             )
             .clickable { onPlay() }
     ) {
-        if (artUri != null) {
-            AsyncImage(
-                model = ImageRequest.Builder(context)
-                    .data(artUri)
-                    .size(240, 240)
-                    .precision(Precision.INEXACT)
-                    .crossfade(80)
-                    .build(),
+        if (albumArtBitmap != null) {
+            Image(
+                bitmap = albumArtBitmap!!.asImageBitmap(),
                 contentDescription = song.title,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize()
@@ -3927,6 +3921,7 @@ fun SearchScreen(
     val textColor = manager.getCurrentTextColor()
     val glassBorderBrush = manager.getGlassBorderBrush()
 
+    // 🚀 React to Search Tab double-tap / re-click to request focus & open software keyboard
     LaunchedEffect(focusSearchTrigger) {
         if (focusSearchTrigger > 0L) {
             delay(120)
@@ -4561,13 +4556,15 @@ fun BottomNavBar(
     }
 }
 
-// ⚡ 120Hz Hardware-Buffered Recently Played Card with Pre-Scaled AsyncImage
+// ⚡ 120Hz Hardware-Buffered Recently Played Card with Pre-Scaled Bitmap Loading & Fallback
 @UnstableApi
 @Composable
 fun RecentlyPlayedCard(song: Song, manager: MusicManager, onClick: () -> Unit) {
-    val context = LocalContext.current
     val glassBorderBrush = manager.getGlassBorderBrush()
-    val artUri = remember(song.id, song.albumId, song.customCoverPath) { manager.getAlbumArtUri(song) }
+    var albumArtBitmap by remember(song.id) { mutableStateOf(manager.getCachedAlbumArt(song.id)) }
+    LaunchedEffect(song.id) {
+        if (albumArtBitmap == null) albumArtBitmap = manager.loadAlbumArtAsync(song)
+    }
 
     Box(
         modifier = Modifier
@@ -4578,14 +4575,9 @@ fun RecentlyPlayedCard(song: Song, manager: MusicManager, onClick: () -> Unit) {
             .border(1.2.dp, glassBorderBrush, RoundedCornerShape(20.dp))
             .clickable { onClick() }
     ) {
-        if (artUri != null) {
-            AsyncImage(
-                model = ImageRequest.Builder(context)
-                    .data(artUri)
-                    .size(140, 140)
-                    .precision(Precision.INEXACT)
-                    .crossfade(80)
-                    .build(),
+        if (albumArtBitmap != null) {
+            Image(
+                bitmap = albumArtBitmap!!.asImageBitmap(),
                 contentDescription = song.title,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize()
@@ -4735,18 +4727,20 @@ fun TopBar(manager: MusicManager, onProfileClick: () -> Unit, onSettingsClick: (
     }
 }
 
-// ⚡ 120Hz Hardware-Buffered Universal Song Row with Pre-Scaled AsyncImage
+// ⚡ 120Hz Hardware-Buffered Universal Song Row with Pre-Scaled Bitmap Loading & Fallback
 @UnstableApi
 @Composable
 fun UniversalSongRow(song: Song, manager: MusicManager, isDark: Boolean, onPlay: () -> Unit, onMenuClick: () -> Unit) {
-    val context = LocalContext.current
     val isPlayingThis = manager.currentSong?.id == song.id
     val accent = manager.accentColor
 
     val textColor = if (isPlayingThis) accent else manager.getCurrentTextColor()
     val cardBg = if (isPlayingThis) accent.copy(alpha = 0.12f) else manager.getCurrentSurfaceColor()
     val glassBorderBrush = if (isPlayingThis) Brush.linearGradient(listOf(accent, accent)) else manager.getGlassBorderBrush()
-    val artUri = remember(song.id, song.albumId, song.customCoverPath) { manager.getAlbumArtUri(song) }
+    var albumArtBitmap by remember(song.id) { mutableStateOf(manager.getCachedAlbumArt(song.id)) }
+    LaunchedEffect(song.id) {
+        if (albumArtBitmap == null) albumArtBitmap = manager.loadAlbumArtAsync(song)
+    }
 
     Row(
         modifier = Modifier
@@ -4765,14 +4759,9 @@ fun UniversalSongRow(song: Song, manager: MusicManager, isDark: Boolean, onPlay:
                 .background(Color(0xFF1E293B)),
             contentAlignment = Alignment.Center
         ) {
-            if (artUri != null) {
-                AsyncImage(
-                    model = ImageRequest.Builder(context)
-                        .data(artUri)
-                        .size(140, 140)
-                        .precision(Precision.INEXACT)
-                        .crossfade(80)
-                        .build(),
+            if (albumArtBitmap != null) {
+                Image(
+                    bitmap = albumArtBitmap!!.asImageBitmap(),
                     contentDescription = "Art",
                     modifier = Modifier.fillMaxSize(),
                     contentScale = ContentScale.Crop
