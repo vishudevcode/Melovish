@@ -3927,7 +3927,6 @@ fun SearchScreen(
     val textColor = manager.getCurrentTextColor()
     val glassBorderBrush = manager.getGlassBorderBrush()
 
-    // 🚀 React to Search Tab double-tap / re-click to request focus & open software keyboard
     LaunchedEffect(focusSearchTrigger) {
         if (focusSearchTrigger > 0L) {
             delay(120)
