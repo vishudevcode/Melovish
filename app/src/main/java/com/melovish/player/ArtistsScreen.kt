@@ -107,6 +107,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import androidx.media3.common.util.UnstableApi
+import coil.compose.AsyncImage
+import coil.request.ImageRequest
+import coil.size.Precision
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.toImmutableList
 import kotlinx.coroutines.Dispatchers
@@ -727,25 +730,12 @@ fun ArtistSquareCard(
     onClick: () -> Unit,
     onLongClick: () -> Unit
 ) {
+    val context = LocalContext.current
     val customImgPath = ArtistDataManager.customArtistImages[artist.name]
-    var customArtistBitmap by remember(artist.name, customImgPath) {
-        mutableStateOf<Bitmap?>(null)
-    }
-
-    LaunchedEffect(artist.name, customImgPath) {
-        if (!customImgPath.isNullOrBlank() && File(customImgPath).exists()) {
-            withContext(Dispatchers.IO) {
-                try {
-                    val opts = BitmapFactory.Options().apply {
-                        inSampleSize = 2
-                        inPreferredConfig = Bitmap.Config.RGB_565
-                    }
-                    customArtistBitmap = BitmapFactory.decodeFile(customImgPath, opts)
-                } catch (_: Exception) {}
-            }
-        } else {
-            customArtistBitmap = null
-        }
+    val firstSong = artist.songs.firstOrNull()
+    val artUri = remember(firstSong?.id, customImgPath) {
+        if (!customImgPath.isNullOrBlank()) Uri.fromFile(File(customImgPath))
+        else firstSong?.let { manager.getAlbumArtUri(it) }
     }
 
     Box(
@@ -775,12 +765,12 @@ fun ArtistSquareCard(
                 .padding(bottom = if (gridColumns == 4) 24.dp else if (isHero) 32.dp else 28.dp),
             contentAlignment = Alignment.Center
         ) {
-            val badgeFraction = when (gridColumns) {
-                2 -> if (isHero) 0.58f else 0.54f
-                3 -> 0.52f
-                else -> 0.48f
-            }
-            if (customArtistBitmap != null) {
+            if (artUri != null) {
+                val badgeFraction = when (gridColumns) {
+                    2 -> if (isHero) 0.58f else 0.54f
+                    3 -> 0.52f
+                    else -> 0.48f
+                }
                 Box(
                     modifier = Modifier
                         .fillMaxWidth(badgeFraction)
@@ -788,20 +778,30 @@ fun ArtistSquareCard(
                         .clip(CircleShape)
                         .border(1.5.dp, accentColor.copy(alpha = 0.5f), CircleShape)
                 ) {
-                    Image(
-                        bitmap = customArtistBitmap!!.asImageBitmap(),
+                    AsyncImage(
+                        model = ImageRequest.Builder(context)
+                            .data(artUri)
+                            .size(140, 140)
+                            .precision(Precision.INEXACT)
+                            .crossfade(80)
+                            .build(),
                         contentDescription = artist.name,
                         contentScale = ContentScale.Crop,
                         modifier = Modifier.fillMaxSize()
                     )
                 }
             } else {
+                val badgeFraction = when (gridColumns) {
+                    2 -> if (isHero) 0.56f else 0.52f
+                    3 -> 0.50f
+                    else -> 0.48f
+                }
                 Box(
                     modifier = Modifier
                         .fillMaxWidth(badgeFraction)
                         .aspectRatio(1f)
                         .clip(CircleShape)
-                        .background(Color(0xFF1E293B))
+                        .background(accentColor.copy(alpha = 0.15f))
                         .border(1.5.dp, accentColor.copy(alpha = 0.5f), CircleShape),
                     contentAlignment = Alignment.Center
                 ) {
@@ -1007,7 +1007,7 @@ fun ArtistsScreen(
                                 .clip(CircleShape)
                                 .background(cardBg)
                                 .border(1.2.dp, glassBorderBrush, CircleShape)
-                                .clickable { showSortMenu = true },
+                            .clickable { showSortMenu = true },
                             contentAlignment = Alignment.Center
                         ) {
                             SortListVector(tint = accentColor, modifier = Modifier.size(19.dp))
@@ -1107,22 +1107,10 @@ fun ArtistsScreen(
                                     contentType = { "artist_list_row" }
                                 ) { artist ->
                                     val customImg = ArtistDataManager.customArtistImages[artist.name]
-                                    var customBmp by remember(artist.name, customImg) { mutableStateOf<Bitmap?>(null) }
-
-                                    LaunchedEffect(artist.name, customImg) {
-                                        if (!customImg.isNullOrBlank() && File(customImg).exists()) {
-                                            withContext(Dispatchers.IO) {
-                                                try {
-                                                    val opts = BitmapFactory.Options().apply {
-                                                        inSampleSize = 2
-                                                        inPreferredConfig = Bitmap.Config.RGB_565
-                                                    }
-                                                    customBmp = BitmapFactory.decodeFile(customImg, opts)
-                                                } catch (_: Exception) {}
-                                            }
-                                        } else {
-                                            customBmp = null
-                                        }
+                                    val firstSong = artist.songs.firstOrNull()
+                                    val artUri = remember(firstSong?.id, customImg) {
+                                        if (!customImg.isNullOrBlank()) Uri.fromFile(File(customImg))
+                                        else firstSong?.let { manager.getAlbumArtUri(it) }
                                     }
 
                                     Row(
@@ -1146,13 +1134,18 @@ fun ArtistsScreen(
                                             modifier = Modifier
                                                 .size(46.dp)
                                                 .clip(CircleShape)
-                                                .background(Color(0xFF1E293B))
+                                                .background(accentColor.copy(alpha = 0.15f))
                                                 .border(1.5.dp, accentColor.copy(alpha = 0.5f), CircleShape),
                                             contentAlignment = Alignment.Center
                                         ) {
-                                            if (customBmp != null) {
-                                                Image(
-                                                    bitmap = customBmp!!.asImageBitmap(),
+                                            if (artUri != null) {
+                                                AsyncImage(
+                                                    model = ImageRequest.Builder(context)
+                                                        .data(artUri)
+                                                        .size(100, 100)
+                                                        .precision(Precision.INEXACT)
+                                                        .crossfade(80)
+                                                        .build(),
                                                     contentDescription = artist.name,
                                                     contentScale = ContentScale.Crop,
                                                     modifier = Modifier.fillMaxSize()
