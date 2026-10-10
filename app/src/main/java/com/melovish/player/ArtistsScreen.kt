@@ -714,7 +714,7 @@ fun RootArtistActionModal(
     }
 }
 
-// 1:1 Dynamic Square Artist Card with Fast Hardware Image Loading
+// 1:1 Dynamic Square Artist Card with Fast Hardware Image Loading & Instant Mic-on-Accent Fallback
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun ArtistSquareCard(
@@ -730,12 +730,16 @@ fun ArtistSquareCard(
     onClick: () -> Unit,
     onLongClick: () -> Unit
 ) {
-    val context = LocalContext.current
     val customImgPath = ArtistDataManager.customArtistImages[artist.name]
     val firstSong = artist.songs.firstOrNull()
-    val artUri = remember(firstSong?.id, customImgPath) {
-        if (!customImgPath.isNullOrBlank()) Uri.fromFile(File(customImgPath))
-        else firstSong?.let { manager.getAlbumArtUri(it) }
+    var albumArtBitmap by remember(firstSong?.id, customImgPath) {
+        mutableStateOf(if (customImgPath == null && firstSong != null) manager.getCachedAlbumArt(firstSong.id) else null)
+    }
+
+    LaunchedEffect(firstSong?.id, customImgPath) {
+        if (customImgPath == null && firstSong != null && albumArtBitmap == null) {
+            albumArtBitmap = manager.loadAlbumArtAsync(firstSong)
+        }
     }
 
     Box(
@@ -765,7 +769,14 @@ fun ArtistSquareCard(
                 .padding(bottom = if (gridColumns == 4) 24.dp else if (isHero) 32.dp else 28.dp),
             contentAlignment = Alignment.Center
         ) {
-            if (artUri != null) {
+            if (!customImgPath.isNullOrBlank() && File(customImgPath).exists()) {
+                AsyncImage(
+                    model = File(customImgPath),
+                    contentDescription = artist.name,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize()
+                )
+            } else if (albumArtBitmap != null) {
                 val badgeFraction = when (gridColumns) {
                     2 -> if (isHero) 0.58f else 0.54f
                     3 -> 0.52f
@@ -778,13 +789,8 @@ fun ArtistSquareCard(
                         .clip(CircleShape)
                         .border(1.5.dp, accentColor.copy(alpha = 0.5f), CircleShape)
                 ) {
-                    AsyncImage(
-                        model = ImageRequest.Builder(context)
-                            .data(artUri)
-                            .size(140, 140)
-                            .precision(Precision.INEXACT)
-                            .crossfade(80)
-                            .build(),
+                    Image(
+                        bitmap = albumArtBitmap!!.asImageBitmap(),
                         contentDescription = artist.name,
                         contentScale = ContentScale.Crop,
                         modifier = Modifier.fillMaxSize()
@@ -897,6 +903,7 @@ fun ArtistsScreen(
     var isSearchFieldVisible by remember { mutableStateOf(false) }
     var showSortMenu by remember { mutableStateOf(false) }
 
+    // Instant read: precomputed in background
     val artistsList = manager.parsedArtistsList
 
     val sortedArtists: ImmutableList<ArtistItem> = remember(artistsList.size, artistsList.toList(), query, manager.artistsSortOrder, ArtistDataManager.refreshTrigger) {
@@ -923,6 +930,7 @@ fun ArtistsScreen(
         (pinned + unpinned).toImmutableList()
     }
 
+    // O(1) Precomputed alphabet jump map
     val alphabet = remember { listOf('#') + ('A'..'Z').toList() }
     val alphabetIndexMap = remember(sortedArtists) {
         val map = HashMap<Char, Int>()
@@ -1007,7 +1015,7 @@ fun ArtistsScreen(
                                 .clip(CircleShape)
                                 .background(cardBg)
                                 .border(1.2.dp, glassBorderBrush, CircleShape)
-                            .clickable { showSortMenu = true },
+                                .clickable { showSortMenu = true },
                             contentAlignment = Alignment.Center
                         ) {
                             SortListVector(tint = accentColor, modifier = Modifier.size(19.dp))
@@ -1108,9 +1116,14 @@ fun ArtistsScreen(
                                 ) { artist ->
                                     val customImg = ArtistDataManager.customArtistImages[artist.name]
                                     val firstSong = artist.songs.firstOrNull()
-                                    val artUri = remember(firstSong?.id, customImg) {
-                                        if (!customImg.isNullOrBlank()) Uri.fromFile(File(customImg))
-                                        else firstSong?.let { manager.getAlbumArtUri(it) }
+                                    var albumArtBitmap by remember(firstSong?.id, customImg) {
+                                        mutableStateOf(if (customImg == null && firstSong != null) manager.getCachedAlbumArt(firstSong.id) else null)
+                                    }
+
+                                    LaunchedEffect(firstSong?.id, customImg) {
+                                        if (customImg == null && firstSong != null && albumArtBitmap == null) {
+                                            albumArtBitmap = manager.loadAlbumArtAsync(firstSong)
+                                        }
                                     }
 
                                     Row(
@@ -1138,20 +1151,22 @@ fun ArtistsScreen(
                                                 .border(1.5.dp, accentColor.copy(alpha = 0.5f), CircleShape),
                                             contentAlignment = Alignment.Center
                                         ) {
-                                            if (artUri != null) {
+                                            if (!customImg.isNullOrBlank() && File(customImg).exists()) {
                                                 AsyncImage(
-                                                    model = ImageRequest.Builder(context)
-                                                        .data(artUri)
-                                                        .size(100, 100)
-                                                        .precision(Precision.INEXACT)
-                                                        .crossfade(80)
-                                                        .build(),
+                                                    model = File(customImg),
+                                                    contentDescription = artist.name,
+                                                    contentScale = ContentScale.Crop,
+                                                    modifier = Modifier.fillMaxSize()
+                                                )
+                                            } else if (albumArtBitmap != null) {
+                                                Image(
+                                                    bitmap = albumArtBitmap!!.asImageBitmap(),
                                                     contentDescription = artist.name,
                                                     contentScale = ContentScale.Crop,
                                                     modifier = Modifier.fillMaxSize()
                                                 )
                                             } else {
-                                                Text("🎙", fontSize = 20.sp)
+                                                Text("🎙️", fontSize = 20.sp)
                                             }
                                         }
                                         Spacer(modifier = Modifier.width(14.dp))
